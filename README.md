@@ -290,22 +290,6 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-## Git And Secret Policy
-
-Do not commit:
-
-- `.env`
-- `.env.*`
-- `node_modules/`
-- `dist/`
-- production database dumps
-- private keys
-- SMTP passwords
-- JWT secrets
-- object storage access keys
-
-Use `.env.example` files to document required variables without exposing secrets.
-
 ## License
 
 This project is released under the MIT License. See [LICENSE](./LICENSE).
@@ -599,22 +583,6 @@ npm run build
 sudo nginx -t
 sudo systemctl reload nginx
 ```
-
-## Git 和密钥规则
-
-不要提交：
-
-- `.env`
-- `.env.*`
-- `node_modules/`
-- `dist/`
-- 生产数据库备份
-- 私钥
-- SMTP 密码
-- JWT 密钥
-- 对象存储 access key / secret key
-
-请使用 `.env.example` 说明需要哪些变量，不要把真实密钥写进仓库。
 
 ## 开源协议
 
