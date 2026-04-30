@@ -1,0 +1,140 @@
+{
+  "error": {
+    "auth": {
+      "unauthenticated": "Not authenticated. Please sign in.",
+      "forbidden": "Permission denied.",
+      "invalid_credentials": "Invalid email or password.",
+      "suspended": "Account is suspended.",
+      "otp_not_requested": "Please request a verification code first.",
+      "otp_expired": "Verification code has expired.",
+      "otp_invalid": "Verification code is incorrect.",
+      "token_invalid": "Session expired. Please sign in again.",
+      "email_exists": "Email already registered.",
+      "email_code_too_frequent": "Verification code was sent too recently. Please try again later.",
+      "email_code_too_many_attempts": "Too many incorrect verification attempts. Please request a new code.",
+      "google_not_configured": "Google sign-in is not configured.",
+      "google_email_unverified": "Google email is not verified."
+    },
+    "company_user": {
+      "not_found": "Employee not found.",
+      "employee_id_exists": "Employee ID already exists.",
+      "role_invalid": "Role is invalid."
+    },
+    "supplier": {
+      "not_found": "Supplier not found.",
+      "certification_required": "Supplier certification is not approved.",
+      "business_id_conflict": "Supplier business ID conflict.",
+      "company_already_bound": "This company is already bound to another account.",
+      "company_required": "Please select a company first.",
+      "documents_required": "Please upload required certification documents.",
+      "invitation_required": "A valid invitation is required.",
+      "invitation_not_found": "Invitation not found.",
+      "invitation_invalid": "Invitation is invalid.",
+      "invitation_expired": "Invitation has expired.",
+      "invitation_not_pending": "Invitation is not in a pending state.",
+      "only_active_can_suspend": "Only active suppliers can be suspended.",
+      "only_suspended_can_resume": "Only suspended suppliers can be resumed.",
+      "only_pending_review_can_approve": "Only pending suppliers can be approved.",
+      "only_pending_review_can_reject": "Only pending suppliers can be rejected.",
+      "only_pending_or_approved_can_request_supplement": "Only pending or approved suppliers can be asked for supplements."
+    },
+    "tender": {
+      "not_found": "Tender not found.",
+      "invalid_status_transition": "Operation not allowed in current status.",
+      "deadline_passed": "Bid deadline has passed.",
+      "only_draft_can_edit": "Only drafts can be edited.",
+      "cannot_invite": "Cannot invite suppliers in current status.",
+      "deadline_must_be_future": "Deadline must be in the future.",
+      "start_must_before_deadline": "Start time must precede deadline.",
+      "invalid_bid_start_at": "Bid start time is invalid.",
+      "invalid_bid_deadline": "Bid deadline is invalid.",
+      "import_file_required": "Please upload an import file.",
+      "import_empty_workbook": "The workbook is empty.",
+      "import_requires_header_and_rows": "Import file must contain a header row and at least one data row.",
+      "import_missing_header": "Import file is missing a valid header."
+    },
+    "lot": { "not_found": "Lot not found." },
+    "line": { "not_found": "Line/item not found." },
+    "quote": {
+      "tender_not_open": "The tender is not open for bidding.",
+      "deadline_passed": "Bid deadline has passed.",
+      "cooldown_active": "Cooldown active. Please try again later.",
+      "rebid_limit_reached": "Maximum number of rebids reached.",
+      "min_decrement_fail": "Minimum decrement not met.",
+      "version_conflict": "Quote version conflict. Please refresh and retry.",
+      "concurrent_submit": "Duplicate submission.",
+      "required_field_missing": "Required field is missing."
+    },
+    "upload": {
+      "file_required": "Please choose a file to upload.",
+      "file_type_not_allowed": "File type not allowed.",
+      "file_too_large": "File exceeds size limit.",
+      "file_not_found": "File not found."
+    },
+    "export": {
+      "full_requires_manager": "Only purchase managers can perform a full export."
+    }
+  },
+  "quote": {
+    "ability": {
+      "tenderNotOpen": "This project is not open for bidding, so quotes cannot be submitted.",
+      "rebidLimitReached": "Maximum re-bids reached. You cannot change quote again.",
+      "cooldownActive": "Cooldown active. Wait {seconds} seconds before changing quote again."
+    }
+  },
+  "export": {
+    "sheet": {
+      "byItem": "Review by Item",
+      "bySupplier": "Review by Supplier",
+      "lotData": "Lot Data",
+      "summary": "Summary",
+      "lotQuotes": "Quotes-{lotNo}"
+    },
+    "field": {
+      "roundNo": "Round",
+      "lotNo": "Lot No.",
+      "lotTitle": "Lot Title",
+      "lotDescription": "Lot Description",
+      "rowNo": "Row",
+      "quantity": "Quantity",
+      "unit": "Unit",
+      "budgetAmount": "Budget",
+      "currency": "Currency",
+      "itemLabel": "Item / Line",
+      "rank": "Rank",
+      "quoteNo": "Quote No.",
+      "supplierBusinessId": "Supplier ID",
+      "supplierName": "Supplier",
+      "supplierContact": "Contact",
+      "supplierPhone": "Phone",
+      "supplierEmail": "Email",
+      "totalPrice": "Price",
+      "version": "Version",
+      "submittedAt": "Submitted At",
+      "remark": "Remark",
+      "submitIp": "IP",
+      "key": "Field",
+      "value": "Value"
+    },
+    "summary": {
+      "tenderNo": "Tender No.",
+      "tenderTitle": "Tender Title",
+      "exportMode": "Mode",
+      "exportView": "View",
+      "exportRound": "Round",
+      "exportedAt": "Exported At",
+      "operator": "Operator",
+      "modeFull": "Full",
+      "modeMasked": "Masked",
+      "viewItem": "By Item",
+      "viewSupplier": "By Supplier",
+      "allRounds": "All"
+    },
+    "hint": {
+      "noLineQuotes": "No line quote data.",
+      "noLotData": "No lot data."
+    },
+    "anonymousSupplier": "Supplier {seq}",
+    "lotIntegralQuote": "Lot Integral Quote"
+  }
+}

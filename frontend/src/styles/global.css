@@ -1,0 +1,32 @@
+/*
+文件：frontend/src/styles/global.css
+功能：定义全局盒模型、根节点尺寸和页面滚动基线，避免满屏页面因 padding 产生额外滚动。
+交互：由 main.ts 引入，影响所有桌面端与 H5 页面。
+作者：吴川
+*/
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow-x: hidden;
+  background: #f6f7f9;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}

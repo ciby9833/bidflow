@@ -1,0 +1,817 @@
+/**
+ * 文件：backend/src/modules/tender/tender.service.ts
+ * 功能：负责招标、标包、邀请及模板能力，承接招标全生命周期的业务规则。
+ * 交互：被 tender.controller.ts 调用；写入 tender.entity.ts / lot.entity.ts / invitation.entity.ts；被 quote.service.ts 读取招标与标包上下文。
+ * 作者：吴川
+ */
+import {
+  BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import * as XLSX from 'xlsx';
+import { Tender, TenderStatus, TenderType } from './tender.entity';
+import { Lot } from './lot.entity';
+import { LotLine } from './lot-line.entity';
+import { Invitation, InvitationStatus } from './invitation.entity';
+import { Quote } from '../quote/quote.entity';
+import { LineQuote } from '../quote/line-quote.entity';
+import { AuditService, AuditContext } from '../../shared/audit/audit.service';
+import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
+import { User, UserRole } from '../auth/user.entity';
+import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
+
+// Three standard templates (spec_json + ui_schema stubs)
+const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
+  [TenderType.ENGINEERING]: {
+    specJson: {
+      sections: ['scope', 'technical', 'safety', 'timeline', 'qualification'],
+      requiredFields: ['total_price', 'currency', 'project_duration_days', 'warranty_months'],
+    },
+    uiSchema: {
+      order: ['total_price', 'currency', 'project_duration_days', 'warranty_months'],
+      fields: {
+        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga' } },
+        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang' } },
+        project_duration_days: { type: 'number', label: { 'zh-CN': '工期（天）', en: 'Duration (days)', 'id-ID': 'Durasi (hari)' } },
+        warranty_months: { type: 'number', label: { 'zh-CN': '质保期（月）', en: 'Warranty (months)', 'id-ID': 'Garansi (bulan)' } },
+      },
+    },
+  },
+  [TenderType.TRANSPORT]: {
+    specJson: {
+      sections: ['route', 'capacity', 'vehicle_type', 'rate'],
+      requiredFields: ['total_price', 'currency', 'unit_price', 'unit', 'capacity_tons'],
+    },
+    uiSchema: {
+      order: ['total_price', 'currency', 'unit_price', 'unit', 'capacity_tons'],
+      fields: {
+        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga' } },
+        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang' } },
+        unit_price: { type: 'currency', label: { 'zh-CN': '单价', en: 'Unit Price', 'id-ID': 'Harga Satuan' } },
+        unit: { type: 'select', options: ['ton-km', 'trip', 'day'], label: { 'zh-CN': '计价单位', en: 'Unit', 'id-ID': 'Satuan' } },
+        capacity_tons: { type: 'number', label: { 'zh-CN': '运载吨位', en: 'Capacity (tons)', 'id-ID': 'Kapasitas (ton)' } },
+      },
+    },
+  },
+  [TenderType.ROUTINE]: {
+    specJson: {
+      sections: ['item_list', 'delivery', 'payment'],
+      requiredFields: ['total_price', 'currency', 'delivery_days'],
+    },
+    uiSchema: {
+      order: ['total_price', 'currency', 'delivery_days', 'payment_terms'],
+      fields: {
+        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga' } },
+        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang' } },
+        delivery_days: { type: 'number', label: { 'zh-CN': '交货天数', en: 'Delivery Days', 'id-ID': 'Hari Pengiriman' } },
+        payment_terms: { type: 'text', label: { 'zh-CN': '付款条款', en: 'Payment Terms', 'id-ID': 'Syarat Pembayaran' } },
+      },
+    },
+  },
+};
+const DEFAULT_TENDER_CURRENCY = 'IDR';
+type TenderAttachmentInput = {
+  objectKey?: string;
+  key?: string;
+  fileName?: string;
+  name?: string;
+  fileSize?: number;
+  size?: number;
+  mimeType?: string;
+  fileUrl?: string;
+};
+type TenderLotInput = {
+  title: string;
+  description?: string;
+  quantity?: number;
+  unit?: string;
+  pricingMode?: string;
+  specJson?: object;
+  uiSchema?: object;
+  budgetAmount?: number;
+  budgetCurrency?: string;
+  lineColumns?: LineColumnInput[];
+  lines?: TenderLotLineInput[];
+};
+type LineColumnInput = {
+  key?: string;
+  label: string;
+  type?: string;
+  required?: boolean;
+};
+type TenderLotLineInput = {
+  rowNo?: number;
+  dataJson?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+};
+
+function nextTenderNo(seq: number): string {
+  const ym = new Date().toISOString().slice(0, 7).replace('-', '');
+  return `T-${ym}-${String(seq).padStart(4, '0')}`;
+}
+
+function formatLotNo(seq: number): string {
+  const ym = new Date().toISOString().slice(0, 7).replace('-', '');
+  return `L-${ym}-${String(seq).padStart(4, '0')}`;
+}
+
+async function nextLotNo(em: EntityManager): Promise<string> {
+  const ym = new Date().toISOString().slice(0, 7).replace('-', '');
+  const result = await em
+    .createQueryBuilder(Lot, 'lot')
+    .select("MAX(CAST(RIGHT(lot.lotNo, 4) AS INT))", 'max')
+    .where('lot.lotNo LIKE :prefix', { prefix: `L-${ym}-%` })
+    .getRawOne<{ max: string | null }>();
+  return formatLotNo(Number(result?.max ?? 0) + 1);
+}
+
+@Injectable()
+export class TenderService implements OnModuleInit, OnModuleDestroy {
+  private lifecycleTimer?: NodeJS.Timeout;
+
+  constructor(
+    @InjectRepository(Tender) private readonly tenderRepo: Repository<Tender>,
+    @InjectRepository(Lot) private readonly lotRepo: Repository<Lot>,
+    @InjectRepository(LotLine) private readonly lineRepo: Repository<LotLine>,
+    @InjectRepository(Invitation) private readonly invRepo: Repository<Invitation>,
+    @InjectRepository(Quote) private readonly quoteRepo: Repository<Quote>,
+    @InjectRepository(LineQuote) private readonly lineQuoteRepo: Repository<LineQuote>,
+    @InjectRepository(Supplier) private readonly supplierRepo: Repository<Supplier>,
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
+    private readonly audit: AuditService,
+    private readonly ds: DataSource,
+  ) {}
+
+  onModuleInit() {
+    void this.refreshLifecycleStatuses();
+    this.lifecycleTimer = setInterval(() => void this.refreshLifecycleStatuses(), 30_000);
+    this.lifecycleTimer.unref?.();
+  }
+
+  onModuleDestroy() {
+    if (this.lifecycleTimer) clearInterval(this.lifecycleTimer);
+  }
+
+  async create(data: {
+    title: string;
+    type: TenderType;
+    baseCurrency?: string;
+    rankingMode?: string;
+    bidStartAt?: string;
+    bidDeadline?: string;
+    openTime?: string;
+    maxRebidCount?: number;
+    minDecrementPct?: number;
+    cooldownSeconds?: number;
+    description?: string;
+    isHallVisible?: boolean;
+    isPublicRankingVisible?: boolean;
+    hallSummary?: string;
+    attachments?: TenderAttachmentInput[];
+    lots?: TenderLotInput[];
+  }, ctx: AuditContext) {
+    this.validateTenderSchedule(data.bidStartAt, data.bidDeadline);
+    return this.ds.transaction(async (em) => {
+      const tenderCount = await em.count(Tender);
+      const tenderNo = nextTenderNo(tenderCount + 1);
+      const template = TEMPLATES[data.type];
+
+      const tender = em.create(Tender, {
+        tenderNo,
+        title: data.title,
+        type: data.type,
+        baseCurrency: data.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
+        rankingMode: (data.rankingMode as any) ?? 'leading_flag',
+        bidStartAt: data.bidStartAt ? new Date(data.bidStartAt) : undefined,
+        bidDeadline: data.bidDeadline ? new Date(data.bidDeadline) : undefined,
+        openTime: data.openTime ? new Date(data.openTime) : undefined,
+        maxRebidCount: data.maxRebidCount ?? 3,
+        minDecrementPct: data.minDecrementPct ?? 1.0,
+        cooldownSeconds: data.cooldownSeconds ?? 60,
+        description: data.description,
+        isHallVisible: data.isHallVisible ?? false,
+        isPublicRankingVisible: data.isPublicRankingVisible ?? false,
+        hallSummary: data.hallSummary,
+        attachments: this.normalizeAttachments(data.attachments),
+        createdBy: ctx.userId,
+        updatedBy: ctx.userId,
+        status: TenderStatus.DRAFT,
+      });
+      const savedTender = await em.save(tender);
+
+      const lots = data.lots ?? [{ title: `${data.title} - Lot 1` }];
+      for (let i = 0; i < lots.length; i++) {
+        const lotNo = await nextLotNo(em);
+        const lot = em.create(Lot, {
+          lotNo,
+          tenderId: savedTender.id,
+          title: lots[i].title,
+          description: lots[i].description,
+          quantity: lots[i].quantity,
+          unit: lots[i].unit,
+          pricingMode: lots[i].pricingMode ?? 'total_price',
+          specJson: lots[i].specJson ?? template.specJson,
+          uiSchema: lots[i].uiSchema ?? template.uiSchema,
+          budgetAmount: lots[i].budgetAmount,
+          budgetCurrency: lots[i].budgetCurrency ?? data.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
+          sortOrder: i,
+          schemaVersion: 1,
+        });
+        const savedLot = await em.save(lot);
+        await this.saveLotLines(em, savedTender.id, savedLot, lots[i]);
+      }
+
+      await this.audit.log(ctx, AuditEntityType.TENDER, savedTender.id, AuditAction.TENDER_CREATE, undefined, { tenderNo, type: data.type });
+      return em.findOne(Tender, { where: { id: savedTender.id }, relations: ['lots', 'lots.lines'] });
+    });
+  }
+
+  async findAll(
+    filters: {
+      status?: TenderStatus;
+      type?: TenderType;
+      baseCurrency?: string;
+      search?: string;
+      isHallVisible?: boolean;
+      page?: number;
+      limit?: number;
+    },
+    viewer?: { role?: UserRole | string; supplierId?: string },
+  ) {
+    await this.refreshLifecycleStatuses();
+    if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
+      return this.findSupplierVisible(filters, viewer.supplierId);
+    }
+    const qb = this.tenderRepo.createQueryBuilder('t');
+    if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
+    if (filters.type) qb.andWhere('t.type = :type', { type: filters.type });
+    if (filters.baseCurrency) qb.andWhere('t.base_currency = :baseCurrency', { baseCurrency: filters.baseCurrency });
+    if (typeof filters.isHallVisible === 'boolean') qb.andWhere('t.is_hall_visible = :isHallVisible', { isHallVisible: filters.isHallVisible });
+    if (filters.search) {
+      qb.andWhere('(t.title ILIKE :q OR t.tender_no ILIKE :q OR t.hall_summary ILIKE :q)', { q: `%${filters.search}%` });
+    }
+    if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
+      qb.innerJoin('t.invitations', 'inv', 'inv.supplierId = :supplierId', { supplierId: viewer.supplierId })
+        .andWhere('(inv.visibleAt IS NULL OR inv.visibleAt <= :now)', { now: new Date() })
+        .andWhere('t.status IN (:...statuses)', {
+          statuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED],
+        });
+    }
+    const page = filters.page ?? 1;
+    const limit = Math.min(filters.limit ?? 20, 100);
+    qb.leftJoinAndSelect('t.lots', 'lots')
+      .skip((page - 1) * limit).take(limit)
+      .orderBy('t.createdAt', 'DESC');
+    const [items, total] = await qb.getManyAndCount();
+    return { items: await this.withUserSummary(items), total, page, limit };
+  }
+
+  async findSupplierVisible(
+    filters: {
+      status?: TenderStatus;
+      type?: TenderType;
+      baseCurrency?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    },
+    supplierId: string,
+  ) {
+    await this.refreshLifecycleStatuses();
+    await this.ensureSupplierApproved(supplierId);
+
+    const allowedStatuses = [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED];
+    const qb = this.tenderRepo.createQueryBuilder('t')
+      .where('t.status IN (:...allowedStatuses)', { allowedStatuses });
+
+    if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
+    if (filters.type) qb.andWhere('t.type = :type', { type: filters.type });
+    if (filters.baseCurrency) qb.andWhere('t.base_currency = :baseCurrency', { baseCurrency: filters.baseCurrency });
+    if (filters.search) {
+      qb.andWhere('(t.title ILIKE :q OR t.tender_no ILIKE :q OR t.hall_summary ILIKE :q)', { q: `%${filters.search}%` });
+    }
+
+    const page = filters.page ?? 1;
+    const limit = Math.min(filters.limit ?? 20, 100);
+    qb.leftJoinAndSelect('t.lots', 'lots')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .orderBy('t.createdAt', 'DESC');
+    const [items, total] = await qb.getManyAndCount();
+    return { items: await this.withUserSummary(items), total, page, limit };
+  }
+
+  async findById(id: string, viewer?: { role?: UserRole | string; supplierId?: string }) {
+    await this.refreshLifecycleStatuses();
+    if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
+      await this.ensureSupplierApproved(viewer.supplierId);
+    }
+    const qb = this.tenderRepo.createQueryBuilder('t')
+      .leftJoinAndSelect('t.lots', 'lots')
+      .leftJoinAndSelect('lots.lines', 'lines')
+      .leftJoinAndSelect('t.invitations', 'invitations')
+      .where('t.id = :id', { id });
+
+    if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
+      qb.andWhere('t.status IN (:...statuses)', {
+          statuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED],
+        });
+    }
+
+    const t = await qb.getOne();
+    if (!t) throw new NotFoundException('error.tender.not_found');
+    return t;
+  }
+
+  async findLotById(lotId: string, viewer?: { role?: UserRole | string; supplierId?: string }) {
+    await this.refreshLifecycleStatuses();
+    if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
+      await this.ensureSupplierApproved(viewer.supplierId);
+    }
+    const qb = this.lotRepo.createQueryBuilder('lot')
+      .leftJoinAndSelect('lot.tender', 'tender')
+      .leftJoinAndSelect('lot.lines', 'lines')
+      .where('lot.id = :lotId', { lotId });
+
+    if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
+      qb.andWhere('tender.status IN (:...statuses)', {
+        statuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED],
+      });
+    }
+
+    const lot = await qb.getOne();
+    if (!lot) throw new NotFoundException('error.lot.not_found');
+    return lot;
+  }
+
+  async publish(id: string, ctx: AuditContext) {
+    const t = await this.findById(id);
+    if (t.status !== TenderStatus.DRAFT) throw new BadRequestException('error.tender.invalid_status_transition');
+    this.validateTenderSchedule(t.bidStartAt?.toISOString(), t.bidDeadline?.toISOString());
+    const nextStatus = this.shouldOpenNow(t) ? TenderStatus.OPEN : TenderStatus.PUBLISHED;
+    await this.tenderRepo.update(id, { status: nextStatus, updatedBy: ctx.userId } as any);
+    await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_CREATE, { status: t.status }, { status: nextStatus });
+    return this.findById(id);
+  }
+
+  async open(id: string, ctx: AuditContext) {
+    const t = await this.findById(id);
+    if (t.status !== TenderStatus.PUBLISHED) throw new BadRequestException('error.tender.invalid_status_transition');
+    if (t.bidDeadline && t.bidDeadline <= new Date()) throw new BadRequestException('error.tender.deadline_passed');
+    await this.tenderRepo.update(id, { status: TenderStatus.OPEN, bidStartAt: new Date(), updatedBy: ctx.userId } as any);
+    await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_OPEN, { status: t.status, bidStartAt: t.bidStartAt }, { status: TenderStatus.OPEN, bidStartAt: new Date().toISOString() });
+    return this.findById(id);
+  }
+
+  async close(id: string, ctx: AuditContext) {
+    const t = await this.findById(id);
+    if (![TenderStatus.PUBLISHED, TenderStatus.OPEN].includes(t.status)) throw new BadRequestException('error.tender.invalid_status_transition');
+    await this.tenderRepo.update(id, { status: TenderStatus.CLOSED, updatedBy: ctx.userId } as any);
+    await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_CLOSE, { status: t.status }, { status: TenderStatus.CLOSED });
+    return this.findById(id);
+  }
+
+  async withdraw(id: string, ctx: AuditContext) {
+    const t = await this.findById(id);
+    if (![TenderStatus.PUBLISHED, TenderStatus.OPEN].includes(t.status)) throw new BadRequestException('error.tender.invalid_status_transition');
+    await this.tenderRepo.update(id, { status: TenderStatus.DRAFT, updatedBy: ctx.userId } as any);
+    await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_WITHDRAW, { status: t.status }, { status: TenderStatus.DRAFT });
+    return this.findById(id);
+  }
+
+  async updateDraft(id: string, data: {
+    title?: string;
+    type?: TenderType;
+    baseCurrency?: string;
+    rankingMode?: string;
+    bidStartAt?: string | null;
+    bidDeadline?: string | null;
+    openTime?: string | null;
+    maxRebidCount?: number;
+    minDecrementPct?: number;
+    cooldownSeconds?: number;
+    description?: string;
+    isHallVisible?: boolean;
+    hallSummary?: string;
+    isPublicRankingVisible?: boolean;
+    attachments?: TenderAttachmentInput[];
+    lots?: TenderLotInput[];
+  }, ctx: AuditContext) {
+    const before = await this.findById(id);
+    if (before.status !== TenderStatus.DRAFT) throw new BadRequestException('error.tender.only_draft_can_edit');
+    this.validateTenderSchedule(
+      data.bidStartAt === undefined ? before.bidStartAt?.toISOString() : data.bidStartAt ?? undefined,
+      data.bidDeadline === undefined ? before.bidDeadline?.toISOString() : data.bidDeadline ?? undefined,
+    );
+    const template = TEMPLATES[data.type ?? before.type];
+    const hasAnyQuotes = await this.hasAnyQuotes(id);
+
+    await this.ds.transaction(async (em) => {
+      await em.update(Tender, id, {
+        title: data.title ?? before.title,
+        type: data.type ?? before.type,
+        baseCurrency: data.baseCurrency ?? before.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
+        rankingMode: (data.rankingMode as any) ?? before.rankingMode,
+        bidStartAt: data.bidStartAt ? new Date(data.bidStartAt) : data.bidStartAt === null ? undefined : before.bidStartAt,
+        bidDeadline: data.bidDeadline ? new Date(data.bidDeadline) : data.bidDeadline === null ? undefined : before.bidDeadline,
+        openTime: data.openTime ? new Date(data.openTime) : data.openTime === null ? undefined : before.openTime,
+        maxRebidCount: data.maxRebidCount ?? before.maxRebidCount,
+        minDecrementPct: data.minDecrementPct ?? before.minDecrementPct,
+        cooldownSeconds: data.cooldownSeconds ?? before.cooldownSeconds,
+        description: data.description ?? before.description,
+        isHallVisible: data.isHallVisible ?? before.isHallVisible,
+        isPublicRankingVisible: data.isPublicRankingVisible ?? before.isPublicRankingVisible,
+        hallSummary: data.hallSummary ?? before.hallSummary,
+        attachments: data.attachments ? this.normalizeAttachments(data.attachments) : before.attachments,
+        updatedBy: ctx.userId,
+      });
+
+      if (data.lots?.length && !hasAnyQuotes) {
+        await em.delete(Lot, { tenderId: id });
+        for (let i = 0; i < data.lots.length; i++) {
+          const savedLot = await em.save(em.create(Lot, {
+            lotNo: await nextLotNo(em),
+            tenderId: id,
+            title: data.lots[i].title,
+            description: data.lots[i].description,
+            quantity: data.lots[i].quantity,
+            unit: data.lots[i].unit,
+            pricingMode: data.lots[i].pricingMode ?? 'total_price',
+            specJson: data.lots[i].specJson ?? template.specJson,
+            uiSchema: data.lots[i].uiSchema ?? template.uiSchema,
+            budgetAmount: data.lots[i].budgetAmount,
+            budgetCurrency: data.lots[i].budgetCurrency ?? data.baseCurrency ?? before.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
+            sortOrder: i,
+            schemaVersion: 1,
+          }));
+          await this.saveLotLines(em, id, savedLot, data.lots[i]);
+        }
+      }
+    });
+
+    await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_UPDATE, before as any, { status: TenderStatus.DRAFT, title: data.title });
+    return this.findById(id);
+  }
+
+  private async ensureSupplierApproved(supplierId: string) {
+    const supplier = await this.supplierRepo.findOne({ where: { id: supplierId } });
+    if (!supplier) throw new NotFoundException('error.supplier.not_found');
+    if (supplier.status !== SupplierStatus.ACTIVE || supplier.reviewStatus !== SupplierReviewStatus.APPROVED) {
+      throw new ForbiddenException('error.supplier.certification_required');
+    }
+  }
+
+  private async hasAnyQuotes(tenderId: string) {
+    const [lotQuoteCount, lineQuoteCount] = await Promise.all([
+      this.quoteRepo.count({ where: { tenderId } }),
+      this.lineQuoteRepo.count({ where: { tenderId } }),
+    ]);
+    return lotQuoteCount + lineQuoteCount > 0;
+  }
+
+  private async withUserSummary(tenders: Tender[]) {
+    const userIds = Array.from(new Set(tenders.flatMap((tender) => [tender.createdBy, tender.updatedBy]).filter(Boolean) as string[]));
+    if (!userIds.length) return tenders;
+
+    const users = await this.userRepo.find({ where: { id: In(userIds) } });
+    const userMap = new Map(users.map((user) => [user.id, {
+      id: user.id,
+      displayName: user.displayName,
+      loginName: user.loginName,
+      email: user.email,
+    }]));
+
+    return tenders.map((tender) => ({
+      ...tender,
+      creator: userMap.get(tender.createdBy) ?? null,
+      updater: tender.updatedBy ? userMap.get(tender.updatedBy) ?? null : null,
+    }));
+  }
+
+  async invite(tenderId: string, supplierIds: string[], visibleAt: string | undefined, ctx: AuditContext) {
+    const t = await this.findById(tenderId);
+    if (![TenderStatus.DRAFT, TenderStatus.PUBLISHED].includes(t.status)) {
+      throw new BadRequestException('error.tender.cannot_invite');
+    }
+
+    const results = [];
+    for (const sid of supplierIds) {
+      const existing = await this.invRepo.findOne({ where: { tenderId, supplierId: sid } });
+      if (existing) { results.push(existing); continue; }
+
+      const inv = this.invRepo.create({
+        tenderId,
+        supplierId: sid,
+        invitedAt: new Date(),
+        visibleAt: visibleAt ? new Date(visibleAt) : undefined,
+        status: InvitationStatus.PENDING,
+      });
+      results.push(await this.invRepo.save(inv));
+    }
+    await this.audit.log(ctx, AuditEntityType.INVITATION, tenderId, AuditAction.INVITATION_SEND, undefined, { supplierIds, visibleAt });
+    return results;
+  }
+
+  getTemplate(type: TenderType) {
+    return TEMPLATES[type];
+  }
+
+  previewLotImport(buffer: Buffer) {
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new BadRequestException('error.tender.import_empty_workbook');
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: '' })
+      .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim()));
+    if (rows.length < 2) throw new BadRequestException('error.tender.import_requires_header_and_rows');
+
+    const labels = (rows[0] ?? []).map((cell) => String(cell ?? '').trim());
+    const columns = labels
+      .map((label, index) => ({ key: `col_${String(index + 1).padStart(3, '0')}`, label: label || `字段 ${index + 1}`, type: 'text' }))
+      .filter((col) => col.label.trim());
+    if (!columns.length) throw new BadRequestException('error.tender.import_missing_header');
+
+    const dataRows = rows.slice(1).map((row, rowIndex) => {
+      const data: Record<string, unknown> = {};
+      columns.forEach((col, colIndex) => {
+        const value = row[colIndex];
+        data[col.key] = value === undefined ? '' : value;
+      });
+      return { rowNo: rowIndex + 1, dataJson: data };
+    });
+
+    return { sheetName, columns, rows: dataRows, total: dataRows.length };
+  }
+
+  async advanceQuoteRound(id: string, ctx: AuditContext) {
+    const before = await this.findById(id);
+    if (![TenderStatus.DRAFT, TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED].includes(before.status)) {
+      throw new BadRequestException('error.tender.invalid_status_transition');
+    }
+    const nextRound = Number(before.currentQuoteRound ?? 1) + 1;
+    await this.tenderRepo.update(id, {
+      currentQuoteRound: nextRound,
+      status: TenderStatus.DRAFT,
+      bidStartAt: null,
+      bidDeadline: null,
+      updatedBy: ctx.userId,
+    } as any);
+    await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_UPDATE, {
+      currentQuoteRound: before.currentQuoteRound,
+      status: before.status,
+    }, { currentQuoteRound: nextRound, status: TenderStatus.DRAFT });
+    return this.findById(id);
+  }
+
+  async getQuoteReview(id: string) {
+    const tender = await this.findById(id);
+    const roundNo = tender.currentQuoteRound ?? 1;
+    const lots = [...(tender.lots ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const lineIds = lots.flatMap((lot) => (lot.lines ?? []).map((line) => line.id));
+    const lotIds = lots.map((lot) => lot.id);
+
+    const [lineQuotes, lotQuotes] = await Promise.all([
+      this.lineQuoteRepo.find({ where: { tenderId: tender.id }, order: { roundNo: 'DESC', version: 'DESC', submittedAt: 'DESC' } }),
+      lotIds.length
+        ? this.quoteRepo.find({ where: { lotId: In(lotIds) }, order: { version: 'DESC', submittedAt: 'DESC' } })
+        : Promise.resolve([]),
+    ]);
+
+    const supplierIds = Array.from(new Set([
+      ...lineQuotes.map((quote) => quote.supplierId),
+      ...lotQuotes.map((quote) => quote.supplierId),
+    ].filter(Boolean)));
+    const suppliers = supplierIds.length ? await this.supplierRepo.find({ where: { id: In(supplierIds) } }) : [];
+    const supplierMap = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
+
+    const lineHistoryMap = new Map<string, LineQuote[]>();
+    for (const quote of lineQuotes) {
+      const key = `${quote.roundNo}:${quote.lineId}:${quote.supplierId}`;
+      lineHistoryMap.set(key, [...(lineHistoryMap.get(key) ?? []), quote]);
+    }
+
+    const lotHistoryMap = new Map<string, Quote[]>();
+    for (const quote of lotQuotes) {
+      const key = `${quote.lotId}:${quote.supplierId}`;
+      lotHistoryMap.set(key, [...(lotHistoryMap.get(key) ?? []), quote]);
+    }
+
+    const roundRange = Array.from({ length: Math.max(Number(roundNo), 1) }, (_, index) => index + 1);
+    const roundNumbers = Array.from(new Set([
+      ...roundRange,
+      roundNo,
+      ...lineQuotes.map((quote) => quote.roundNo),
+    ])).sort((a, b) => a - b);
+
+    const buildLotsForRound = (targetRound: number) => lots.map((lot) => {
+        const lines = [...(lot.lines ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+        const latestLotQuotes = this.latestBySupplier(lotQuotes.filter((quote) => quote.lotId === lot.id))
+          .sort((a, b) => Number(a.totalPrice) - Number(b.totalPrice))
+          .map((quote, index) => this.enrichQuote(quote, supplierMap, index + 1, lotHistoryMap.get(`${quote.lotId}:${quote.supplierId}`) ?? []));
+
+        return {
+          lotId: lot.id,
+          lotNo: lot.lotNo,
+          title: lot.title,
+          description: lot.description,
+          lineColumns: lot.uiSchema?.lineColumns ?? [],
+          quoteStats: this.buildQuoteStats(latestLotQuotes),
+          latestQuotes: latestLotQuotes,
+          priceGroups: this.buildPriceGroups(latestLotQuotes),
+          lines: lines.map((line) => {
+            const latestQuotes = this.latestBySupplier(lineQuotes.filter((quote) => quote.lineId === line.id && quote.roundNo === targetRound))
+              .sort((a, b) => Number(a.totalPrice) - Number(b.totalPrice))
+              .map((quote, index) => this.enrichQuote(quote, supplierMap, index + 1, lineHistoryMap.get(`${targetRound}:${quote.lineId}:${quote.supplierId}`) ?? []));
+            return {
+              lineId: line.id,
+              lineNo: line.lineNo,
+              rowNo: line.rowNo,
+              dataJson: line.dataJson,
+              quoteStats: this.buildQuoteStats(latestQuotes),
+              latestQuotes,
+              priceGroups: this.buildPriceGroups(latestQuotes),
+            };
+          }),
+        };
+      });
+
+    const rounds = roundNumbers.map((targetRound) => ({
+      roundNo: targetRound,
+      lots: buildLotsForRound(targetRound),
+    }));
+
+    return {
+      tenderId: tender.id,
+      tenderNo: tender.tenderNo,
+      currentRound: roundNo,
+      availableRounds: roundNumbers,
+      rounds,
+      lots: rounds.find((round) => round.roundNo === roundNo)?.lots ?? buildLotsForRound(roundNo),
+    };
+  }
+
+  private normalizeAttachments(attachments?: TenderAttachmentInput[]) {
+    return (attachments ?? [])
+      .filter((item) => item.objectKey || item.key)
+      .map((item) => ({
+        key: item.objectKey ?? item.key!,
+        name: item.fileName ?? item.name ?? '附件',
+        size: item.fileSize ?? item.size ?? 0,
+        mimeType: item.mimeType,
+        fileUrl: item.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(item.objectKey ?? item.key!)}`,
+      }));
+  }
+
+  private latestBySupplier<T extends { supplierId: string; isLatest: boolean; version: number; submittedAt: Date }>(quotes: T[]) {
+    const latest = new Map<string, T>();
+    for (const quote of quotes) {
+      const current = latest.get(quote.supplierId);
+      if (!current || quote.isLatest || quote.version > current.version || quote.submittedAt > current.submittedAt) {
+        latest.set(quote.supplierId, quote);
+      }
+    }
+    return Array.from(latest.values()).filter((quote) => quote.isLatest);
+  }
+
+  private enrichQuote<T extends {
+    supplierId: string;
+    totalPrice: number;
+    currency: string;
+    submittedAt: Date;
+  }>(quote: T, supplierMap: Map<string, Supplier>, rank: number, history: T[]) {
+    const supplier = supplierMap.get(quote.supplierId);
+    const supplierName = supplier?.legalName || supplier?.shortName || supplier?.businessId || quote.supplierId;
+    return {
+      ...quote,
+      rank,
+      supplierName,
+      supplier: supplier ? {
+        id: supplier.id,
+        businessId: supplier.businessId,
+        legalName: supplier.legalName,
+        shortName: supplier.shortName,
+        countryCode: supplier.countryCode,
+        contactName: supplier.contactName,
+        contactEmail: supplier.contactEmail,
+        contactPhone: supplier.contactPhone,
+        rating: supplier.rating,
+        reviewStatus: supplier.reviewStatus,
+        status: supplier.status,
+      } : null,
+      history: history
+        .sort((a: any, b: any) => Number(b.version ?? 0) - Number(a.version ?? 0))
+        .map((item) => ({ ...item, supplierName })),
+    };
+  }
+
+  private buildQuoteStats(quotes: Array<{ totalPrice: number }>) {
+    const prices = quotes.map((quote) => Number(quote.totalPrice)).filter((price) => Number.isFinite(price));
+    const total = prices.reduce((sum, price) => sum + price, 0);
+    return {
+      quotedSupplierCount: quotes.length,
+      minPrice: prices.length ? Math.min(...prices) : null,
+      maxPrice: prices.length ? Math.max(...prices) : null,
+      avgPrice: prices.length ? total / prices.length : null,
+    };
+  }
+
+  private buildPriceGroups(quotes: Array<{ totalPrice: number; currency: string; supplierId: string; supplierName?: string; supplier?: any }>) {
+    const groups = new Map<string, any>();
+    for (const quote of quotes) {
+      const price = Number(quote.totalPrice);
+      const key = `${quote.currency}:${price.toFixed(4)}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          price,
+          currency: quote.currency,
+          supplierCount: 0,
+          suppliers: [],
+        });
+      }
+      const group = groups.get(key);
+      group.supplierCount += 1;
+      group.suppliers.push({
+        supplierId: quote.supplierId,
+        supplierName: quote.supplierName ?? quote.supplierId,
+        supplier: quote.supplier ?? null,
+      });
+    }
+    return Array.from(groups.values()).sort((a, b) => a.price - b.price);
+  }
+
+  private async saveLotLines(em: EntityManager, tenderId: string, lot: Lot, input: TenderLotInput) {
+    const lines = input.lines ?? [];
+    if (!lines.length) return;
+
+    const columns = this.normalizeLineColumns(input.lineColumns);
+    if (columns.length) {
+      lot.uiSchema = {
+        ...(lot.uiSchema ?? {}),
+        lineColumns: columns,
+      };
+      await em.save(lot);
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const dataJson = lines[i].dataJson ?? lines[i].data ?? {};
+      await em.save(em.create(LotLine, {
+        tenderId,
+        lotId: lot.id,
+        lineNo: `LN-${String(i + 1).padStart(4, '0')}`,
+        rowNo: lines[i].rowNo ?? i + 1,
+        sortOrder: i,
+        dataJson,
+        schemaVersion: lot.schemaVersion ?? 1,
+        isActive: true,
+      }));
+    }
+  }
+
+  private normalizeLineColumns(columns?: LineColumnInput[]) {
+    return (columns ?? [])
+      .filter((col) => col.label?.trim())
+      .map((col, index) => ({
+        key: col.key?.trim() || `col_${String(index + 1).padStart(3, '0')}`,
+        label: col.label.trim(),
+        type: col.type ?? 'text',
+        required: Boolean(col.required),
+      }));
+  }
+
+  private shouldOpenNow(tender: Pick<Tender, 'bidStartAt' | 'bidDeadline'>) {
+    const now = new Date();
+    if (tender.bidDeadline && tender.bidDeadline <= now) return false;
+    return !tender.bidStartAt || tender.bidStartAt <= now;
+  }
+
+  private validateTenderSchedule(bidStartAt?: string, bidDeadline?: string) {
+    const start = bidStartAt ? new Date(bidStartAt) : undefined;
+    const deadline = bidDeadline ? new Date(bidDeadline) : undefined;
+    if (start && Number.isNaN(start.getTime())) throw new BadRequestException('error.tender.invalid_bid_start_at');
+    if (deadline && Number.isNaN(deadline.getTime())) throw new BadRequestException('error.tender.invalid_bid_deadline');
+    if (start && deadline && start >= deadline) throw new BadRequestException('error.tender.start_must_before_deadline');
+    if (deadline && deadline <= new Date()) throw new BadRequestException('error.tender.deadline_must_be_future');
+  }
+
+  async refreshLifecycleStatuses() {
+    const now = new Date();
+    await this.tenderRepo
+      .createQueryBuilder()
+      .update(Tender)
+      .set({ status: TenderStatus.CLOSED })
+      .where('status IN (:...statuses)', { statuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN] })
+      .andWhere('bid_deadline IS NOT NULL')
+      .andWhere('bid_deadline <= :now', { now })
+      .execute();
+
+    await this.tenderRepo
+      .createQueryBuilder()
+      .update(Tender)
+      .set({ status: TenderStatus.OPEN })
+      .where('status = :status', { status: TenderStatus.PUBLISHED })
+      .andWhere('(bid_start_at IS NULL OR bid_start_at <= :now)', { now })
+      .andWhere('(bid_deadline IS NULL OR bid_deadline > :now)', { now })
+      .execute();
+  }
+}

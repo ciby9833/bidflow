@@ -1,0 +1,144 @@
+{
+  "error": {
+    "auth": {
+      "unauthenticated": "未认证，请先登录",
+      "forbidden": "权限不足",
+      "invalid_credentials": "账号或密码错误",
+      "suspended": "账号已被停用",
+      "otp_not_requested": "请先获取验证码",
+      "otp_expired": "验证码已过期",
+      "otp_invalid": "验证码错误",
+      "token_invalid": "登录态无效，请重新登录",
+      "email_exists": "邮箱已被注册",
+      "email_code_too_frequent": "验证码发送过于频繁，请稍后再试",
+      "email_code_too_many_attempts": "验证码错误次数过多，请重新获取验证码",
+      "google_not_configured": "Google 登录暂未配置",
+      "google_email_unverified": "Google 邮箱未验证，暂无法注册"
+    },
+    "company_user": {
+      "not_found": "员工不存在",
+      "employee_id_exists": "员工编号已存在",
+      "role_invalid": "角色无效"
+    },
+    "supplier": {
+      "not_found": "供应商不存在",
+      "certification_required": "供应商资质审核未通过",
+      "business_id_conflict": "供应商编号冲突",
+      "company_already_bound": "该公司已绑定其他账号",
+      "company_required": "请先选择公司",
+      "documents_required": "请上传必要资质文件",
+      "invitation_required": "需要有效邀请",
+      "invitation_not_found": "邀请不存在",
+      "invitation_invalid": "邀请已失效",
+      "invitation_expired": "邀请已过期",
+      "invitation_not_pending": "邀请状态不可处理",
+      "only_active_can_suspend": "仅启用中的供应商可停用",
+      "only_suspended_can_resume": "仅停用中的供应商可恢复",
+      "only_pending_review_can_approve": "仅待审核可通过",
+      "only_pending_review_can_reject": "仅待审核可驳回",
+      "only_pending_or_approved_can_request_supplement": "仅待审核或已通过可补充材料"
+    },
+    "tender": {
+      "not_found": "招标不存在",
+      "invalid_status_transition": "当前状态不允许该操作",
+      "deadline_passed": "已超过报价截止时间",
+      "only_draft_can_edit": "仅草稿状态可编辑",
+      "cannot_invite": "当前状态不可邀请供应商",
+      "deadline_must_be_future": "截止时间必须晚于当前时间",
+      "start_must_before_deadline": "开始时间必须早于截止时间",
+      "invalid_bid_start_at": "报价开始时间无效",
+      "invalid_bid_deadline": "报价截止时间无效",
+      "import_file_required": "请上传导入文件",
+      "import_empty_workbook": "导入文件为空",
+      "import_requires_header_and_rows": "导入文件至少需要表头与一行数据",
+      "import_missing_header": "导入文件缺少有效表头"
+    },
+    "lot": {
+      "not_found": "标包不存在"
+    },
+    "line": {
+      "not_found": "线路/明细不存在"
+    },
+    "quote": {
+      "tender_not_open": "招标未开放报价",
+      "deadline_passed": "已超过报价截止时间",
+      "cooldown_active": "冷却中，请稍后再试",
+      "rebid_limit_reached": "已达最大改价次数",
+      "min_decrement_fail": "未达到最小降幅",
+      "version_conflict": "报价版本冲突，请刷新后重试",
+      "concurrent_submit": "请勿重复提交",
+      "required_field_missing": "缺少必填字段"
+    },
+    "upload": {
+      "file_required": "请选择上传文件",
+      "file_type_not_allowed": "不支持的文件类型",
+      "file_too_large": "文件超过大小限制",
+      "file_not_found": "文件不存在"
+    },
+    "export": {
+      "full_requires_manager": "仅采购经理可执行完整导出"
+    }
+  },
+  "quote": {
+    "ability": {
+      "tenderNotOpen": "当前项目未处于报价中，暂不能提交报价。",
+      "rebidLimitReached": "已达到最大改价次数，不能继续改价。",
+      "cooldownActive": "冷却中，还需等待 {seconds} 秒后才能再次改价。"
+    }
+  },
+  "export": {
+    "sheet": {
+      "byItem": "按事项评审",
+      "bySupplier": "按供应商评审",
+      "lotData": "标包数据",
+      "summary": "概览",
+      "lotQuotes": "标包报价-{lotNo}"
+    },
+    "field": {
+      "roundNo": "轮次",
+      "lotNo": "标包编号",
+      "lotTitle": "标包名称",
+      "lotDescription": "标包说明",
+      "rowNo": "行号",
+      "quantity": "数量",
+      "unit": "单位",
+      "budgetAmount": "预算金额",
+      "currency": "币种",
+      "itemLabel": "事项/线路",
+      "rank": "排名",
+      "quoteNo": "报价编号",
+      "supplierBusinessId": "供应商编号",
+      "supplierName": "供应商名称",
+      "supplierContact": "联系人",
+      "supplierPhone": "联系电话",
+      "supplierEmail": "联系邮箱",
+      "totalPrice": "报价",
+      "version": "版本",
+      "submittedAt": "提交时间",
+      "remark": "备注",
+      "submitIp": "IP",
+      "key": "项目",
+      "value": "值"
+    },
+    "summary": {
+      "tenderNo": "招标编号",
+      "tenderTitle": "招标标题",
+      "exportMode": "导出模式",
+      "exportView": "导出视角",
+      "exportRound": "导出轮次",
+      "exportedAt": "导出时间",
+      "operator": "操作人",
+      "modeFull": "完整版",
+      "modeMasked": "脱敏版",
+      "viewItem": "按事项",
+      "viewSupplier": "按供应商",
+      "allRounds": "全部"
+    },
+    "hint": {
+      "noLineQuotes": "暂无线路报价数据",
+      "noLotData": "暂无标包数据"
+    },
+    "anonymousSupplier": "供应商{seq}",
+    "lotIntegralQuote": "标包整体报价"
+  }
+}

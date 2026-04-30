@@ -1,0 +1,140 @@
+{
+  "error": {
+    "auth": {
+      "unauthenticated": "Belum masuk. Silakan login terlebih dahulu.",
+      "forbidden": "Akses ditolak.",
+      "invalid_credentials": "Email atau kata sandi salah.",
+      "suspended": "Akun ditangguhkan.",
+      "otp_not_requested": "Mohon minta kode verifikasi terlebih dahulu.",
+      "otp_expired": "Kode verifikasi telah kedaluwarsa.",
+      "otp_invalid": "Kode verifikasi salah.",
+      "token_invalid": "Sesi tidak valid. Silakan login ulang.",
+      "email_exists": "Email sudah terdaftar.",
+      "email_code_too_frequent": "Kode verifikasi baru saja dikirim. Coba lagi nanti.",
+      "email_code_too_many_attempts": "Terlalu banyak percobaan kode yang salah. Minta kode baru.",
+      "google_not_configured": "Login Google belum dikonfigurasi.",
+      "google_email_unverified": "Email Google belum diverifikasi."
+    },
+    "company_user": {
+      "not_found": "Karyawan tidak ditemukan.",
+      "employee_id_exists": "ID karyawan sudah ada.",
+      "role_invalid": "Peran tidak valid."
+    },
+    "supplier": {
+      "not_found": "Pemasok tidak ditemukan.",
+      "certification_required": "Sertifikasi pemasok belum disetujui.",
+      "business_id_conflict": "ID bisnis pemasok bentrok.",
+      "company_already_bound": "Perusahaan ini sudah terhubung dengan akun lain.",
+      "company_required": "Pilih perusahaan terlebih dahulu.",
+      "documents_required": "Silakan unggah dokumen sertifikasi yang diperlukan.",
+      "invitation_required": "Undangan yang valid diperlukan.",
+      "invitation_not_found": "Undangan tidak ditemukan.",
+      "invitation_invalid": "Undangan tidak valid.",
+      "invitation_expired": "Undangan telah kedaluwarsa.",
+      "invitation_not_pending": "Undangan tidak dalam status menunggu.",
+      "only_active_can_suspend": "Hanya pemasok aktif yang dapat ditangguhkan.",
+      "only_suspended_can_resume": "Hanya pemasok yang ditangguhkan yang dapat dipulihkan.",
+      "only_pending_review_can_approve": "Hanya pemasok menunggu yang dapat disetujui.",
+      "only_pending_review_can_reject": "Hanya pemasok menunggu yang dapat ditolak.",
+      "only_pending_or_approved_can_request_supplement": "Hanya pemasok menunggu atau disetujui yang dapat diminta tambahan dokumen."
+    },
+    "tender": {
+      "not_found": "Tender tidak ditemukan.",
+      "invalid_status_transition": "Operasi tidak diizinkan pada status saat ini.",
+      "deadline_passed": "Tenggat penawaran telah lewat.",
+      "only_draft_can_edit": "Hanya draf yang dapat diedit.",
+      "cannot_invite": "Tidak dapat mengundang pemasok pada status saat ini.",
+      "deadline_must_be_future": "Tenggat harus di masa depan.",
+      "start_must_before_deadline": "Waktu mulai harus sebelum tenggat.",
+      "invalid_bid_start_at": "Waktu mulai penawaran tidak valid.",
+      "invalid_bid_deadline": "Tenggat penawaran tidak valid.",
+      "import_file_required": "Mohon unggah berkas impor.",
+      "import_empty_workbook": "Berkas impor kosong.",
+      "import_requires_header_and_rows": "Berkas impor harus berisi header dan minimal satu baris data.",
+      "import_missing_header": "Berkas impor tidak memiliki header yang valid."
+    },
+    "lot": { "not_found": "Lot tidak ditemukan." },
+    "line": { "not_found": "Baris/item tidak ditemukan." },
+    "quote": {
+      "tender_not_open": "Tender tidak dibuka untuk penawaran.",
+      "deadline_passed": "Tenggat penawaran telah lewat.",
+      "cooldown_active": "Sedang masa cooldown. Coba lagi nanti.",
+      "rebid_limit_reached": "Batas perubahan harga tercapai.",
+      "min_decrement_fail": "Penurunan minimum tidak terpenuhi.",
+      "version_conflict": "Konflik versi penawaran. Silakan segarkan halaman.",
+      "concurrent_submit": "Pengiriman duplikat.",
+      "required_field_missing": "Kolom wajib belum diisi."
+    },
+    "upload": {
+      "file_required": "Silakan pilih berkas yang akan diunggah.",
+      "file_type_not_allowed": "Tipe berkas tidak diizinkan.",
+      "file_too_large": "Ukuran berkas melebihi batas.",
+      "file_not_found": "Berkas tidak ditemukan."
+    },
+    "export": {
+      "full_requires_manager": "Hanya manajer pengadaan yang dapat melakukan ekspor lengkap."
+    }
+  },
+  "quote": {
+    "ability": {
+      "tenderNotOpen": "Proyek ini belum terbuka untuk penawaran, penawaran belum dapat dikirim.",
+      "rebidLimitReached": "Batas ubah penawaran tercapai. Anda tidak dapat mengubah penawaran lagi.",
+      "cooldownActive": "Cooldown aktif. Tunggu {seconds} detik sebelum mengubah penawaran lagi."
+    }
+  },
+  "export": {
+    "sheet": {
+      "byItem": "Tinjau per Item",
+      "bySupplier": "Tinjau per Pemasok",
+      "lotData": "Data Lot",
+      "summary": "Ringkasan",
+      "lotQuotes": "Penawaran-{lotNo}"
+    },
+    "field": {
+      "roundNo": "Putaran",
+      "lotNo": "No. Lot",
+      "lotTitle": "Nama Lot",
+      "lotDescription": "Keterangan Lot",
+      "rowNo": "Baris",
+      "quantity": "Jumlah",
+      "unit": "Satuan",
+      "budgetAmount": "Anggaran",
+      "currency": "Mata Uang",
+      "itemLabel": "Item / Baris",
+      "rank": "Peringkat",
+      "quoteNo": "No. Penawaran",
+      "supplierBusinessId": "ID Pemasok",
+      "supplierName": "Pemasok",
+      "supplierContact": "Kontak",
+      "supplierPhone": "Telepon",
+      "supplierEmail": "Email",
+      "totalPrice": "Harga",
+      "version": "Versi",
+      "submittedAt": "Waktu Kirim",
+      "remark": "Catatan",
+      "submitIp": "IP",
+      "key": "Kolom",
+      "value": "Nilai"
+    },
+    "summary": {
+      "tenderNo": "No. Tender",
+      "tenderTitle": "Judul Tender",
+      "exportMode": "Mode",
+      "exportView": "Tampilan",
+      "exportRound": "Putaran",
+      "exportedAt": "Waktu Ekspor",
+      "operator": "Operator",
+      "modeFull": "Lengkap",
+      "modeMasked": "Tersamar",
+      "viewItem": "Per Item",
+      "viewSupplier": "Per Pemasok",
+      "allRounds": "Semua"
+    },
+    "hint": {
+      "noLineQuotes": "Tidak ada data penawaran baris.",
+      "noLotData": "Tidak ada data lot."
+    },
+    "anonymousSupplier": "Pemasok {seq}",
+    "lotIntegralQuote": "Penawaran Lot Keseluruhan"
+  }
+}
