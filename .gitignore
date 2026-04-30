@@ -3,6 +3,8 @@
 
 # Keep repository metadata and app source folders.
 !/.gitignore
+!/README.md
+!/LICENSE
 !/backend/
 !/backend/**
 !/frontend/
