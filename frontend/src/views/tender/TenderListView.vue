@@ -119,6 +119,13 @@
       <el-table-column :label="t('tenderList.currentRound')" width="95">
         <template #default="{ row }">{{ t('tenderList.roundNo', { round: row.currentQuoteRound ?? 1 }) }}</template>
       </el-table-column>
+      <el-table-column :label="t('tenderCreate.participants')" width="120">
+        <template #default="{ row }">
+          <el-tag :type="row.participationMode === 'selected' ? 'warning' : 'info'" effect="plain" size="small">
+            {{ row.participationMode === 'selected' ? t('tenderCreate.directedTender') : t('supplierTenderHall.publicTender') }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="baseCurrency" :label="t('common.currency')" width="80" />
       <el-table-column prop="bidStartAt" :label="t('hall.start_time')" width="165">
         <template #default="{ row }">{{ row.bidStartAt ? fmtDate(row.bidStartAt) : t('hall.start_after_publish') }}</template>

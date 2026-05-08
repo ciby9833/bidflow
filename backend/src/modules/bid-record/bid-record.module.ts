@@ -11,10 +11,11 @@ import { BidRecordService } from './bid-record.service';
 import { Quote } from '../quote/quote.entity';
 import { LineQuote } from '../quote/line-quote.entity';
 import { LotLine } from '../tender/lot-line.entity';
+import { Invitation } from '../tender/invitation.entity';
 import { Supplier } from '../supplier/supplier.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Quote, LineQuote, LotLine, Supplier])],
+  imports: [TypeOrmModule.forFeature([Quote, LineQuote, LotLine, Invitation, Supplier])],
   controllers: [BidRecordController],
   providers: [BidRecordService],
 })

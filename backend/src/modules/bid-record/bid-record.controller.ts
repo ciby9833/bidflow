@@ -25,6 +25,7 @@ export class BidRecordController {
     status?: TenderStatus;
     type?: TenderType;
     kind?: BidRecordKind;
+    participationScope?: 'invited' | 'public';
     page?: string;
     limit?: string;
   }, @Req() req: Request) {
@@ -34,6 +35,7 @@ export class BidRecordController {
       status: q.status,
       type: q.type,
       kind: q.kind,
+      participationScope: q.participationScope,
       page: q.page ? parseInt(q.page) : 1,
       limit: q.limit ? parseInt(q.limit) : 20,
     });

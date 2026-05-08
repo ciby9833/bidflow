@@ -29,13 +29,27 @@
         {{ item.label }}
       </button>
     </section>
+    <section class="filter-strip compact" :aria-label="t('supplierTenderHall.scopeFilter')">
+      <button
+        v-for="item in scopeOptions"
+        :key="item.value"
+        :class="{ active: filters.participationScope === item.value }"
+        type="button"
+        @click="setFilter('participationScope', item.value)"
+      >
+        {{ item.label }}
+      </button>
+    </section>
 
     <section class="record-list">
       <article v-for="item in records" :key="item.id" class="record-card">
         <button class="card-main" type="button" @click="openTender(item)">
           <div class="card-top">
             <span class="tender-no">{{ item.tenderNo }}</span>
-            <em :class="['status-pill', item.tenderStatus]">{{ statusLabel(item.tenderStatus) }}</em>
+            <span class="card-tags">
+              <em :class="['scope-pill', participationClass(resolveParticipationScope(item))]">{{ scopeLabel(item) }}</em>
+              <em :class="['status-pill', item.tenderStatus]">{{ statusLabel(item.tenderStatus) }}</em>
+            </span>
           </div>
           <h2>{{ item.tenderTitle }}</h2>
           <p>{{ item.lotNo }} · {{ item.lotTitle }}</p>
@@ -71,6 +85,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import dayjs from 'dayjs';
 import { api } from '../../composables/useApi';
+import { participationClass, participationLabelKey, resolveParticipationScope } from '../../utils/participation';
 
 const router = useRouter();
 const { t, locale } = useI18n();
@@ -86,6 +101,7 @@ const filters = reactive({
   status: '',
   type: '',
   kind: '',
+  participationScope: '',
 });
 
 const statusOptions = computed(() => [
@@ -95,6 +111,11 @@ const statusOptions = computed(() => [
   { label: t('tender.status.closed'), value: 'closed' },
   { label: t('tender.status.awarded'), value: 'awarded' },
 ]);
+const scopeOptions = computed(() => [
+  { label: t('common.all'), value: '' },
+  { label: t('supplierTenderHall.invitedMe'), value: 'invited' },
+  { label: t('supplierTenderHall.publicTender'), value: 'public' },
+]);
 function fmtDate(value?: string) {
   return value ? dayjs(value).format('MM-DD HH:mm') : t('common.not_set');
 }
@@ -103,6 +124,9 @@ function formatMoney(value: number | string) {
 }
 function statusLabel(status: string) {
   return status ? t(`tender.status.${status}`) : '';
+}
+function scopeLabel(item: any) {
+  return t(participationLabelKey(resolveParticipationScope(item)));
 }
 function kindLabel(item: any) {
   if (item.kind !== 'line') return t('bidRecords.lotQuote');
@@ -123,6 +147,7 @@ async function load() {
         status: filters.status || undefined,
         type: filters.type || undefined,
         kind: filters.kind || undefined,
+        participationScope: filters.participationScope || undefined,
       },
     });
     records.value = res.data.data ?? [];
@@ -141,7 +166,7 @@ function scheduleLoad() {
 function openSearch() {
   router.push('/m/supplier/bids/search');
 }
-function setFilter(key: 'status' | 'type' | 'kind', value: string) {
+function setFilter(key: 'status' | 'type' | 'kind' | 'participationScope', value: string) {
   filters[key] = filters[key] === value ? '' : value;
 }
 function openTender(item: any) {
@@ -253,6 +278,9 @@ button.search-field {
 .filter-strip.quick {
   margin-bottom: 12px;
 }
+.filter-strip.compact {
+  margin-bottom: 12px;
+}
 .filter-strip::-webkit-scrollbar { display: none; }
 .filter-strip button {
   flex: 0 0 auto;
@@ -308,6 +336,12 @@ button.search-field {
   justify-content: space-between;
   gap: 8px;
 }
+.card-tags {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
 .tender-no {
   color: #64748b;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -323,6 +357,16 @@ button.search-field {
   font-weight: 700;
   padding: 3px 7px;
 }
+.scope-pill {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  padding: 3px 7px;
+}
+.scope-pill.invited { background: #fff7ed; color: #c2410c; }
+.scope-pill.public { background: #eff6ff; color: #1d4ed8; }
 .status-pill.open { background: #dcfce7; color: #15803d; }
 .status-pill.closed { background: #f1f5f9; color: #475569; }
 .status-pill.awarded { background: #fef3c7; color: #92400e; }

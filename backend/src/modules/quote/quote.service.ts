@@ -14,9 +14,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { Quote } from './quote.entity';
 import { LineQuote } from './line-quote.entity';
 import { RankingSnapshot, SnapshotTrigger } from './ranking-snapshot.entity';
-import { Tender, TenderStatus } from '../tender/tender.entity';
+import { ParticipationMode, Tender, TenderStatus } from '../tender/tender.entity';
 import { Lot } from '../tender/lot.entity';
 import { LotLine } from '../tender/lot-line.entity';
+import { Invitation } from '../tender/invitation.entity';
 import { RedisService } from '../../shared/config/redis.config';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
@@ -61,6 +62,7 @@ export class QuoteService {
     @InjectRepository(Tender) private readonly tenderRepo: Repository<Tender>,
     @InjectRepository(Lot) private readonly lotRepo: Repository<Lot>,
     @InjectRepository(LotLine) private readonly lineRepo: Repository<LotLine>,
+    @InjectRepository(Invitation) private readonly invRepo: Repository<Invitation>,
     @InjectRepository(Supplier) private readonly supplierRepo: Repository<Supplier>,
     private readonly redis: RedisService,
     private readonly audit: AuditService,
@@ -97,6 +99,7 @@ export class QuoteService {
     // ② Deadline check
     const tender = await this.tenderRepo.findOne({ where: { id: tenderId } });
     if (!tender) throw new NotFoundException('error.tender.not_found');
+    await this.ensureCanParticipate(tender, supplierId);
     const now = new Date();
     if (tender.status === TenderStatus.PUBLISHED && (!tender.bidStartAt || tender.bidStartAt <= now) && (!tender.bidDeadline || tender.bidDeadline > now)) {
       await this.tenderRepo.update(tender.id, { status: TenderStatus.OPEN });
@@ -244,6 +247,7 @@ export class QuoteService {
     const lot = await this.lotRepo.findOne({ where: { id: line.lotId } });
     if (!lot) throw new NotFoundException('error.lot.not_found');
     const roundNo = tender.currentQuoteRound ?? 1;
+    await this.ensureCanParticipate(tender, supplierId);
 
     const now = new Date();
     if (tender.status === TenderStatus.PUBLISHED && (!tender.bidStartAt || tender.bidStartAt <= now) && (!tender.bidDeadline || tender.bidDeadline > now)) {
@@ -501,6 +505,18 @@ export class QuoteService {
       maxRebidCount,
       nextMaxPrice,
     };
+  }
+
+  private async ensureCanParticipate(tender: Tender, supplierId: string) {
+    if ((tender.participationMode ?? ParticipationMode.ALL) === ParticipationMode.ALL) return;
+    const scope = await this.invRepo.findOne({
+      where: {
+        tenderId: tender.id,
+        supplierId,
+        roundNo: tender.currentQuoteRound ?? 1,
+      },
+    });
+    if (!scope) throw new ForbiddenException('error.tender.not_invited');
   }
 
   // ── §4.3 Read Path ──────────────────────────────────────────────────────

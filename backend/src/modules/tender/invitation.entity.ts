@@ -31,6 +31,12 @@ export class Invitation {
   @Column({ name: 'supplier_id', type: 'uuid' })
   supplierId: string;
 
+  @Column({ name: 'round_no', type: 'int', default: 1 })
+  roundNo: number;
+
+  @Column({ type: 'varchar', length: 30, default: 'manual' })
+  source: string;
+
   @Column({ type: 'enum', enum: InvitationStatus, default: InvitationStatus.PENDING })
   status: InvitationStatus;
 

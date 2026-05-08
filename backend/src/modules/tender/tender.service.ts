@@ -8,9 +8,11 @@ import {
   BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import {
+  DataSource, EntityManager, In, ObjectLiteral, Repository, SelectQueryBuilder,
+} from 'typeorm';
 import * as XLSX from 'xlsx';
-import { Tender, TenderStatus, TenderType } from './tender.entity';
+import { ParticipationMode, Tender, TenderStatus, TenderType } from './tender.entity';
 import { Lot } from './lot.entity';
 import { LotLine } from './lot-line.entity';
 import { Invitation, InvitationStatus } from './invitation.entity';
@@ -105,6 +107,12 @@ type TenderLotLineInput = {
   dataJson?: Record<string, unknown>;
   data?: Record<string, unknown>;
 };
+type ParticipationInput = {
+  participationMode?: ParticipationMode | 'all' | 'selected';
+  participantSupplierIds?: string[];
+  participantSource?: string;
+};
+export type SupplierParticipationScopeFilter = 'invited' | 'public';
 
 function nextTenderNo(seq: number): string {
   const ym = new Date().toISOString().slice(0, 7).replace('-', '');
@@ -170,7 +178,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     hallSummary?: string;
     attachments?: TenderAttachmentInput[];
     lots?: TenderLotInput[];
-  }, ctx: AuditContext) {
+  } & ParticipationInput, ctx: AuditContext) {
     this.validateTenderSchedule(data.bidStartAt, data.bidDeadline);
     return this.ds.transaction(async (em) => {
       const tenderCount = await em.count(Tender);
@@ -192,6 +200,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         description: data.description,
         isHallVisible: data.isHallVisible ?? false,
         isPublicRankingVisible: data.isPublicRankingVisible ?? false,
+        participationMode: this.normalizeParticipationMode(data.participationMode),
         hallSummary: data.hallSummary,
         attachments: this.normalizeAttachments(data.attachments),
         createdBy: ctx.userId,
@@ -221,6 +230,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         const savedLot = await em.save(lot);
         await this.saveLotLines(em, savedTender.id, savedLot, lots[i]);
       }
+
+      await this.replaceParticipants(em, savedTender.id, 1, data.participationMode ?? ParticipationMode.ALL, data.participantSupplierIds ?? [], 'manual');
 
       await this.audit.log(ctx, AuditEntityType.TENDER, savedTender.id, AuditAction.TENDER_CREATE, undefined, { tenderNo, type: data.type });
       return em.findOne(Tender, { where: { id: savedTender.id }, relations: ['lots', 'lots.lines'] });
@@ -273,6 +284,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       type?: TenderType;
       baseCurrency?: string;
       search?: string;
+      participationScope?: SupplierParticipationScopeFilter;
       page?: number;
       limit?: number;
     },
@@ -284,10 +296,13 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     const allowedStatuses = [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED];
     const qb = this.tenderRepo.createQueryBuilder('t')
       .where('t.status IN (:...allowedStatuses)', { allowedStatuses });
+    this.applySupplierAccessScope(qb, 't', supplierId, 'scope');
 
     if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
     if (filters.type) qb.andWhere('t.type = :type', { type: filters.type });
     if (filters.baseCurrency) qb.andWhere('t.base_currency = :baseCurrency', { baseCurrency: filters.baseCurrency });
+    if (filters.participationScope === 'invited') qb.andWhere('t.participationMode = :selectedMode AND scope.id IS NOT NULL', { selectedMode: ParticipationMode.SELECTED });
+    if (filters.participationScope === 'public') qb.andWhere('t.participationMode = :publicMode', { publicMode: ParticipationMode.ALL });
     if (filters.search) {
       qb.andWhere('(t.title ILIKE :q OR t.tender_no ILIKE :q OR t.hall_summary ILIKE :q)', { q: `%${filters.search}%` });
     }
@@ -317,6 +332,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       qb.andWhere('t.status IN (:...statuses)', {
           statuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED],
         });
+      this.applySupplierAccessScope(qb, 't', viewer.supplierId, 'scope');
     }
 
     const t = await qb.getOne();
@@ -336,8 +352,9 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
 
     if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
       qb.andWhere('tender.status IN (:...statuses)', {
-        statuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED],
-      });
+          statuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED],
+        });
+      this.applySupplierAccessScope(qb, 'tender', viewer.supplierId, 'scope');
     }
 
     const lot = await qb.getOne();
@@ -397,7 +414,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     isPublicRankingVisible?: boolean;
     attachments?: TenderAttachmentInput[];
     lots?: TenderLotInput[];
-  }, ctx: AuditContext) {
+  } & ParticipationInput, ctx: AuditContext) {
     const before = await this.findById(id);
     if (before.status !== TenderStatus.DRAFT) throw new BadRequestException('error.tender.only_draft_can_edit');
     this.validateTenderSchedule(
@@ -422,6 +439,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         description: data.description ?? before.description,
         isHallVisible: data.isHallVisible ?? before.isHallVisible,
         isPublicRankingVisible: data.isPublicRankingVisible ?? before.isPublicRankingVisible,
+        participationMode: this.normalizeParticipationMode(data.participationMode ?? before.participationMode),
         hallSummary: data.hallSummary ?? before.hallSummary,
         attachments: data.attachments ? this.normalizeAttachments(data.attachments) : before.attachments,
         updatedBy: ctx.userId,
@@ -448,6 +466,9 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
           await this.saveLotLines(em, id, savedLot, data.lots[i]);
         }
       }
+      if (data.participationMode) {
+        await this.replaceParticipants(em, id, before.currentQuoteRound ?? 1, data.participationMode, data.participantSupplierIds ?? [], data.participantSource ?? 'manual');
+      }
     });
 
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_UPDATE, before as any, { status: TenderStatus.DRAFT, title: data.title });
@@ -472,7 +493,10 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
 
   private async withUserSummary(tenders: Tender[]) {
     const userIds = Array.from(new Set(tenders.flatMap((tender) => [tender.createdBy, tender.updatedBy]).filter(Boolean) as string[]));
-    if (!userIds.length) return tenders;
+    if (!userIds.length) return tenders.map((tender) => ({
+      ...tender,
+      participationScope: tender.participationMode === ParticipationMode.SELECTED ? 'invited' : 'public',
+    }));
 
     const users = await this.userRepo.find({ where: { id: In(userIds) } });
     const userMap = new Map(users.map((user) => [user.id, {
@@ -484,25 +508,41 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
 
     return tenders.map((tender) => ({
       ...tender,
+      participationScope: tender.participationMode === ParticipationMode.SELECTED ? 'invited' : 'public',
       creator: userMap.get(tender.createdBy) ?? null,
       updater: tender.updatedBy ? userMap.get(tender.updatedBy) ?? null : null,
     }));
   }
 
-  async invite(tenderId: string, supplierIds: string[], visibleAt: string | undefined, ctx: AuditContext) {
+  private applySupplierAccessScope<T extends ObjectLiteral>(
+    qb: SelectQueryBuilder<T>,
+    tenderAlias: string,
+    supplierId: string,
+    scopeAlias: string,
+  ) {
+    qb.leftJoin(`${tenderAlias}.invitations`, scopeAlias,
+      `${scopeAlias}.supplierId = :supplierId AND ${scopeAlias}.roundNo = ${tenderAlias}.currentQuoteRound`,
+      { supplierId })
+      .andWhere(`(${tenderAlias}.participationMode = :allMode OR ${scopeAlias}.id IS NOT NULL)`, { allMode: ParticipationMode.ALL });
+  }
+
+  async invite(tenderId: string, supplierIds: string[], visibleAt: string | undefined, ctx: AuditContext, roundNo?: number, source = 'manual') {
     const t = await this.findById(tenderId);
     if (![TenderStatus.DRAFT, TenderStatus.PUBLISHED].includes(t.status)) {
       throw new BadRequestException('error.tender.cannot_invite');
     }
 
     const results = [];
+    const targetRound = roundNo ?? t.currentQuoteRound ?? 1;
     for (const sid of supplierIds) {
-      const existing = await this.invRepo.findOne({ where: { tenderId, supplierId: sid } });
+      const existing = await this.invRepo.findOne({ where: { tenderId, supplierId: sid, roundNo: targetRound } });
       if (existing) { results.push(existing); continue; }
 
       const inv = this.invRepo.create({
         tenderId,
         supplierId: sid,
+        roundNo: targetRound,
+        source,
         invitedAt: new Date(),
         visibleAt: visibleAt ? new Date(visibleAt) : undefined,
         status: InvitationStatus.PENDING,
@@ -550,18 +590,202 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('error.tender.invalid_status_transition');
     }
     const nextRound = Number(before.currentQuoteRound ?? 1) + 1;
-    await this.tenderRepo.update(id, {
-      currentQuoteRound: nextRound,
-      status: TenderStatus.DRAFT,
-      bidStartAt: null,
-      bidDeadline: null,
-      updatedBy: ctx.userId,
-    } as any);
+    const previousRound = before.currentQuoteRound ?? 1;
+    const previousInvitedIds = await this.getInvitedSupplierIds(id, previousRound);
+    const previousSupplierIds = previousInvitedIds.length ? previousInvitedIds : await this.getQuotedSupplierIds(id, previousRound);
+    await this.ds.transaction(async (em) => {
+      await em.update(Tender, id, {
+        currentQuoteRound: nextRound,
+        status: TenderStatus.DRAFT,
+        bidStartAt: null,
+        bidDeadline: null,
+        participationMode: previousSupplierIds.length ? ParticipationMode.SELECTED : ParticipationMode.ALL,
+        updatedBy: ctx.userId,
+      } as any);
+      if (previousSupplierIds.length) {
+        await this.replaceParticipants(em, id, nextRound, ParticipationMode.SELECTED, previousSupplierIds, 'previous_round');
+      }
+    });
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_UPDATE, {
       currentQuoteRound: before.currentQuoteRound,
       status: before.status,
     }, { currentQuoteRound: nextRound, status: TenderStatus.DRAFT });
     return this.findById(id);
+  }
+
+  async getParticipantOptions(id: string, search = '', page = 1, limit = 10, sort = 'name', previousOnly = false, candidateMode = 'all') {
+    const tender = await this.findById(id);
+    const currentRound = tender.currentQuoteRound ?? 1;
+    const previousRound = Math.max(1, currentRound - 1);
+    const [selectedScopes, previousInvitedIds, previousQuotedIds, quoteStats] = await Promise.all([
+      this.invRepo.find({ where: { tenderId: id, roundNo: currentRound } }),
+      this.getInvitedSupplierIds(id, previousRound),
+      this.getQuotedSupplierIds(id, previousRound),
+      this.getQuotedSupplierStats(id, previousRound),
+    ]);
+    const selectedIds = new Set(selectedScopes.map((scope) => scope.supplierId));
+    const previousInvitedSet = new Set(previousInvitedIds);
+    const previousQuotedSet = new Set(previousQuotedIds);
+
+    const qb = this.supplierRepo.createQueryBuilder('s')
+      .where('s.status = :status', { status: SupplierStatus.ACTIVE })
+      .andWhere('s.review_status = :reviewStatus', { reviewStatus: SupplierReviewStatus.APPROVED });
+    if (search?.trim()) {
+      qb.andWhere('(s.legal_name ILIKE :q OR s.short_name ILIKE :q OR s.business_id ILIKE :q OR s.contact_name ILIKE :q)', { q: `%${search.trim()}%` });
+    }
+    const constrainedIds = candidateMode === 'invited'
+      ? previousInvitedIds
+      : candidateMode === 'quoted' || previousOnly
+        ? previousQuotedIds
+        : [];
+    if (constrainedIds.length) {
+      qb.andWhere('s.id IN (:...constrainedIds)', { constrainedIds });
+    } else if (candidateMode === 'invited' || candidateMode === 'quoted' || previousOnly) {
+        return {
+          items: [],
+          total: 0,
+          page: Math.max(Number(page) || 1, 1),
+          limit: Math.min(Math.max(Number(limit) || 10, 1), 100),
+          participationMode: tender.participationMode ?? ParticipationMode.ALL,
+          selectedSupplierIds: Array.from(selectedIds),
+          selectedSuppliers: [],
+          previousRoundSupplierIds: previousInvitedIds,
+          previousInvitedSupplierIds: previousInvitedIds,
+          previousQuotedSupplierIds: previousQuotedIds,
+        };
+    }
+
+    const safePage = Math.max(Number(page) || 1, 1);
+    const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
+    const allItems = await qb.getMany();
+    const enrichedItems = allItems.map((supplier) => ({
+      ...supplier,
+      selected: selectedIds.has(supplier.id),
+      previousRoundInvited: previousInvitedSet.has(supplier.id),
+      previousRoundParticipant: previousQuotedSet.has(supplier.id),
+      quoteStats: quoteStats.get(supplier.id) ?? null,
+    })).sort((a, b) => this.compareSupplierOption(a, b, sort));
+    const total = enrichedItems.length;
+    const items = enrichedItems.slice((safePage - 1) * safeLimit, safePage * safeLimit);
+    const selectedSuppliers = selectedIds.size
+      ? await this.supplierRepo.find({ where: { id: In(Array.from(selectedIds)) }, order: { legalName: 'ASC' } })
+      : [];
+    return {
+      items,
+      total,
+      page: safePage,
+      limit: safeLimit,
+      participationMode: tender.participationMode ?? ParticipationMode.ALL,
+      selectedSupplierIds: Array.from(selectedIds),
+      selectedSuppliers,
+      previousRoundSupplierIds: previousInvitedIds,
+      previousInvitedSupplierIds: previousInvitedIds,
+      previousQuotedSupplierIds: previousQuotedIds,
+    };
+  }
+
+  async getParticipants(id: string) {
+    const tender = await this.findById(id);
+    const roundNo = tender.currentQuoteRound ?? 1;
+    if ((tender.participationMode ?? ParticipationMode.ALL) === ParticipationMode.ALL) {
+      return {
+        participationMode: ParticipationMode.ALL,
+        roundNo,
+        source: 'all',
+        suppliers: [],
+      };
+    }
+    const scopes = await this.invRepo.find({ where: { tenderId: id, roundNo }, order: { createdAt: 'ASC' } });
+    const supplierIds = scopes.map((scope) => scope.supplierId);
+    const suppliers = supplierIds.length ? await this.supplierRepo.find({ where: { id: In(supplierIds) } }) : [];
+    const supplierMap = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
+    return {
+      participationMode: ParticipationMode.SELECTED,
+      roundNo,
+      source: scopes[0]?.source ?? 'manual',
+      suppliers: scopes.map((scope) => ({
+        ...supplierMap.get(scope.supplierId),
+        supplierId: scope.supplierId,
+        source: scope.source,
+        invitedAt: scope.invitedAt,
+      })),
+    };
+  }
+
+  private async replaceParticipants(em: EntityManager, tenderId: string, roundNo: number, mode: ParticipationMode | string, supplierIds: string[], source: string) {
+    await em.delete(Invitation, { tenderId, roundNo });
+    if (mode !== ParticipationMode.SELECTED) return;
+    const uniqueSupplierIds = Array.from(new Set(supplierIds.filter(Boolean)));
+    if (!uniqueSupplierIds.length) throw new BadRequestException('error.tender.participant_required');
+    const suppliers = await em.find(Supplier, {
+      where: {
+        id: In(uniqueSupplierIds),
+        status: SupplierStatus.ACTIVE,
+        reviewStatus: SupplierReviewStatus.APPROVED,
+      },
+    });
+    if (suppliers.length !== uniqueSupplierIds.length) throw new BadRequestException('error.tender.invalid_participants');
+    await em.save(suppliers.map((supplier) => em.create(Invitation, {
+      tenderId,
+      supplierId: supplier.id,
+      roundNo,
+      source,
+      invitedAt: new Date(),
+      status: InvitationStatus.PENDING,
+    })));
+  }
+
+  private normalizeParticipationMode(mode?: ParticipationMode | string) {
+    return mode === ParticipationMode.SELECTED || mode === 'selected' ? ParticipationMode.SELECTED : ParticipationMode.ALL;
+  }
+
+  private async getQuotedSupplierIds(tenderId: string, roundNo: number) {
+    const [lineQuotes, lotQuotes] = await Promise.all([
+      this.lineQuoteRepo.find({ where: { tenderId, roundNo, isValid: true }, select: ['supplierId'] }),
+      this.quoteRepo.find({ where: { tenderId, isValid: true }, select: ['supplierId'] }),
+    ]);
+    return Array.from(new Set([...lineQuotes, ...lotQuotes].map((quote) => quote.supplierId).filter(Boolean)));
+  }
+
+  private async getInvitedSupplierIds(tenderId: string, roundNo: number) {
+    const scopes = await this.invRepo.find({ where: { tenderId, roundNo }, select: ['supplierId'] });
+    return Array.from(new Set(scopes.map((scope) => scope.supplierId).filter(Boolean)));
+  }
+
+  private async getQuotedSupplierStats(tenderId: string, roundNo: number) {
+    const [lineQuotes, lotQuotes] = await Promise.all([
+      this.lineQuoteRepo.find({ where: { tenderId, roundNo, isValid: true }, select: ['supplierId', 'totalPrice', 'submittedAt'] }),
+      this.quoteRepo.find({ where: { tenderId, isValid: true }, select: ['supplierId', 'totalPrice', 'submittedAt'] }),
+    ]);
+    const stats = new Map<string, { quoteCount: number; minTotalPrice: number | null; lastSubmittedAt: Date | null }>();
+    for (const quote of [...lineQuotes, ...lotQuotes]) {
+      const current = stats.get(quote.supplierId) ?? { quoteCount: 0, minTotalPrice: null, lastSubmittedAt: null };
+      const price = Number(quote.totalPrice);
+      current.quoteCount += 1;
+      current.minTotalPrice = current.minTotalPrice === null ? price : Math.min(current.minTotalPrice, price);
+      current.lastSubmittedAt = !current.lastSubmittedAt || quote.submittedAt > current.lastSubmittedAt ? quote.submittedAt : current.lastSubmittedAt;
+      stats.set(quote.supplierId, current);
+    }
+    return stats;
+  }
+
+  private compareSupplierOption(a: any, b: any, sort: string) {
+    if (sort === 'quote_amount') {
+      const av = a.quoteStats?.minTotalPrice ?? Number.POSITIVE_INFINITY;
+      const bv = b.quoteStats?.minTotalPrice ?? Number.POSITIVE_INFINITY;
+      if (av !== bv) return av - bv;
+    }
+    if (sort === 'quote_time') {
+      const av = a.quoteStats?.lastSubmittedAt ? new Date(a.quoteStats.lastSubmittedAt).getTime() : 0;
+      const bv = b.quoteStats?.lastSubmittedAt ? new Date(b.quoteStats.lastSubmittedAt).getTime() : 0;
+      if (av !== bv) return bv - av;
+    }
+    if (sort === 'quote_count') {
+      const av = a.quoteStats?.quoteCount ?? 0;
+      const bv = b.quoteStats?.quoteCount ?? 0;
+      if (av !== bv) return bv - av;
+    }
+    return String(a.legalName || a.shortName || a.businessId || '').localeCompare(String(b.legalName || b.shortName || b.businessId || ''));
   }
 
   async getQuoteReview(id: string) {

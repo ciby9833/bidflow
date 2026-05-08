@@ -29,13 +29,27 @@
         {{ item.label }}
       </button>
     </section>
+    <section class="filter-strip compact" :aria-label="t('supplierTenderHall.scopeFilter')">
+      <button
+        v-for="item in scopeOptions"
+        :key="item.value"
+        :class="{ active: filters.participationScope === item.value }"
+        type="button"
+        @click="setScope(item.value)"
+      >
+        {{ item.label }}
+      </button>
+    </section>
 
     <section class="tender-list">
       <article v-for="item in tenders" :key="item.id" class="tender-card">
         <button class="card-main" type="button" @click="openTender(item)">
           <div class="card-top">
             <span class="tender-no">{{ item.tenderNo }}</span>
-            <em :class="['status-pill', item.status]">{{ statusLabel(item.status) }}</em>
+            <span class="card-tags">
+              <em :class="['scope-pill', participationClass(resolveParticipationScope(item))]">{{ scopeLabel(item) }}</em>
+              <em :class="['status-pill', item.status]">{{ statusLabel(item.status) }}</em>
+            </span>
           </div>
           <h2>{{ item.title }}</h2>
           <p>{{ item.hallSummary || item.description || t('supplierTenderHall.noSummary') }}</p>
@@ -64,6 +78,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import dayjs from 'dayjs';
 import { api } from '../../composables/useApi';
+import { participationClass, participationLabelKey, resolveParticipationScope } from '../../utils/participation';
 
 const router = useRouter();
 const { t } = useI18n();
@@ -78,6 +93,7 @@ const filters = reactive({
   search: '',
   status: '',
   type: '',
+  participationScope: '',
 });
 
 const statusOptions = computed(() => [
@@ -86,6 +102,11 @@ const statusOptions = computed(() => [
   { label: t('tender.status.published'), value: 'published' },
   { label: t('tender.status.closed'), value: 'closed' },
   { label: t('tender.status.awarded'), value: 'awarded' },
+]);
+const scopeOptions = computed(() => [
+  { label: t('common.all'), value: '' },
+  { label: t('supplierTenderHall.invitedMe'), value: 'invited' },
+  { label: t('supplierTenderHall.publicTender'), value: 'public' },
 ]);
 function fmtDate(value?: string) {
   return value ? dayjs(value).format('MM-DD HH:mm') : t('common.not_set');
@@ -99,6 +120,9 @@ function typeLabel(type: string) {
 function statusLabel(status: string) {
   return status ? t(`tender.status.${status}`) : '';
 }
+function scopeLabel(item: any) {
+  return t(participationLabelKey(resolveParticipationScope(item)));
+}
 async function load() {
   loading.value = true;
   try {
@@ -109,6 +133,7 @@ async function load() {
         search: filters.search || undefined,
         status: filters.status || undefined,
         type: filters.type || undefined,
+        participationScope: filters.participationScope || undefined,
       },
     });
     tenders.value = res.data.data ?? [];
@@ -129,6 +154,9 @@ function openSearch() {
 }
 function setStatus(value: string) {
   filters.status = filters.status === value ? '' : value;
+}
+function setScope(value: string) {
+  filters.participationScope = filters.participationScope === value ? '' : value;
 }
 function openTender(item: any) {
   router.push(`/m/tenders/${item.id}`);
@@ -224,6 +252,7 @@ onBeforeUnmount(() => {
   scrollbar-width: none;
 }
 .filter-strip.quick { padding-top: 12px; }
+.filter-strip.compact { padding-top: 8px; }
 .filter-strip::-webkit-scrollbar { display: none; }
 .filter-strip button {
   flex: 0 0 auto;
@@ -273,7 +302,16 @@ onBeforeUnmount(() => {
   gap: 10px;
   align-items: center;
 }
+.card-tags {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
 .tender-no { color: #64748b; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; }
+.scope-pill { border-radius: 999px; padding: 3px 7px; font-size: 11px; font-style: normal; font-weight: 700; }
+.scope-pill.invited { background: #fff7ed; color: #c2410c; }
+.scope-pill.public { background: #eff6ff; color: #1d4ed8; }
 .status-pill { border-radius: 999px; padding: 3px 7px; background: #f1f5f9; color: #475569; font-size: 11px; font-style: normal; }
 .status-pill.published { background: #e0f2fe; color: #075985; }
 .status-pill.open { background: #dcfce7; color: #166534; }

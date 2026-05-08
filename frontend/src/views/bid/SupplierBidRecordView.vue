@@ -30,6 +30,10 @@
         <el-option value="lot" :label="t('bidRecords.lotQuote')" />
         <el-option value="line" :label="t('bidRecords.lineQuote')" />
       </el-select>
+      <el-select v-model="filters.participationScope" clearable :placeholder="t('supplierTenderHall.scopeFilter')">
+        <el-option value="invited" :label="t('supplierTenderHall.invitedMe')" />
+        <el-option value="public" :label="t('supplierTenderHall.publicTender')" />
+      </el-select>
     </div>
 
     <el-card class="table-card" shadow="never">
@@ -40,6 +44,9 @@
               <span class="mono">{{ row.tenderNo }}</span>
               <strong>{{ row.tenderTitle }}</strong>
               <small>{{ row.lotNo }} · {{ row.lotTitle }}</small>
+              <el-tag :type="participationTagType(resolveParticipationScope(row))" effect="plain" size="small">
+                {{ t(participationLabelKey(resolveParticipationScope(row))) }}
+              </el-tag>
             </div>
           </template>
         </el-table-column>
@@ -117,6 +124,7 @@ import { useRouter } from 'vue-router';
 import dayjs from 'dayjs';
 import { Refresh, Search } from '@element-plus/icons-vue';
 import { api } from '../../composables/useApi';
+import { participationLabelKey, participationTagType, resolveParticipationScope } from '../../utils/participation';
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -132,6 +140,7 @@ const filters = reactive({
   status: '',
   type: '',
   kind: '',
+  participationScope: '',
 });
 
 const statusOptions = computed(() => [
@@ -177,6 +186,7 @@ async function load() {
         status: filters.status || undefined,
         type: filters.type || undefined,
         kind: filters.kind || undefined,
+        participationScope: filters.participationScope || undefined,
       },
     });
     records.value = res.data.data ?? [];
@@ -209,7 +219,7 @@ onBeforeUnmount(() => {
 .table-card { border: 1px solid #e5e7eb; border-radius: 8px; }
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) auto 180px 160px;
+  grid-template-columns: minmax(280px, 1fr) auto 180px 160px 160px;
   gap: 12px;
   align-items: center;
 }

@@ -13,6 +13,9 @@
           <div class="header-meta">
             <span class="tender-no">{{ tender.tenderNo }}</span>
             <el-tag :type="statusTag(tender.status)" size="small">{{ t(`tender.status.${tender.status}`) }}</el-tag>
+            <el-tag :type="tender.participationMode === 'selected' ? 'warning' : 'info'" effect="plain" size="small">
+              {{ tender.participationMode === 'selected' ? t('tenderCreate.directedTender') : t('supplierTenderHall.publicTender') }}
+            </el-tag>
           </div>
           <h2 class="tender-title">{{ tender.title }}</h2>
           <p v-if="tender.description" class="tender-desc">{{ tender.description }}</p>
@@ -93,7 +96,42 @@
           <span class="info-label">{{ t('tenderList.hallVisibility') }}</span>
           <span class="info-value">{{ tender.isHallVisible ? t('tenderDetail.visible') : t('tenderDetail.hidden') }}</span>
         </div>
+        <div class="info-item">
+          <span class="info-label">{{ t('tenderCreate.participants') }}</span>
+          <span class="info-value">{{ participantSummary }}</span>
+        </div>
       </div>
+
+      <el-card v-if="participants" class="panel">
+        <template #header>
+          <div class="panel-head">
+            <span>{{ t('tenderCreate.participants') }}</span>
+            <div class="panel-tools">
+              <el-tag :type="participants.participationMode === 'selected' ? 'warning' : 'info'" effect="plain">
+                {{ participants.participationMode === 'selected' ? participantSourceLabel(participants.source) : t('tenderCreate.allSuppliers') }}
+              </el-tag>
+              <el-button text type="primary" @click="participantsExpanded = !participantsExpanded">
+                {{ participantsExpanded ? t('common.collapse') : t('common.view') }}
+              </el-button>
+            </div>
+          </div>
+        </template>
+        <template v-if="participantsExpanded">
+          <div v-if="participants.participationMode === 'all'" class="participant-empty">
+            {{ t('tenderCreate.publicScopeNote') }}
+          </div>
+          <el-table v-else :data="participants.suppliers ?? []" stripe>
+            <el-table-column prop="businessId" :label="t('supplierList.supplierNo')" width="150">
+              <template #default="{ row }">{{ row.businessId || row.supplierId }}</template>
+            </el-table-column>
+            <el-table-column :label="t('supplier.legal_name')" min-width="220">
+              <template #default="{ row }">{{ row.legalName || row.shortName || row.supplierId }}</template>
+            </el-table-column>
+            <el-table-column prop="contactName" :label="t('common.contact_name')" width="140" />
+            <el-table-column prop="contactPhone" :label="t('common.contact_phone')" width="150" />
+          </el-table>
+        </template>
+      </el-card>
 
       <!-- Lots -->
       <el-card class="panel">
@@ -480,6 +518,8 @@ const router = useRouter();
 const auth = useAuthStore();
 const tender = ref<any>(null);
 const quoteReview = ref<any>(null);
+const participants = ref<any>(null);
+const participantsExpanded = ref(false);
 const activeReview = ref<any>(null);
 const reviewPanel = ref<any>(null);
 const reviewMode = ref<'item' | 'supplier'>('item');
@@ -532,6 +572,11 @@ const displayedReview = computed(() => {
 const displayedReviewLots = computed(() => displayedReview.value?.lots ?? []);
 const firstReviewLot = computed(() => displayedReviewLots.value?.[0] ?? null);
 const activeReviewRequiredColumns = computed(() => activeReview.value?.requiredColumns ?? []);
+const participantSummary = computed(() => {
+  if (!participants.value) return tender.value?.participationMode === 'selected' ? t('tenderCreate.selectedSuppliers') : t('tenderCreate.allSuppliers');
+  if (participants.value.participationMode === 'all') return t('tenderCreate.allSuppliers');
+  return t('tenderCreate.selectedSupplierCount', { count: participants.value.suppliers?.length ?? 0 });
+});
 const exportFieldOptions = computed(() => {
   const options = [
     { value: 'roundNo', label: t('tenderDetail.field.roundNo') },
@@ -601,12 +646,14 @@ const supplierReviews = computed(() => {
 async function load() {
   loading.value = true;
   try {
-    const [tenderRes, reviewRes] = await Promise.all([
+    const [tenderRes, reviewRes, participantsRes] = await Promise.all([
       api.get(`/api/tenders/${route.params.id}`),
       api.get(`/api/tenders/${route.params.id}/quote-review`).catch(() => ({ data: { data: null } })),
+      api.get(`/api/tenders/${route.params.id}/participants`).catch(() => ({ data: { data: null } })),
     ]);
     tender.value = tenderRes.data.data;
     quoteReview.value = reviewRes.data.data;
+    participants.value = participantsRes.data.data;
     selectedReviewRound.value = Number(selectedReviewRound.value ?? quoteReview.value?.currentRound ?? reviewRounds.value[0] ?? 1);
     if (!activeReview.value && firstReviewLot.value) {
       activeReview.value = firstReviewLot.value.lines?.[0]
@@ -614,6 +661,12 @@ async function load() {
         : firstReviewLot.value;
     }
   } finally { loading.value = false; }
+}
+
+function participantSourceLabel(source?: string) {
+  if (source === 'previous_round' || source === 'previous_all') return t('tenderCreate.previousRoundAll');
+  if (source === 'previous_select') return t('tenderCreate.previousRoundSelect');
+  return t('tenderCreate.selectedSuppliers');
 }
 
 watch(displayedReview, () => resetActiveReviewForRound(), { flush: 'post' });
@@ -660,7 +713,7 @@ async function startNextRound() {
   });
   await api.post(`/api/tenders/${tender.value.id}/rounds/next`);
   ElMessage.success(t('tenderDetail.nextRoundCreated'));
-  load();
+  router.push(`/tenders/${tender.value.id}/edit`);
 }
 
 function openExportDialog() {
@@ -979,6 +1032,13 @@ onActivated(load);
 .supplier-lines { padding: 8px 18px 12px; background: #f8fafc; }
 .detail-section { margin-top: 20px; }
 .detail-section h3 { margin: 0 0 10px; color: #0f172a; font-size: 15px; }
+.participant-empty {
+  padding: 14px;
+  border-radius: 8px;
+  background: #f0f9ff;
+  color: #075985;
+  font-size: 13px;
+}
 
 /* ── Attachments ── */
 .attachment-list { display: flex; flex-wrap: wrap; gap: 8px; }

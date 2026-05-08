@@ -25,13 +25,22 @@
         <el-option value="transport" :label="t('tender.transport')" />
         <el-option value="routine" :label="t('tender.routine')" />
       </el-select>
+      <el-select v-model="filters.participationScope" clearable :placeholder="t('supplierTenderHall.scopeFilter')">
+        <el-option value="invited" :label="t('supplierTenderHall.invitedMe')" />
+        <el-option value="public" :label="t('supplierTenderHall.publicTender')" />
+      </el-select>
     </div>
 
     <div v-loading="loading" class="tender-grid">
       <article v-for="item in tenders" :key="item.id" class="tender-card">
         <div class="card-top">
           <span class="tender-no">{{ item.tenderNo }}</span>
-          <el-tag :type="statusTag(item.status)" size="small">{{ statusLabel(item.status) }}</el-tag>
+          <div class="card-tags">
+            <el-tag :type="participationTagType(resolveParticipationScope(item))" effect="plain" size="small">
+              {{ t(participationLabelKey(resolveParticipationScope(item))) }}
+            </el-tag>
+            <el-tag :type="statusTag(item.status)" size="small">{{ statusLabel(item.status) }}</el-tag>
+          </div>
         </div>
         <h3>{{ item.title }}</h3>
         <p>{{ item.hallSummary || item.description || t('supplierTenderHall.noSummary') }}</p>
@@ -92,6 +101,7 @@ import { useRouter } from 'vue-router';
 import dayjs from 'dayjs';
 import { Search } from '@element-plus/icons-vue';
 import { api } from '../../composables/useApi';
+import { participationLabelKey, participationTagType, resolveParticipationScope } from '../../utils/participation';
 
 const router = useRouter();
 const { t } = useI18n();
@@ -106,6 +116,7 @@ const filters = reactive({
   search: '',
   status: '',
   type: '',
+  participationScope: '',
 });
 
 const statusOptions = computed(() => [
@@ -139,6 +150,7 @@ async function load() {
         search: filters.search || undefined,
         status: filters.status || undefined,
         type: filters.type || undefined,
+        participationScope: filters.participationScope || undefined,
       },
     });
     tenders.value = res.data.data ?? [];
@@ -170,7 +182,7 @@ onBeforeUnmount(() => {
 .page-header p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) auto 180px;
+  grid-template-columns: minmax(280px, 1fr) auto 180px 160px;
   gap: 12px;
   align-items: center;
 }
@@ -189,6 +201,7 @@ onBeforeUnmount(() => {
   background: #fff;
 }
 .card-top, .card-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.card-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .tender-no { color: #64748b; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; }
 .tender-card h3 { margin: 0; color: #0f172a; font-size: 18px; line-height: 1.35; }
 .tender-card p { min-height: 42px; margin: 0; color: #64748b; line-height: 1.5; }

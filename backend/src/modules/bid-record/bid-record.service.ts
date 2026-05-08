@@ -10,8 +10,9 @@ import { In, Repository } from 'typeorm';
 import { Quote } from '../quote/quote.entity';
 import { LineQuote } from '../quote/line-quote.entity';
 import { LotLine } from '../tender/lot-line.entity';
+import { Invitation } from '../tender/invitation.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
-import { TenderStatus, TenderType } from '../tender/tender.entity';
+import { ParticipationMode, TenderStatus, TenderType } from '../tender/tender.entity';
 
 export type BidRecordKind = 'lot' | 'line';
 
@@ -20,6 +21,7 @@ export interface BidRecordFilters {
   status?: TenderStatus;
   type?: TenderType;
   kind?: BidRecordKind;
+  participationScope?: 'invited' | 'public';
   page?: number;
   limit?: number;
 }
@@ -32,6 +34,9 @@ export interface BidRecordItem {
   tenderTitle: string;
   tenderType: TenderType;
   tenderStatus: TenderStatus;
+  participationMode?: ParticipationMode;
+  participationScope?: 'invited' | 'public';
+  currentQuoteRound?: number;
   bidDeadline?: Date;
   openTime?: Date;
   lotId: string;
@@ -54,6 +59,7 @@ export class BidRecordService {
     @InjectRepository(Quote) private readonly quoteRepo: Repository<Quote>,
     @InjectRepository(LineQuote) private readonly lineQuoteRepo: Repository<LineQuote>,
     @InjectRepository(LotLine) private readonly lineRepo: Repository<LotLine>,
+    @InjectRepository(Invitation) private readonly invitationRepo: Repository<Invitation>,
     @InjectRepository(Supplier) private readonly supplierRepo: Repository<Supplier>,
   ) {}
 
@@ -70,10 +76,12 @@ export class BidRecordService {
       filters.kind === 'lot' ? Promise.resolve([]) : this.getLineRecords(supplierId),
     ]);
 
+    const visibleRecords = await this.filterCurrentRoundAccess([...lotRecords, ...lineRecords], supplierId);
     const keyword = filters.search?.trim().toLowerCase();
-    const filtered = [...lotRecords, ...lineRecords]
+    const filtered = visibleRecords
       .filter((item) => !filters.status || item.tenderStatus === filters.status)
       .filter((item) => !filters.type || item.tenderType === filters.type)
+      .filter((item) => !filters.participationScope || item.participationScope === filters.participationScope)
       .filter((item) => !keyword || [
         item.tenderNo,
         item.tenderTitle,
@@ -118,6 +126,9 @@ export class BidRecordService {
         tenderTitle: quote.lot.tender.title,
         tenderType: quote.lot.tender.type,
         tenderStatus: quote.lot.tender.status,
+        participationMode: quote.lot.tender.participationMode,
+        participationScope: quote.lot.tender.participationMode === ParticipationMode.SELECTED ? 'invited' : 'public',
+        currentQuoteRound: quote.lot.tender.currentQuoteRound,
         bidDeadline: quote.lot.tender.bidDeadline,
         openTime: quote.lot.tender.openTime,
         lotId: quote.lotId,
@@ -177,6 +188,9 @@ export class BidRecordService {
         tenderTitle: tender.title,
         tenderType: tender.type,
         tenderStatus: tender.status,
+        participationMode: tender.participationMode,
+        participationScope: tender.participationMode === ParticipationMode.SELECTED ? 'invited' : 'public',
+        currentQuoteRound: tender.currentQuoteRound,
         bidDeadline: tender.bidDeadline,
         openTime: tender.openTime,
         lotId,
@@ -203,6 +217,35 @@ export class BidRecordService {
       map.set(value, (map.get(value) ?? 0) + 1);
     }
     return map;
+  }
+
+  private async filterCurrentRoundAccess(records: BidRecordItem[], supplierId: string) {
+    const selectedRecords = records.filter((item) => item.participationMode === ParticipationMode.SELECTED);
+    if (!selectedRecords.length) return records;
+
+    const scopes = Array.from(
+      new Map(
+        selectedRecords.map((item) => {
+          const roundNo = item.currentQuoteRound ?? item.roundNo ?? 1;
+          return [`${item.tenderId}:${roundNo}`, { tenderId: item.tenderId, roundNo }];
+        }),
+      ).values(),
+    );
+    const invitations = await this.invitationRepo.find({
+      where: scopes.map((scope) => ({
+        tenderId: scope.tenderId,
+        supplierId,
+        roundNo: scope.roundNo,
+      })),
+      select: ['tenderId', 'roundNo'],
+    });
+    const accessibleScope = new Set(invitations.map((item) => `${item.tenderId}:${item.roundNo}`));
+
+    return records.filter((item) => {
+      if (item.participationMode !== ParticipationMode.SELECTED) return true;
+      const roundNo = item.currentQuoteRound ?? item.roundNo ?? 1;
+      return accessibleScope.has(`${item.tenderId}:${roundNo}`);
+    });
   }
 
   private async ensureSupplierApproved(supplierId: string) {

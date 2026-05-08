@@ -249,66 +249,165 @@
       </div>
 
       <!-- Step 4: 附件与确认 -->
-      <div v-show="current === 3" class="step-pane">
+      <div v-show="current === 3" class="step-pane review-step-pane">
         <div class="pane-heading">
           <div>
             <h3>{{ t('tenderCreate.attachmentsReview') }}</h3>
             <p>{{ t('tenderCreate.attachmentsReviewDesc') }}</p>
           </div>
         </div>
-        <h3 class="pane-section-title">{{ t('tenderCreate.tenderDocuments') }}</h3>
-        <input ref="fileInput" hidden type="file" accept=".pdf,image/*" @change="uploadAttachment" />
-        <div v-if="form.attachments.length" class="attachment-list">
-          <div v-for="(file, index) in form.attachments" :key="file.key" class="attachment-item">
-            <button type="button" class="attachment-preview" @click="previewAttachment(file)">
-              <el-icon><Document /></el-icon>
-              <span class="attachment-name">{{ file.name }}</span>
-              <span class="attachment-size">{{ formatSize(file.size) }}</span>
+        <div class="review-step-layout">
+          <div class="review-main">
+            <h3 class="pane-section-title">{{ t('tenderCreate.tenderDocuments') }}</h3>
+            <input ref="fileInput" hidden type="file" accept=".pdf,image/*" @change="uploadAttachment" />
+            <div v-if="form.attachments.length" class="attachment-list">
+              <div v-for="(file, index) in form.attachments" :key="file.key" class="attachment-item">
+                <button type="button" class="attachment-preview" @click="previewAttachment(file)">
+                  <el-icon><Document /></el-icon>
+                  <span class="attachment-name">{{ file.name }}</span>
+                  <span class="attachment-size">{{ formatSize(file.size) }}</span>
+                </button>
+                <el-button text type="danger" size="small" @click="form.attachments.splice(index, 1)">{{ t('common.remove') }}</el-button>
+              </div>
+              <button class="upload-add" type="button" :disabled="uploading" @click="fileInput?.click()">
+                <el-icon><Plus /></el-icon> {{ t('tenderCreate.addMoreFiles') }}
+              </button>
+            </div>
+            <button v-else class="upload-empty" type="button" :disabled="uploading" @click="fileInput?.click()">
+              <el-icon size="24"><UploadFilled /></el-icon>
+              <span>{{ uploading ? t('tenderCreate.uploading') : t('tenderCreate.uploadPrompt') }}</span>
             </button>
-            <el-button text type="danger" size="small" @click="form.attachments.splice(index, 1)">{{ t('common.remove') }}</el-button>
+
+            <h3 class="pane-section-title">{{ t('tenderCreate.visibility') }}</h3>
+            <div class="visibility-grid">
+              <label :class="['visibility-card', { selected: form.isHallVisible }]">
+                <input v-model="form.isHallVisible" type="checkbox" />
+                <div>
+                  <strong>{{ t('tenderCreate.publishToHall') }}</strong>
+                  <span>{{ t('tenderCreate.publishToHallDesc') }}</span>
+                </div>
+              </label>
+              <label :class="['visibility-card', { selected: form.isPublicRankingVisible }]">
+                <input v-model="form.isPublicRankingVisible" type="checkbox" />
+                <div>
+                  <strong>{{ t('tenderCreate.publicRanking') }}</strong>
+                  <span>{{ t('tenderCreate.publicRankingDesc') }}</span>
+                </div>
+              </label>
+            </div>
+            <el-form-item v-if="form.isHallVisible" :label="t('tenderCreate.hallSummary')" style="margin-top:16px">
+              <el-input v-model="form.hallSummary" :placeholder="t('tenderCreate.hallSummaryPlaceholder')" />
+            </el-form-item>
+
+            <h3 class="pane-section-title">{{ t('tenderCreate.informationReview') }}</h3>
+            <div class="review">
+              <div class="review-row"><span>{{ t('hall.project_name') }}</span><strong>{{ form.title || '—' }}</strong></div>
+              <div class="review-row"><span>{{ t('tender.title') }}</span><strong>{{ t(`tender.${form.type}`) }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.baseCurrency') }}</span><strong>{{ form.baseCurrency }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.bidStart') }}</span><strong>{{ form.bidStartAt ? fmtDate(form.bidStartAt) : t('tenderCreate.startImmediately') }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.bidDeadline') }}</span><strong>{{ form.bidDeadline ? fmtDate(form.bidDeadline) : t('common.not_set') }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.openReview') }}</span><strong>{{ form.openTime ? fmtDate(form.openTime) : t('common.not_set') }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.rankingMode') }}</span><strong>{{ rankingLabel }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.quoteLimits') }}</span><strong>{{ t('tenderCreate.quoteLimitSummary', { count: form.maxRebidCount, pct: form.minDecrementPct, seconds: form.cooldownSeconds }) }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.lotCount') }}</span><strong>{{ t('tenderCreate.countUnit', { count: form.lots.length }) }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.attachments') }}</span><strong>{{ t('tenderCreate.countUnit', { count: form.attachments.length }) }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.participants') }}</span><strong>{{ participantSummary }}</strong></div>
+            </div>
           </div>
-          <button class="upload-add" type="button" :disabled="uploading" @click="fileInput?.click()">
-            <el-icon><Plus /></el-icon> {{ t('tenderCreate.addMoreFiles') }}
-          </button>
-        </div>
-        <button v-else class="upload-empty" type="button" :disabled="uploading" @click="fileInput?.click()">
-          <el-icon size="24"><UploadFilled /></el-icon>
-          <span>{{ uploading ? t('tenderCreate.uploading') : t('tenderCreate.uploadPrompt') }}</span>
-        </button>
 
-        <h3 class="pane-section-title">{{ t('tenderCreate.visibility') }}</h3>
-        <div class="visibility-grid">
-          <label :class="['visibility-card', { selected: form.isHallVisible }]">
-            <input v-model="form.isHallVisible" type="checkbox" />
-            <div>
-              <strong>{{ t('tenderCreate.publishToHall') }}</strong>
-              <span>{{ t('tenderCreate.publishToHallDesc') }}</span>
-            </div>
-          </label>
-          <label :class="['visibility-card', { selected: form.isPublicRankingVisible }]">
-            <input v-model="form.isPublicRankingVisible" type="checkbox" />
-            <div>
-              <strong>{{ t('tenderCreate.publicRanking') }}</strong>
-              <span>{{ t('tenderCreate.publicRankingDesc') }}</span>
-            </div>
-          </label>
-        </div>
-        <el-form-item v-if="form.isHallVisible" :label="t('tenderCreate.hallSummary')" style="margin-top:16px">
-          <el-input v-model="form.hallSummary" :placeholder="t('tenderCreate.hallSummaryPlaceholder')" />
-        </el-form-item>
+          <aside class="review-side">
+            <h3 class="pane-section-title">{{ t('tenderCreate.participants') }}</h3>
+            <section class="participant-panel">
+              <div v-if="isNextRoundEdit" class="round-mode-row">
+                <button type="button" :class="{ active: roundParticipantMode === 'previous_all' }" @click="applyRoundMode('previous_all')">
+                  {{ t('tenderCreate.previousRoundAll') }}
+                </button>
+                <button type="button" :class="{ active: roundParticipantMode === 'previous_select' }" @click="applyRoundMode('previous_select')">
+                  {{ t('tenderCreate.previousRoundSelect') }}
+                </button>
+                <button type="button" :class="{ active: roundParticipantMode === 'all' }" @click="applyRoundMode('all')">
+                  {{ t('tenderCreate.continuePublicAll') }}
+                </button>
+              </div>
+              <div v-else class="participation-toggle">
+                <label :class="['visibility-card', { selected: form.participationMode === 'all' }]">
+                  <input v-model="form.participationMode" type="radio" value="all" />
+                  <div>
+                    <strong>{{ t('tenderCreate.allSuppliers') }}</strong>
+                    <span>{{ t('tenderCreate.allSuppliersDesc') }}</span>
+                  </div>
+                </label>
+                <label :class="['visibility-card', { selected: form.participationMode === 'selected' }]">
+                  <input v-model="form.participationMode" type="radio" value="selected" />
+                  <div>
+                    <strong>{{ t('tenderCreate.selectedSuppliers') }}</strong>
+                    <span>{{ t('tenderCreate.selectedSuppliersDesc') }}</span>
+                  </div>
+                </label>
+              </div>
 
-        <h3 class="pane-section-title">{{ t('tenderCreate.informationReview') }}</h3>
-        <div class="review">
-          <div class="review-row"><span>{{ t('hall.project_name') }}</span><strong>{{ form.title || '—' }}</strong></div>
-          <div class="review-row"><span>{{ t('tender.title') }}</span><strong>{{ t(`tender.${form.type}`) }}</strong></div>
-          <div class="review-row"><span>{{ t('tenderCreate.baseCurrency') }}</span><strong>{{ form.baseCurrency }}</strong></div>
-          <div class="review-row"><span>{{ t('tenderCreate.bidStart') }}</span><strong>{{ form.bidStartAt ? fmtDate(form.bidStartAt) : t('tenderCreate.startImmediately') }}</strong></div>
-          <div class="review-row"><span>{{ t('tenderCreate.bidDeadline') }}</span><strong>{{ form.bidDeadline ? fmtDate(form.bidDeadline) : t('common.not_set') }}</strong></div>
-          <div class="review-row"><span>{{ t('tenderCreate.openReview') }}</span><strong>{{ form.openTime ? fmtDate(form.openTime) : t('common.not_set') }}</strong></div>
-          <div class="review-row"><span>{{ t('tenderCreate.rankingMode') }}</span><strong>{{ rankingLabel }}</strong></div>
-          <div class="review-row"><span>{{ t('tenderCreate.quoteLimits') }}</span><strong>{{ t('tenderCreate.quoteLimitSummary', { count: form.maxRebidCount, pct: form.minDecrementPct, seconds: form.cooldownSeconds }) }}</strong></div>
-          <div class="review-row"><span>{{ t('tenderCreate.lotCount') }}</span><strong>{{ t('tenderCreate.countUnit', { count: form.lots.length }) }}</strong></div>
-          <div class="review-row"><span>{{ t('tenderCreate.attachments') }}</span><strong>{{ t('tenderCreate.countUnit', { count: form.attachments.length }) }}</strong></div>
+              <div v-if="form.participationMode === 'selected'" class="supplier-picker">
+                <div class="supplier-pool">
+                  <div class="supplier-toolbar">
+                    <el-input v-model.trim="supplierQuery.search" clearable :placeholder="t('tenderCreate.searchSupplier')" @keyup.enter="loadSupplierOptions(1)" />
+                    <el-select v-if="isEdit" v-model="supplierQuery.sort" :placeholder="t('tenderCreate.sortSuppliers')" @change="loadSupplierOptions(1)">
+                      <el-option value="quote_amount" :label="t('tenderCreate.sortQuoteAmount')" />
+                      <el-option value="quote_time" :label="t('tenderCreate.sortQuoteTime')" />
+                      <el-option value="quote_count" :label="t('tenderCreate.sortQuoteCount')" />
+                      <el-option value="name" :label="t('tenderCreate.sortName')" />
+                    </el-select>
+                    <el-button @click="selectCurrentPage">{{ t('tenderCreate.selectPage') }}</el-button>
+                  </div>
+                  <el-table v-loading="supplierLoading" :data="supplierOptions" border stripe class="supplier-table">
+                    <el-table-column width="48" align="center">
+                      <template #default="{ row }">
+                        <el-checkbox :model-value="isSupplierSelected(row.id)" @change="toggleSupplier(row, Boolean($event))" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="businessId" :label="t('supplierList.supplierNo')" width="130" />
+                    <el-table-column :label="t('supplier.legal_name')" min-width="190">
+                      <template #default="{ row }">
+                        <strong>{{ row.legalName || row.shortName || row.businessId }}</strong>
+                        <small v-if="row.previousRoundInvited" class="supplier-note">{{ t('tenderCreate.previousInvited') }}</small>
+                        <small v-if="row.previousRoundParticipant" class="supplier-note">{{ t('tenderCreate.previousParticipant') }}</small>
+                      </template>
+                    </el-table-column>
+                    <el-table-column :label="t('tenderCreate.quoteStats')" width="120">
+                      <template #default="{ row }">
+                        <span>{{ row.quoteStats?.quoteCount ?? 0 }}</span>
+                        <small v-if="row.quoteStats?.minTotalPrice" class="supplier-note">{{ Number(row.quoteStats.minTotalPrice).toLocaleString() }}</small>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                  <div class="supplier-footer">
+                    <span>{{ t('tenderCreate.selectedSupplierCount', { count: selectedSupplierIds.length }) }}</span>
+                    <el-pagination
+                      v-model:current-page="supplierQuery.page"
+                      :page-size="supplierQuery.limit"
+                      :total="supplierTotal"
+                      layout="prev, pager, next"
+                      @current-change="loadSupplierOptions"
+                    />
+                  </div>
+                </div>
+                <aside class="selected-suppliers">
+                  <div class="selected-head">
+                    <strong>{{ t('tenderCreate.selectedSuppliers') }}</strong>
+                    <el-button text type="primary" @click="selectedSupplierIds = []">{{ t('common.clear') }}</el-button>
+                  </div>
+                  <div v-if="!selectedSupplierRows.length" class="selected-empty">{{ t('tenderCreate.validationSupplierRequired') }}</div>
+                  <div v-for="supplier in selectedSupplierRows" :key="supplier.id" class="selected-row">
+                    <div>
+                      <strong>{{ supplier.legalName || supplier.shortName || supplier.businessId || supplier.id }}</strong>
+                      <span>{{ supplier.businessId || supplier.id }}</span>
+                    </div>
+                    <el-button text type="danger" @click="removeSelectedSupplier(supplier.id)">{{ t('common.remove') }}</el-button>
+                  </div>
+                </aside>
+              </div>
+              <div v-else class="public-scope-note">{{ t('tenderCreate.publicScopeNote') }}</div>
+            </section>
+          </aside>
         </div>
       </div>
 
@@ -408,6 +507,7 @@ const form = reactive({
   description: '',
   isHallVisible: false,
   isPublicRankingVisible: false,
+  participationMode: 'all' as 'all' | 'selected',
   hallSummary: '',
   attachments: [] as Array<{ key: string; name: string; size: number; mimeType?: string; fileUrl?: string }>,
   lots: [{
@@ -431,6 +531,28 @@ const rankingOptions = computed(() => [
 
 const rankingLabel = computed(() => rankingOptions.value.find((r) => r.value === form.rankingMode)?.label ?? '—');
 const isTransportTender = computed(() => form.type === 'transport');
+const supplierOptions = ref<any[]>([]);
+const supplierTotal = ref(0);
+const supplierLoading = ref(false);
+const selectedSupplierIds = ref<string[]>([]);
+const selectedSupplierMap = ref<Record<string, any>>({});
+const previousInvitedSupplierIds = ref<string[]>([]);
+const previousQuotedSupplierIds = ref<string[]>([]);
+const roundParticipantMode = ref<'previous_all' | 'previous_select' | 'all'>('all');
+const supplierSelectionHydrated = ref(false);
+const supplierQuery = reactive({
+  search: '',
+  page: 1,
+  limit: 8,
+  sort: 'quote_amount',
+});
+const isNextRoundEdit = computed(() => isEdit.value && Number((form as any).currentQuoteRound ?? 1) > 1);
+const participantSummary = computed(() => (
+  form.participationMode === 'all'
+    ? t('tenderCreate.allSuppliers')
+    : t('tenderCreate.selectedSupplierCount', { count: selectedSupplierIds.value.length })
+));
+const selectedSupplierRows = computed(() => selectedSupplierIds.value.map((id) => selectedSupplierMap.value[id] ?? { id }));
 
 function fmtDate(d: Date | string) { return dayjs(d).format('YYYY-MM-DD HH:mm'); }
 
@@ -447,6 +569,7 @@ function validateStep(i: number): string {
   if (i === 0 && form.bidStartAt && form.bidDeadline && form.bidStartAt >= form.bidDeadline) return t('tenderCreate.validationStartBeforeDeadline');
   if (i === 0 && form.bidDeadline && form.bidDeadline <= new Date()) return t('tenderCreate.validationDeadlineFuture');
   if (i === 2 && form.lots.some((lot) => !lot.title.trim())) return t('tenderCreate.validationLotTitleRequired');
+  if (i === 3 && form.participationMode === 'selected' && selectedSupplierIds.value.length === 0) return t('tenderCreate.validationSupplierRequired');
   return '';
 }
 
@@ -509,6 +632,8 @@ async function loadTender() {
     form.isHallVisible = Boolean(tender.isHallVisible);
     form.isPublicRankingVisible = Boolean(tender.isPublicRankingVisible);
     form.hallSummary = tender.hallSummary ?? '';
+    (form as any).currentQuoteRound = tender.currentQuoteRound ?? 1;
+    form.participationMode = tender.participationMode ?? 'all';
     form.attachments = (tender.attachments ?? []).map((item: any) => ({
       key: item.key,
       name: item.name,
@@ -537,9 +662,101 @@ async function loadTender() {
     }));
     // 编辑模式：解锁全部步骤，方便跳转
     maxReached.value = steps.value.length - 1;
+    await loadSupplierOptions(1);
   } finally {
     loading.value = false;
   }
+}
+
+async function loadSupplierOptions(page = supplierQuery.page) {
+  supplierQuery.page = page;
+  supplierLoading.value = true;
+  try {
+    if (isEdit.value) {
+      const res = await api.get(`/api/tenders/${route.params.id}/participant-options`, {
+        params: {
+          ...supplierQuery,
+          candidateMode: candidateModeForQuery(),
+        },
+      });
+      const data = res.data.data;
+      supplierOptions.value = data.items ?? [];
+      supplierTotal.value = data.total ?? 0;
+      previousInvitedSupplierIds.value = data.previousInvitedSupplierIds ?? data.previousRoundSupplierIds ?? [];
+      previousQuotedSupplierIds.value = data.previousQuotedSupplierIds ?? [];
+      rememberSuppliers([...(data.items ?? []), ...(data.selectedSuppliers ?? [])]);
+      if (!supplierSelectionHydrated.value) {
+        selectedSupplierIds.value = data.selectedSupplierIds ?? [];
+        roundParticipantMode.value = isNextRoundEdit.value && form.participationMode === 'selected' ? 'previous_all' : 'all';
+        supplierSelectionHydrated.value = true;
+      }
+      return;
+    }
+    const res = await api.get('/api/suppliers', {
+      params: {
+        search: supplierQuery.search,
+        page: supplierQuery.page,
+        limit: supplierQuery.limit,
+        status: 'active',
+        reviewStatus: 'approved',
+      },
+    });
+    supplierOptions.value = res.data.data ?? [];
+    supplierTotal.value = res.data.meta?.total ?? 0;
+    rememberSuppliers(supplierOptions.value);
+  } finally {
+    supplierLoading.value = false;
+  }
+}
+
+function candidateModeForQuery() {
+  if (!isNextRoundEdit.value || form.participationMode !== 'selected') return 'all';
+  return roundParticipantMode.value === 'previous_select' ? 'quoted' : 'invited';
+}
+
+function rememberSuppliers(suppliers: any[]) {
+  const next = { ...selectedSupplierMap.value };
+  suppliers.forEach((supplier) => {
+    if (supplier?.id) next[supplier.id] = supplier;
+  });
+  selectedSupplierMap.value = next;
+}
+
+function isSupplierSelected(id: string) {
+  return selectedSupplierIds.value.includes(id);
+}
+
+function toggleSupplier(row: any, checked: boolean) {
+  const ids = new Set(selectedSupplierIds.value);
+  if (checked) ids.add(row.id);
+  else ids.delete(row.id);
+  rememberSuppliers([row]);
+  selectedSupplierIds.value = Array.from(ids);
+  if (form.participationMode !== 'selected') form.participationMode = 'selected';
+}
+
+function selectCurrentPage() {
+  const ids = new Set(selectedSupplierIds.value);
+  supplierOptions.value.forEach((supplier) => ids.add(supplier.id));
+  rememberSuppliers(supplierOptions.value);
+  selectedSupplierIds.value = Array.from(ids);
+  form.participationMode = 'selected';
+}
+
+function removeSelectedSupplier(id: string) {
+  selectedSupplierIds.value = selectedSupplierIds.value.filter((supplierId) => supplierId !== id);
+}
+
+function applyRoundMode(mode: 'previous_all' | 'previous_select' | 'all') {
+  roundParticipantMode.value = mode;
+  if (mode === 'all') {
+    form.participationMode = 'all';
+    return;
+  }
+  form.participationMode = 'selected';
+  if (mode === 'previous_all') selectedSupplierIds.value = [...previousInvitedSupplierIds.value];
+  if (mode === 'previous_select') selectedSupplierIds.value = [...previousQuotedSupplierIds.value];
+  loadSupplierOptions(1);
 }
 
 function openLotImport(event: MouseEvent) {
@@ -682,6 +899,9 @@ async function uploadAttachment(event: Event) {
 function buildPayload() {
   return {
     ...form,
+    participationMode: form.participationMode,
+    participantSupplierIds: form.participationMode === 'selected' ? selectedSupplierIds.value : [],
+    participantSource: isNextRoundEdit.value ? roundParticipantMode.value : 'manual',
     bidStartAt: form.bidStartAt ? new Date(form.bidStartAt).toISOString() : null,
     bidDeadline: form.bidDeadline ? new Date(form.bidDeadline).toISOString() : undefined,
     openTime: form.openTime ? new Date(form.openTime).toISOString() : null,
@@ -751,7 +971,10 @@ function formatSize(size?: number) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-onMounted(loadTender);
+onMounted(async () => {
+  await loadTender();
+  if (!isEdit.value) await loadSupplierOptions(1);
+});
 </script>
 
 <style scoped>
@@ -848,6 +1071,10 @@ onMounted(loadTender);
   background: #fff;
 }
 .lot-step-pane {
+  width: 100%;
+  max-width: none;
+}
+.review-step-pane {
   width: 100%;
   max-width: none;
 }
@@ -1170,6 +1397,133 @@ onMounted(loadTender);
 .visibility-card strong { display: block; font-size: 14px; color: #0f172a; margin-bottom: 4px; }
 .visibility-card span { font-size: 12px; color: #64748b; line-height: 1.5; }
 
+/* ── Participants ── */
+.review-step-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 42%);
+  gap: 18px;
+  align-items: start;
+}
+.review-main, .review-side {
+  min-width: 0;
+}
+.review-side {
+  position: sticky;
+  top: 12px;
+}
+.participant-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+.participation-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.round-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.round-mode-row button {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+.round-mode-row button.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.supplier-picker {
+  display: grid;
+  gap: 12px;
+}
+.supplier-pool { display: grid; gap: 12px; min-width: 0; }
+.supplier-toolbar {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 150px auto;
+  gap: 8px;
+  align-items: center;
+}
+.supplier-table :deep(.el-table__cell) { padding: 8px 0; }
+.supplier-note {
+  display: block;
+  margin-top: 3px;
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 500;
+}
+.supplier-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #475569;
+  font-size: 13px;
+}
+.selected-suppliers {
+  display: grid;
+  gap: 8px;
+  max-height: 430px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+.selected-head, .selected-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.selected-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eef2f7;
+  background: #fff;
+}
+.selected-head strong { color: #0f172a; font-size: 14px; }
+.selected-row {
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.selected-row:last-child { border-bottom: 0; }
+.selected-row div { min-width: 0; display: grid; gap: 2px; }
+.selected-row strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selected-row span { color: #64748b; font-size: 12px; }
+.selected-empty {
+  padding: 18px 10px;
+  color: #94a3b8;
+  font-size: 13px;
+  text-align: center;
+}
+.public-scope-note {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #f0f9ff;
+  color: #075985;
+  font-size: 13px;
+}
+
 /* ── Review ── */
 .review {
   display: grid;
@@ -1215,9 +1569,11 @@ onMounted(loadTender);
   .step-bar { padding-bottom: 16px; }
   .step { min-width: 140px; }
   .step-text small { display: none; }
-  .form-grid, .form-grid.three, .rank-options, .lot-meta, .visibility-grid {
+  .form-grid, .form-grid.three, .rank-options, .lot-meta, .visibility-grid, .participation-toggle {
     grid-template-columns: 1fr;
   }
+  .review-step-layout, .supplier-toolbar { grid-template-columns: 1fr; }
+  .review-side { position: static; }
   .lot-mode-tip {
     align-items: flex-start;
     flex-direction: column;

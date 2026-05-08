@@ -69,6 +69,26 @@ export class TenderController {
     return ApiResponse.ok(this.svc.previewLotImport(file.buffer));
   }
 
+  @Get(':id/participant-options')
+  @RequireScopes('tender:edit')
+  async participantOptions(
+    @Param('id') id: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('sort') sort?: string,
+    @Query('previousOnly') previousOnly?: string,
+    @Query('candidateMode') candidateMode?: string,
+  ) {
+    return ApiResponse.ok(await this.svc.getParticipantOptions(id, search ?? '', Number(page) || 1, Number(limit) || 10, sort ?? 'name', previousOnly === 'true', candidateMode ?? 'all'));
+  }
+
+  @Get(':id/participants')
+  @RequireScopes('tender:view')
+  async participants(@Param('id') id: string) {
+    return ApiResponse.ok(await this.svc.getParticipants(id));
+  }
+
   @Get(':id/quote-review')
   @RequireScopes('quote:view_all')
   async quoteReview(@Param('id') id: string) {
@@ -147,6 +167,7 @@ export class SupplierTenderController {
     type?: TenderType;
     baseCurrency?: string;
     search?: string;
+    participationScope?: 'invited' | 'public';
     page?: string;
     limit?: string;
   }, @Req() req: Request) {
@@ -159,6 +180,7 @@ export class SupplierTenderController {
     type?: TenderType;
     baseCurrency?: string;
     search?: string;
+    participationScope?: 'invited' | 'public';
     page?: string;
     limit?: string;
   }, user: User): Promise<[any[], { total: number; page: number }]> {
@@ -167,6 +189,7 @@ export class SupplierTenderController {
       type: q.type,
       baseCurrency: q.baseCurrency,
       search: q.search,
+      participationScope: q.participationScope,
       page: q.page ? parseInt(q.page) : 1,
       limit: q.limit ? parseInt(q.limit) : 20,
     }, user.supplierId!);

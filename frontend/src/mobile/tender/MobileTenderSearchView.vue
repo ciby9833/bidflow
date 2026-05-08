@@ -41,6 +41,17 @@
         {{ item.label }}
       </button>
     </div>
+    <div class="filter-strip" aria-label="参与范围筛选">
+      <button
+        v-for="item in scopeOptions"
+        :key="item.value"
+        :class="{ active: filters.participationScope === item.value }"
+        type="button"
+        @click="setFilter('participationScope', item.value)"
+      >
+        {{ item.label }}
+      </button>
+    </div>
 
     <section class="result-bar">
       <span>{{ filters.search || activeFilterText ? '搜索结果' : '输入关键词或选择筛选条件' }}</span>
@@ -52,7 +63,10 @@
         <button class="card-main" type="button" @click="openTender(item)">
           <div class="card-top">
             <span class="tender-no">{{ item.tenderNo }}</span>
-            <em :class="['status-pill', item.status]">{{ statusLabel(item.status) }}</em>
+            <span class="card-tags">
+              <em :class="['scope-pill', participationClass(resolveParticipationScope(item))]">{{ scopeLabel(item) }}</em>
+              <em :class="['status-pill', item.status]">{{ statusLabel(item.status) }}</em>
+            </span>
           </div>
           <h2>{{ item.title }}</h2>
           <p>{{ item.hallSummary || item.description || '暂无项目摘要' }}</p>
@@ -80,6 +94,7 @@ import {
 import { useRouter } from 'vue-router';
 import dayjs from 'dayjs';
 import { api } from '../../composables/useApi';
+import { participationClass, participationLabelKey, resolveParticipationScope } from '../../utils/participation';
 
 const router = useRouter();
 const loading = ref(false);
@@ -90,7 +105,9 @@ const pageSize = 20;
 const searchInputRef = ref<HTMLInputElement | null>(null);
 let queryTimer: ReturnType<typeof setTimeout> | undefined;
 
-const filters = reactive({ search: '', status: '', type: '' });
+const filters = reactive({
+  search: '', status: '', type: '', participationScope: '',
+});
 const statusOptions = [
   { label: '全部', value: '' },
   { label: '报价中', value: 'open' },
@@ -103,10 +120,20 @@ const typeOptions = [
   { label: '工程', value: 'engineering' },
   { label: '常规', value: 'routine' },
 ];
+const scopeOptions = [
+  { label: '全部范围', value: '' },
+  { label: '邀请我的', value: 'invited' },
+  { label: '公开招标', value: 'public' },
+];
 const activeFilterText = computed(() => {
   const status = statusOptions.find((item) => item.value === filters.status)?.label;
   const type = typeOptions.find((item) => item.value === filters.type)?.label;
-  return [status && filters.status ? status : '', type && filters.type ? type : ''].filter(Boolean).join(' · ');
+  const scope = scopeOptions.find((item) => item.value === filters.participationScope)?.label;
+  return [
+    status && filters.status ? status : '',
+    type && filters.type ? type : '',
+    scope && filters.participationScope ? scope : '',
+  ].filter(Boolean).join(' · ');
 });
 
 function fmtDate(value?: string) {
@@ -121,6 +148,9 @@ function typeLabel(type: string) {
 function statusLabel(status: string) {
   return { published: '已发布', open: '报价中', closed: '已关标', awarded: '已定标' }[status] ?? status;
 }
+function scopeLabel(item: any) {
+  return participationLabelKey(resolveParticipationScope(item)) === 'supplierTenderHall.invitedMe' ? '邀请我的' : '公开招标';
+}
 async function load() {
   loading.value = true;
   try {
@@ -131,6 +161,7 @@ async function load() {
         search: filters.search || undefined,
         status: filters.status || undefined,
         type: filters.type || undefined,
+        participationScope: filters.participationScope || undefined,
       },
     });
     tenders.value = res.data.data ?? [];
@@ -150,7 +181,7 @@ function loadSearch() {
   page.value = 1;
   void load();
 }
-function setFilter(key: 'status' | 'type', value: string) {
+function setFilter(key: 'status' | 'type' | 'participationScope', value: string) {
   filters[key] = filters[key] === value ? '' : value;
 }
 function openTender(item: any) {
@@ -269,7 +300,16 @@ onBeforeUnmount(() => {
   gap: 10px;
   align-items: center;
 }
+.card-tags {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
 .tender-no { color: #64748b; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; }
+.scope-pill { border-radius: 999px; padding: 3px 7px; font-size: 11px; font-style: normal; font-weight: 700; }
+.scope-pill.invited { background: #fff7ed; color: #c2410c; }
+.scope-pill.public { background: #eff6ff; color: #1d4ed8; }
 .status-pill { border-radius: 999px; padding: 3px 7px; background: #f1f5f9; color: #475569; font-size: 11px; font-style: normal; }
 .status-pill.published { background: #e0f2fe; color: #075985; }
 .status-pill.open { background: #dcfce7; color: #166534; }

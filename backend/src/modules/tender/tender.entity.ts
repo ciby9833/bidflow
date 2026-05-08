@@ -31,6 +31,11 @@ export enum RankingMode {
   LEADING_FLAG = 'leading_flag',
 }
 
+export enum ParticipationMode {
+  ALL = 'all',
+  SELECTED = 'selected',
+}
+
 @Entity('tenders')
 export class Tender {
   @PrimaryGeneratedColumn('uuid')
@@ -83,6 +88,9 @@ export class Tender {
 
   @Column({ name: 'current_quote_round', type: 'int', default: 1 })
   currentQuoteRound: number;
+
+  @Column({ name: 'participation_mode', type: 'varchar', length: 20, default: ParticipationMode.ALL })
+  participationMode: ParticipationMode;
 
   @Column({ name: 'description', type: 'text', nullable: true })
   description?: string;
