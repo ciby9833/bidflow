@@ -5,7 +5,7 @@
  * 作者：吴川
  */
 import {
-  Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn,
+  Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Lot } from '../tender/lot.entity';
 
@@ -24,6 +24,7 @@ export class Quote {
   lotId: string;
 
   @ManyToOne(() => Lot, (l) => l.quotes)
+  @JoinColumn({ name: 'lot_id' })
   lot: Lot;
 
   @Column({ name: 'supplier_id', type: 'uuid' })
