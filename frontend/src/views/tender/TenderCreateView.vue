@@ -318,16 +318,19 @@
           <aside class="review-side">
             <h3 class="pane-section-title">{{ t('tenderCreate.participants') }}</h3>
             <section class="participant-panel">
-              <div v-if="isNextRoundEdit" class="round-mode-row">
-                <button type="button" :class="{ active: roundParticipantMode === 'previous_all' }" @click="applyRoundMode('previous_all')">
-                  {{ t('tenderCreate.previousRoundAll') }}
-                </button>
-                <button type="button" :class="{ active: roundParticipantMode === 'previous_select' }" @click="applyRoundMode('previous_select')">
-                  {{ t('tenderCreate.previousRoundSelect') }}
-                </button>
-                <button type="button" :class="{ active: roundParticipantMode === 'all' }" @click="applyRoundMode('all')">
-                  {{ t('tenderCreate.continuePublicAll') }}
-                </button>
+              <div v-if="isNextRoundEdit" class="round-mode-block">
+                <div class="round-mode-row">
+                  <button type="button" :class="{ active: roundParticipantMode === 'previous_all' }" @click="applyRoundMode('previous_all')">
+                    {{ t('tenderCreate.previousRoundAll') }}
+                  </button>
+                  <button type="button" :class="{ active: roundParticipantMode === 'previous_select' }" @click="applyRoundMode('previous_select')">
+                    {{ t('tenderCreate.previousRoundSelect') }}
+                  </button>
+                  <button type="button" :class="{ active: roundParticipantMode === 'all' }" @click="applyRoundMode('all')">
+                    {{ t('tenderCreate.continuePublicAll') }}
+                  </button>
+                </div>
+                <p class="round-mode-hint">{{ t('tenderCreate.nextRoundParticipantHint') }}</p>
               </div>
               <div v-else class="participation-toggle">
                 <label :class="['visibility-card', { selected: form.participationMode === 'all' }]">
@@ -710,8 +713,8 @@ async function loadSupplierOptions(page = supplierQuery.page) {
 }
 
 function candidateModeForQuery() {
-  if (!isNextRoundEdit.value || form.participationMode !== 'selected') return 'all';
-  return roundParticipantMode.value === 'previous_select' ? 'quoted' : 'invited';
+  // 始终允许搜索全部已认证供应商；下一轮的预设按钮只做"一键填入"，填完仍可自由增删。
+  return 'all';
 }
 
 function rememberSuppliers(suppliers: any[]) {
@@ -1424,10 +1427,17 @@ onMounted(async () => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+.round-mode-block { margin-bottom: 12px; }
 .round-mode-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.round-mode-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
 }
 .round-mode-row button {
   height: 34px;

@@ -255,7 +255,7 @@
     "validationLotTitleRequired": "请填写所有标包名称", "validationSupplierRequired": "请选择至少一家参与供应商",
     "participants": "参与供应商", "directedTender": "定向招标", "allSuppliers": "全部供应商", "allSuppliersDesc": "默认全部已认证启用供应商可参与",
     "selectedSuppliers": "指定供应商", "selectedSuppliersDesc": "仅勾选的供应商可查看和报价",
-    "previousRoundAll": "上一轮受邀全部", "previousRoundSelect": "上一轮已投标", "continuePublicAll": "继续全部公开",
+    "previousRoundAll": "填入上一轮受邀", "previousRoundSelect": "填入上一轮已投标", "continuePublicAll": "全部公开", "nextRoundParticipantHint": "按钮为一键填入，填入后仍可在下方列表自由搜索、增删供应商。",
     "searchSupplier": "搜索供应商名称、编号或联系人", "sortSuppliers": "报价排序",
     "sortName": "按名称", "sortQuoteAmount": "按报价金额", "sortQuoteTime": "按最后报价时间", "sortQuoteCount": "按报价次数",
     "selectPage": "勾选整页", "clearPage": "清空本页",

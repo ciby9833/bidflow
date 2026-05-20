@@ -255,7 +255,7 @@
     "validationLotTitleRequired": "Enter all lot names", "validationSupplierRequired": "Select at least one participating supplier",
     "participants": "Participating Suppliers", "directedTender": "Directed Tender", "allSuppliers": "All Suppliers", "allSuppliersDesc": "All approved active suppliers can participate by default",
     "selectedSuppliers": "Selected Suppliers", "selectedSuppliersDesc": "Only checked suppliers can view and quote",
-    "previousRoundAll": "All Invited Last Round", "previousRoundSelect": "Quoted Last Round", "continuePublicAll": "Continue Public",
+    "previousRoundAll": "Fill: Invited Last Round", "previousRoundSelect": "Fill: Quoted Last Round", "continuePublicAll": "Public", "nextRoundParticipantHint": "Buttons are quick-fill shortcuts. After filling you can still freely search, add or remove suppliers in the list below.",
     "searchSupplier": "Search supplier name, ID, or contact", "sortSuppliers": "Quote Sort",
     "sortName": "By name", "sortQuoteAmount": "By quote amount", "sortQuoteTime": "By last quote time", "sortQuoteCount": "By quote count",
     "selectPage": "Select Page", "clearPage": "Clear Page",

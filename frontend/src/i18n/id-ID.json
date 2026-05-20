@@ -255,7 +255,7 @@
     "validationLotTitleRequired": "Masukkan semua nama lot", "validationSupplierRequired": "Pilih setidaknya satu pemasok peserta",
     "participants": "Pemasok Peserta", "directedTender": "Tender Terarah", "allSuppliers": "Semua Pemasok", "allSuppliersDesc": "Semua pemasok aktif yang disetujui dapat ikut secara default",
     "selectedSuppliers": "Pemasok Terpilih", "selectedSuppliersDesc": "Hanya pemasok yang dicentang dapat melihat dan menawar",
-    "previousRoundAll": "Semua Diundang Ronde Lalu", "previousRoundSelect": "Menawar Ronde Lalu", "continuePublicAll": "Tetap Publik",
+    "previousRoundAll": "Isi: Diundang Ronde Lalu", "previousRoundSelect": "Isi: Menawar Ronde Lalu", "continuePublicAll": "Publik", "nextRoundParticipantHint": "Tombol adalah pintasan isi cepat. Setelah diisi Anda tetap bisa mencari, menambah, atau menghapus pemasok di daftar di bawah.",
     "searchSupplier": "Cari nama, ID, atau kontak pemasok", "sortSuppliers": "Urut Penawaran",
     "sortName": "Menurut nama", "sortQuoteAmount": "Menurut nominal", "sortQuoteTime": "Menurut waktu terakhir", "sortQuoteCount": "Menurut jumlah penawaran",
     "selectPage": "Pilih Halaman", "clearPage": "Bersihkan Halaman",
