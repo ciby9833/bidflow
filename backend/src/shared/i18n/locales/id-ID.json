@@ -72,7 +72,8 @@
       "file_required": "Silakan pilih berkas yang akan diunggah.",
       "file_type_not_allowed": "Tipe berkas tidak diizinkan.",
       "file_too_large": "Ukuran berkas melebihi batas.",
-      "file_not_found": "Berkas tidak ditemukan."
+      "file_not_found": "Berkas tidak ditemukan.",
+      "file_too_many": "Lampiran terlalu banyak (maks 5)."
     },
     "export": {
       "full_requires_manager": "Hanya manajer pengadaan yang dapat melakukan ekspor lengkap."

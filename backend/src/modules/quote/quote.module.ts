@@ -8,6 +8,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Quote } from './quote.entity';
 import { LineQuote } from './line-quote.entity';
+import { LotQuoteAttachment } from './lot-quote-attachment.entity';
 import { RankingSnapshot } from './ranking-snapshot.entity';
 import { Tender } from '../tender/tender.entity';
 import { Lot } from '../tender/lot.entity';
@@ -21,7 +22,7 @@ import { AuditService } from '../../shared/audit/audit.service';
 import { RedisService } from '../../shared/config/redis.config';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Quote, LineQuote, RankingSnapshot, Tender, Lot, LotLine, Invitation, Supplier, AuditLog])],
+  imports: [TypeOrmModule.forFeature([Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, Tender, Lot, LotLine, Invitation, Supplier, AuditLog])],
   controllers: [QuoteController],
   providers: [QuoteService, AuditService, RedisService],
   exports: [QuoteService],

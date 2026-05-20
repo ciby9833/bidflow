@@ -76,7 +76,8 @@
       "file_required": "请选择上传文件",
       "file_type_not_allowed": "不支持的文件类型",
       "file_too_large": "文件超过大小限制",
-      "file_not_found": "文件不存在"
+      "file_not_found": "文件不存在",
+      "file_too_many": "附件数量超过上限（最多 5 个）"
     },
     "export": {
       "full_requires_manager": "仅采购经理可执行完整导出"

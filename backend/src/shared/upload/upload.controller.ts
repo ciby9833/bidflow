@@ -34,6 +34,14 @@ export class UploadController {
     return ApiResponse.ok(await this.uploadService.uploadTenderAttachment(file, user.id));
   }
 
+  @Post('quote-attachments')
+  @UseGuards(AuthGuard('jwt'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+  async uploadQuoteAttachment(@UploadedFile() file: any, @Req() req: Request) {
+    const user = req.user as User;
+    return ApiResponse.ok(await this.uploadService.uploadQuoteAttachment(file, user.id));
+  }
+
   /**
    * 流式代理 MinIO 中的对象，避免向公网暴露 MinIO 端点与预签名 URL。
    * objectKey 由前端 URL-encode 后传入，这里解码后传给 S3 SDK。

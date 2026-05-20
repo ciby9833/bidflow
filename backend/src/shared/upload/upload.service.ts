@@ -43,6 +43,10 @@ export class UploadService {
     return this.uploadFile(file, `tender-attachments/${userId}`);
   }
 
+  async uploadQuoteAttachment(file: any, userId: string) {
+    return this.uploadFile(file, `quote-attachments/${userId}`);
+  }
+
   private async uploadFile(file: any, prefix: string) {
     if (!file) throw new BadRequestException('error.upload.file_required');
     if (!ALLOWED_MIME.has(file.mimetype)) throw new BadRequestException('error.upload.file_type_not_allowed');

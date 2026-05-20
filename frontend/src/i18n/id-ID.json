@@ -304,6 +304,7 @@
     "notStarted": "Belum Mulai", "loading": "Memuat", "requiredFields": "Kolom wajib penawaran",
     "myQuote": "Penawaran Saya", "unquoted": "Belum ditawar", "rank": "Peringkat", "leading": "Memimpin",
     "thisQuote": "Penawaran Ini", "lineQuote": "Penawaran Rute", "lineQuoteDesc": "Ronde saat ini {round}. Setiap rute ditawar dan diperingkat secara terpisah.",
+    "attachments": "Lampiran Penawaran", "attachmentsDesc": "Unggah penawaran bercap, dokumen tender bercap, dll. (maks 5, masing-masing 20MB).", "uploadAttachment": "Unggah Lampiran", "attachmentMax": "Maksimal 5 lampiran", "attachmentSaved": "Lampiran penawaran disimpan", "attachmentEmpty": "Belum ada lampiran. Klik tombol di atas untuk mengunggah.", "noSupplierAttachments": "Pemasok belum mengunggah lampiran penawaran", "removeAttachment": "Hapus", "confirmRemoveAttachment": "Hapus lampiran \"{name}\"?",
     "currentQuote": "Penawaran Saat Ini", "nextMaxPrice": "Maksimum Penawaran Berikutnya", "rebidRequirement": "Syarat Ubah Penawaran",
     "mustLowerBy": "Harus lebih rendah dari penawaran saat ini sebesar {pct}%", "quoteStatus": "Status Penawaran",
     "remainingRebids": "Sisa {count} kali ubah penawaran", "realtime": "Realtime", "polling": "Polling",

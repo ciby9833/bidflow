@@ -13,6 +13,7 @@ import { DataSource, In, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Quote } from './quote.entity';
 import { LineQuote } from './line-quote.entity';
+import { LotQuoteAttachment, QuoteAttachmentItem } from './lot-quote-attachment.entity';
 import { RankingSnapshot, SnapshotTrigger } from './ranking-snapshot.entity';
 import { ParticipationMode, Tender, TenderStatus } from '../tender/tender.entity';
 import { Lot } from '../tender/lot.entity';
@@ -58,6 +59,7 @@ export class QuoteService {
   constructor(
     @InjectRepository(Quote) private readonly quoteRepo: Repository<Quote>,
     @InjectRepository(LineQuote) private readonly lineQuoteRepo: Repository<LineQuote>,
+    @InjectRepository(LotQuoteAttachment) private readonly lotAttachmentRepo: Repository<LotQuoteAttachment>,
     @InjectRepository(RankingSnapshot) private readonly snapshotRepo: Repository<RankingSnapshot>,
     @InjectRepository(Tender) private readonly tenderRepo: Repository<Tender>,
     @InjectRepository(Lot) private readonly lotRepo: Repository<Lot>,
@@ -69,6 +71,63 @@ export class QuoteService {
     private readonly i18n: I18nService,
     private readonly ds: DataSource,
   ) {}
+
+  // ── 标包级投标附件（盖章报价单等，按 招标+标包+供应商+轮次 一份，最多 5 个）──
+  private static readonly MAX_QUOTE_ATTACHMENTS = 5;
+
+  private async resolveLotContext(lotId: string): Promise<{ tenderId: string; roundNo: number }> {
+    const lot = await this.lotRepo.findOne({ where: { id: lotId } });
+    if (!lot) throw new NotFoundException('error.lot.not_found');
+    const tender = await this.tenderRepo.findOne({ where: { id: lot.tenderId } });
+    if (!tender) throw new NotFoundException('error.tender.not_found');
+    return { tenderId: lot.tenderId, roundNo: tender.currentQuoteRound ?? 1 };
+  }
+
+  /** 供应商保存某标包当前轮的投标附件（整份覆盖）。 */
+  async saveLotAttachments(lotId: string, supplierId: string, attachments: QuoteAttachmentItem[]) {
+    const list = (attachments ?? []).slice(0, QuoteService.MAX_QUOTE_ATTACHMENTS).map((a) => ({
+      key: String(a.key),
+      name: String(a.name ?? '附件'),
+      size: Number(a.size ?? 0),
+      mimeType: a.mimeType,
+      fileUrl: a.fileUrl,
+    }));
+    if ((attachments?.length ?? 0) > QuoteService.MAX_QUOTE_ATTACHMENTS) {
+      throw new BadRequestException('error.upload.file_too_many');
+    }
+    const { tenderId, roundNo } = await this.resolveLotContext(lotId);
+    const existing = await this.lotAttachmentRepo.findOne({ where: { tenderId, lotId, supplierId, roundNo } });
+    if (existing) {
+      existing.attachments = list;
+      await this.lotAttachmentRepo.save(existing);
+      return existing;
+    }
+    const created = this.lotAttachmentRepo.create({ tenderId, lotId, supplierId, roundNo, attachments: list });
+    return this.lotAttachmentRepo.save(created);
+  }
+
+  /** 供应商读取自己在某标包当前轮的投标附件。 */
+  async getMyLotAttachments(lotId: string, supplierId: string) {
+    const { tenderId, roundNo } = await this.resolveLotContext(lotId);
+    const row = await this.lotAttachmentRepo.findOne({ where: { tenderId, lotId, supplierId, roundNo } });
+    return { roundNo, attachments: row?.attachments ?? [] };
+  }
+
+  /** 评审方读取某标包指定轮次（缺省为当前轮）所有供应商的投标附件，附带供应商名称。 */
+  async getLotAttachmentsForReview(lotId: string, roundNo?: number) {
+    const ctx = await this.resolveLotContext(lotId);
+    const targetRound = roundNo && Number.isFinite(roundNo) ? Number(roundNo) : ctx.roundNo;
+    const rows = await this.lotAttachmentRepo.find({ where: { tenderId: ctx.tenderId, lotId, roundNo: targetRound } });
+    const supplierIds = Array.from(new Set(rows.map((r) => r.supplierId).filter(Boolean)));
+    const suppliers = supplierIds.length ? await this.supplierRepo.find({ where: { id: In(supplierIds) } }) : [];
+    const nameMap = new Map(suppliers.map((s) => [s.id, s.legalName || s.shortName || s.businessId || s.id]));
+    return rows.map((r) => ({
+      supplierId: r.supplierId,
+      supplierName: nameMap.get(r.supplierId) ?? r.supplierId,
+      roundNo: r.roundNo,
+      attachments: r.attachments ?? [],
+    }));
+  }
 
   // ── §4.2 Write Path ─────────────────────────────────────────────────────
   async submit(data: {

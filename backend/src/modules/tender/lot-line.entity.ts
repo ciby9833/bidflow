@@ -36,6 +36,9 @@ export class LotLine {
   @Column({ name: 'row_no', type: 'int' })
   rowNo: number;
 
+  @Column({ name: 'round_no', type: 'int', default: 1 })
+  roundNo: number;
+
   @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder: number;
 

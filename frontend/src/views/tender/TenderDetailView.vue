@@ -306,6 +306,27 @@
                   </template>
                 </el-table-column>
               </el-table>
+
+              <div class="review-attachments">
+                <div class="review-attachments-head">{{ t('quote.attachments') }}</div>
+                <div v-if="activeLotAttachments.length" class="review-attachments-list">
+                  <div v-for="group in activeLotAttachments" :key="group.supplierId" class="review-attachment-group">
+                    <strong>{{ group.supplierName }}</strong>
+                    <div class="review-attachment-files">
+                      <button
+                        v-for="file in group.attachments"
+                        :key="file.key"
+                        type="button"
+                        class="review-attachment-file"
+                        @click="previewAttachment(file)"
+                      >
+                        {{ file.name }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <p v-else class="review-attachments-empty">{{ t('quote.noSupplierAttachments') }}</p>
+              </div>
             </template>
             <el-empty v-else :description="t('tenderDetail.selectLineToViewQuotes')" />
           </div>
@@ -467,6 +488,22 @@
         </section>
 
         <section class="detail-section">
+          <h3>{{ t('quote.attachments') }}</h3>
+          <div v-if="detailAttachments.length" class="detail-attachments">
+            <button
+              v-for="file in detailAttachments"
+              :key="file.key"
+              type="button"
+              class="review-attachment-file"
+              @click="previewAttachment(file)"
+            >
+              {{ file.name }}
+            </button>
+          </div>
+          <el-empty v-else :description="t('quote.noSupplierAttachments')" :image-size="60" />
+        </section>
+
+        <section class="detail-section">
           <h3>{{ t('tenderDetail.quoteHistory') }}</h3>
           <el-table v-if="selectedReviewQuote.history?.length" :data="selectedReviewQuote.history" stripe size="small">
             <el-table-column :label="t('quote.versionColumn')" width="80">
@@ -522,6 +559,8 @@ const participants = ref<any>(null);
 const participantsExpanded = ref(false);
 const activeReview = ref<any>(null);
 const reviewPanel = ref<any>(null);
+// 全部标包各供应商的投标附件（按当前评审轮次）
+const lotAttachments = ref<Array<{ lotId: string; supplierId: string; supplierName?: string; attachments: any[] }>>([]);
 const reviewMode = ref<'item' | 'supplier'>('item');
 const selectedReviewRound = ref<number | null>(null);
 const reviewDetailVisible = ref(false);
@@ -657,8 +696,10 @@ async function load() {
     selectedReviewRound.value = Number(selectedReviewRound.value ?? quoteReview.value?.currentRound ?? reviewRounds.value[0] ?? 1);
     if (!activeReview.value && firstReviewLot.value) {
       activeReview.value = firstReviewLot.value.lines?.[0]
-        ? { ...firstReviewLot.value.lines[0], lotTitle: firstReviewLot.value.title, requiredColumns: requiredLineColumns(firstReviewLot.value.lineColumns) }
-        : firstReviewLot.value;
+        ? {
+          ...firstReviewLot.value.lines[0], lotId: firstReviewLot.value.lotId, lotTitle: firstReviewLot.value.title, requiredColumns: requiredLineColumns(firstReviewLot.value.lineColumns),
+        }
+        : { ...firstReviewLot.value };
     }
   } finally { loading.value = false; }
 }
@@ -670,6 +711,11 @@ function participantSourceLabel(source?: string) {
 }
 
 watch(displayedReview, () => resetActiveReviewForRound(), { flush: 'post' });
+watch(
+  () => [tender.value?.id, selectedReviewRound.value],
+  () => loadAllAttachments(),
+  { immediate: true },
+);
 
 async function doPublish() {
   await api.post(`/api/tenders/${tender.value.id}/publish`);
@@ -778,12 +824,47 @@ function formatReviewPrice(value?: number | string | null, currency = 'IDR') {
 }
 
 function selectReviewLine(lot: any, line: any) {
-  activeReview.value = { ...line, lotTitle: lot.title, requiredColumns: requiredLineColumns(lot.lineColumns) };
+  activeReview.value = {
+    ...line, lotId: lot.lotId, lotTitle: lot.title, requiredColumns: requiredLineColumns(lot.lineColumns),
+  };
 }
 
 function selectLotReview(lot: any) {
-  activeReview.value = lot;
+  activeReview.value = { ...lot };
 }
+
+// 加载全部标包、当前评审轮次的投标附件
+async function loadAllAttachments() {
+  const lots = tender.value?.lots ?? [];
+  const round = selectedReviewRound.value ?? quoteReview.value?.currentRound;
+  try {
+    const results = await Promise.all(lots.map((lot: any) => api
+      .get(`/api/quotes/lots/${lot.id}/attachments`, { params: { round: round ?? undefined } })
+      .then((res) => (res.data.data ?? []).map((row: any) => ({ ...row, lotId: lot.id })))
+      .catch(() => [])));
+    lotAttachments.value = results.flat();
+  } catch {
+    lotAttachments.value = [];
+  }
+}
+
+// 当前评审标包下、各供应商的投标附件（按事项面板用）
+const activeLotAttachments = computed(() => (lotAttachments.value ?? [])
+  .filter((row) => row.lotId === activeReview.value?.lotId && (row.attachments?.length ?? 0) > 0)
+  .map((row) => ({
+    supplierId: row.supplierId,
+    supplierName: row.supplierName || row.supplierId,
+    attachments: row.attachments,
+  })));
+
+// 报价详情抽屉中、该供应商的投标附件（跨标包）
+const detailAttachments = computed(() => {
+  const sid = selectedReviewQuote.value?.supplierId;
+  if (!sid) return [];
+  return (lotAttachments.value ?? [])
+    .filter((row) => row.supplierId === sid && (row.attachments?.length ?? 0) > 0)
+    .flatMap((row) => row.attachments);
+});
 
 function changeReviewRound(value: number | string) {
   selectedReviewRound.value = Number(value);
@@ -797,7 +878,9 @@ function resetActiveReviewForRound() {
     for (const lot of displayedReviewLots.value ?? []) {
       const line = lot.lines?.find((item: any) => item.lineId === previous.lineId);
       if (line) {
-        next = { ...line, lotTitle: lot.title, requiredColumns: requiredLineColumns(lot.lineColumns) };
+        next = {
+          ...line, lotId: lot.lotId, lotTitle: lot.title, requiredColumns: requiredLineColumns(lot.lineColumns),
+        };
         break;
       }
     }
@@ -812,8 +895,10 @@ async function focusLotReview(lot: any) {
   const reviewLot = displayedReviewLots.value?.find((item: any) => item.lotId === lot.id);
   if (reviewLot) {
     activeReview.value = reviewLot.lines?.[0]
-      ? { ...reviewLot.lines[0], lotTitle: reviewLot.title, requiredColumns: requiredLineColumns(reviewLot.lineColumns) }
-      : reviewLot;
+      ? {
+        ...reviewLot.lines[0], lotId: reviewLot.lotId, lotTitle: reviewLot.title, requiredColumns: requiredLineColumns(reviewLot.lineColumns),
+      }
+      : { ...reviewLot };
   }
   await nextTick();
   reviewPanel.value?.$el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
@@ -954,6 +1039,38 @@ onActivated(load);
 .review-quote-table {
   width: 100%;
 }
+.review-attachments {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+.review-attachments-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 8px;
+}
+.review-attachments-list { display: grid; gap: 8px; }
+.review-attachment-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.review-attachment-group > strong { font-size: 13px; color: #0f172a; }
+.review-attachment-files { display: flex; flex-wrap: wrap; gap: 6px; }
+.review-attachment-file {
+  padding: 4px 10px;
+  border: 1px solid #d6e4ff;
+  border-radius: 6px;
+  background: #f0f6ff;
+  color: #2563eb;
+  font-size: 12px;
+  cursor: pointer;
+}
+.review-attachment-file:hover { background: #e0edff; }
+.review-attachments-empty { font-size: 12px; color: #94a3b8; margin: 0; }
+.detail-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
 .review-lot-block {
   display: grid;
   gap: 10px;

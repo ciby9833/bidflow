@@ -304,6 +304,7 @@
     "notStarted": "Not Started", "loading": "Loading", "requiredFields": "Required quote fields",
     "myQuote": "My Quote", "unquoted": "Not quoted", "rank": "Rank", "leading": "Leading",
     "thisQuote": "This Quote", "lineQuote": "Line Quotes", "lineQuoteDesc": "Current round {round}. Each line is quoted and ranked independently.",
+    "attachments": "Bid Attachments", "attachmentsDesc": "Upload stamped quotation, stamped bid documents, etc. (max 5, 20MB each).", "uploadAttachment": "Upload Attachment", "attachmentMax": "You can upload at most 5 attachments", "attachmentSaved": "Bid attachments saved", "attachmentEmpty": "No attachments yet. Click the button above to upload.", "noSupplierAttachments": "Supplier has not uploaded bid attachments yet", "removeAttachment": "Remove", "confirmRemoveAttachment": "Remove attachment \"{name}\"?",
     "currentQuote": "Current Quote", "nextMaxPrice": "Next Maximum Quote", "rebidRequirement": "Re-bid Requirement",
     "mustLowerBy": "Must be lower than current quote by {pct}%", "quoteStatus": "Quote Status",
     "remainingRebids": "{count} re-bids remaining", "realtime": "Realtime", "polling": "Polling",

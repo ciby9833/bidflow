@@ -38,6 +38,7 @@ import { LotLine } from './modules/tender/lot-line.entity';
 import { Invitation } from './modules/tender/invitation.entity';
 import { Quote } from './modules/quote/quote.entity';
 import { LineQuote } from './modules/quote/line-quote.entity';
+import { LotQuoteAttachment } from './modules/quote/lot-quote-attachment.entity';
 import { RankingSnapshot } from './modules/quote/ranking-snapshot.entity';
 
 @Module({
@@ -55,7 +56,7 @@ import { RankingSnapshot } from './modules/quote/ranking-snapshot.entity';
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres',
         url: cfg.getOrThrow('DB_URL'),
-        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, Lot, LotLine, Invitation, Quote, LineQuote, RankingSnapshot, AuditLog],
+        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, AuditLog],
         migrations: ['dist/migrations/*{.ts,.js}'],
         synchronize: cfg.get('NODE_ENV') === 'development',
         logging: cfg.get('NODE_ENV') === 'development',

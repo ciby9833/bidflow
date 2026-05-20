@@ -84,6 +84,7 @@ type TenderAttachmentInput = {
   fileUrl?: string;
 };
 type TenderLotInput = {
+  id?: string;
   title: string;
   description?: string;
   quantity?: number;
@@ -103,6 +104,7 @@ type LineColumnInput = {
   required?: boolean;
 };
 type TenderLotLineInput = {
+  id?: string;
   rowNo?: number;
   dataJson?: Record<string, unknown>;
   data?: Record<string, unknown>;
@@ -324,7 +326,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     }
     const qb = this.tenderRepo.createQueryBuilder('t')
       .leftJoinAndSelect('t.lots', 'lots')
-      .leftJoinAndSelect('lots.lines', 'lines')
+      .leftJoinAndSelect('lots.lines', 'lines', 'lines.is_active = true AND lines.round_no = t.current_quote_round')
       .leftJoinAndSelect('t.invitations', 'invitations')
       .where('t.id = :id', { id });
 
@@ -347,7 +349,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     }
     const qb = this.lotRepo.createQueryBuilder('lot')
       .leftJoinAndSelect('lot.tender', 'tender')
-      .leftJoinAndSelect('lot.lines', 'lines')
+      .leftJoinAndSelect('lot.lines', 'lines', 'lines.is_active = true AND lines.round_no = tender.current_quote_round')
       .where('lot.id = :lotId', { lotId });
 
     if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
@@ -445,26 +447,13 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         updatedBy: ctx.userId,
       });
 
-      if (data.lots?.length && !hasAnyQuotes) {
-        await em.delete(Lot, { tenderId: id });
-        for (let i = 0; i < data.lots.length; i++) {
-          const savedLot = await em.save(em.create(Lot, {
-            lotNo: await nextLotNo(em),
-            tenderId: id,
-            title: data.lots[i].title,
-            description: data.lots[i].description,
-            quantity: data.lots[i].quantity,
-            unit: data.lots[i].unit,
-            pricingMode: data.lots[i].pricingMode ?? 'total_price',
-            specJson: data.lots[i].specJson ?? template.specJson,
-            uiSchema: data.lots[i].uiSchema ?? template.uiSchema,
-            budgetAmount: data.lots[i].budgetAmount,
-            budgetCurrency: data.lots[i].budgetCurrency ?? data.baseCurrency ?? before.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
-            sortOrder: i,
-            schemaVersion: 1,
-          }));
-          await this.saveLotLines(em, id, savedLot, data.lots[i]);
-        }
+      if (data.lots?.length) {
+        await this.syncLots(em, id, data.lots, {
+          baseCurrency: data.baseCurrency ?? before.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
+          template,
+          hasAnyQuotes,
+          currentRound: before.currentQuoteRound ?? 1,
+        });
       }
       if (data.participationMode) {
         await this.replaceParticipants(em, id, before.currentQuoteRound ?? 1, data.participationMode, data.participantSupplierIds ?? [], data.participantSource ?? 'manual');
@@ -604,6 +593,21 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       } as any);
       if (previousSupplierIds.length) {
         await this.replaceParticipants(em, id, nextRound, ParticipationMode.SELECTED, previousSupplierIds, 'previous_round');
+      }
+      // 克隆上一轮线路到新一轮：新一轮拿到独立的线路副本，编辑结构不再影响上一轮快照。
+      const prevLines = await em.find(LotLine, { where: { tenderId: id, roundNo: previousRound, isActive: true } });
+      for (const line of prevLines) {
+        await em.save(em.create(LotLine, {
+          tenderId: line.tenderId,
+          lotId: line.lotId,
+          lineNo: line.lineNo,
+          rowNo: line.rowNo,
+          roundNo: nextRound,
+          sortOrder: line.sortOrder,
+          dataJson: line.dataJson,
+          schemaVersion: line.schemaVersion,
+          isActive: true,
+        }));
       }
     });
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_UPDATE, {
@@ -792,8 +796,26 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     const tender = await this.findById(id);
     const roundNo = tender.currentQuoteRound ?? 1;
     const lots = [...(tender.lots ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-    const lineIds = lots.flatMap((lot) => (lot.lines ?? []).map((line) => line.id));
     const lotIds = lots.map((lot) => lot.id);
+
+    // 按 标包+轮次 分组的线路（每轮各自独立的结构快照）
+    const allLines = await this.lineRepo.find({
+      where: { tenderId: tender.id, isActive: true },
+      order: { sortOrder: 'ASC' },
+    });
+    const linesByLotRound = new Map<string, LotLine[]>();
+    for (const ln of allLines) {
+      const key = `${ln.lotId}:${ln.roundNo}`;
+      linesByLotRound.set(key, [...(linesByLotRound.get(key) ?? []), ln]);
+    }
+    // 取某标包某轮的线路。新数据每轮各有线路按 round 精确取；
+    // 历史数据线路只集中在某一轮时，所有轮次回退到该唯一一轮。
+    const linesForLotRound = (lotId: string, round: number): LotLine[] => {
+      const exact = linesByLotRound.get(`${lotId}:${round}`);
+      if (exact) return exact;
+      const avail = [...linesByLotRound.entries()].filter(([key]) => key.startsWith(`${lotId}:`));
+      return avail.length === 1 ? avail[0][1] : [];
+    };
 
     const [lineQuotes, lotQuotes] = await Promise.all([
       this.lineQuoteRepo.find({ where: { tenderId: tender.id }, order: { roundNo: 'DESC', version: 'DESC', submittedAt: 'DESC' } }),
@@ -829,7 +851,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     ])).sort((a, b) => a - b);
 
     const buildLotsForRound = (targetRound: number) => lots.map((lot) => {
-        const lines = [...(lot.lines ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+        const lines = [...linesForLotRound(lot.id, targetRound)].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
         const latestLotQuotes = this.latestBySupplier(lotQuotes.filter((quote) => quote.lotId === lot.id))
           .sort((a, b) => Number(a.totalPrice) - Number(b.totalPrice))
           .map((quote, index) => this.enrichQuote(quote, supplierMap, index + 1, lotHistoryMap.get(`${quote.lotId}:${quote.supplierId}`) ?? []));
@@ -964,6 +986,122 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return Array.from(groups.values()).sort((a, b) => a.price - b.price);
   }
 
+  /**
+   * 增量同步标包：保留已有 ID 的标包/线路（其历史报价不受影响），新增无 ID 的，软删除被移除的线路。
+   * 第二轮起即使已有报价也能改报价结构——上一轮报价是快照，FK 指向的线路 ID 始终保留。
+   */
+  private async syncLots(
+    em: EntityManager,
+    tenderId: string,
+    lots: TenderLotInput[],
+    opts: { baseCurrency: string; template: { specJson: object; uiSchema: object }; hasAnyQuotes: boolean; currentRound: number },
+  ) {
+    const existingLots = await em.find(Lot, { where: { tenderId } });
+    const existingLotMap = new Map(existingLots.map((lot) => [lot.id, lot]));
+    const keptLotIds = new Set<string>();
+
+    for (let i = 0; i < lots.length; i++) {
+      const input = lots[i];
+      const existing = input.id ? existingLotMap.get(input.id) : undefined;
+      let lot: Lot;
+      if (existing) {
+        existing.title = input.title;
+        existing.description = input.description;
+        existing.quantity = input.quantity as any;
+        existing.unit = input.unit as any;
+        existing.pricingMode = input.pricingMode ?? existing.pricingMode ?? 'total_price';
+        existing.budgetAmount = input.budgetAmount as any;
+        existing.budgetCurrency = input.budgetCurrency ?? opts.baseCurrency;
+        existing.sortOrder = i;
+        lot = await em.save(existing);
+      } else {
+        lot = await em.save(em.create(Lot, {
+          lotNo: await nextLotNo(em),
+          tenderId,
+          title: input.title,
+          description: input.description,
+          quantity: input.quantity,
+          unit: input.unit,
+          pricingMode: input.pricingMode ?? 'total_price',
+          specJson: input.specJson ?? opts.template.specJson,
+          uiSchema: input.uiSchema ?? opts.template.uiSchema,
+          budgetAmount: input.budgetAmount,
+          budgetCurrency: input.budgetCurrency ?? opts.baseCurrency,
+          sortOrder: i,
+          schemaVersion: 1,
+        }));
+      }
+      keptLotIds.add(lot.id);
+      await this.syncLotLines(em, tenderId, lot, input, opts.currentRound);
+    }
+
+    // 被移除的标包：无任何报价才物理删除；有报价则保留以保护历史。
+    for (const lot of existingLots) {
+      if (keptLotIds.has(lot.id)) continue;
+      const [lq, llq] = await Promise.all([
+        em.count(Quote, { where: { lotId: lot.id } }),
+        em.count(LineQuote, { where: { lotId: lot.id } }),
+      ]);
+      if (lq + llq === 0) {
+        await em.delete(LotLine, { lotId: lot.id });
+        await em.delete(Lot, { id: lot.id });
+      }
+    }
+  }
+
+  /**
+   * 增量同步某标包【当前轮】的线路：已有 ID 更新、无 ID 新增、被移除的软删除。
+   * 只操作 round_no = currentRound 的线路，上一轮线路（不同 round_no）原封不动，保证轮次快照独立。
+   */
+  private async syncLotLines(em: EntityManager, tenderId: string, lot: Lot, input: TenderLotInput, currentRound: number) {
+    const columns = this.normalizeLineColumns(input.lineColumns);
+    if (columns.length) {
+      lot.uiSchema = { ...(lot.uiSchema ?? {}), lineColumns: columns };
+      await em.save(lot);
+    }
+
+    const lines = input.lines ?? [];
+    const existingLines = await em.find(LotLine, { where: { lotId: lot.id, roundNo: currentRound } });
+    const existingLineMap = new Map(existingLines.map((line) => [line.id, line]));
+    const keptLineIds = new Set<string>();
+    let maxRowNo = existingLines.reduce((max, line) => Math.max(max, line.rowNo ?? 0), 0);
+
+    for (let i = 0; i < lines.length; i++) {
+      const lineInput = lines[i];
+      const dataJson = lineInput.dataJson ?? lineInput.data ?? {};
+      const existing = lineInput.id ? existingLineMap.get(lineInput.id) : undefined;
+      if (existing) {
+        existing.dataJson = dataJson;
+        existing.rowNo = lineInput.rowNo ?? existing.rowNo;
+        existing.sortOrder = i;
+        existing.isActive = true;
+        await em.save(existing);
+        keptLineIds.add(existing.id);
+      } else {
+        maxRowNo += 1;
+        await em.save(em.create(LotLine, {
+          tenderId,
+          lotId: lot.id,
+          lineNo: `LN-${String(maxRowNo).padStart(4, '0')}`,
+          rowNo: lineInput.rowNo ?? maxRowNo,
+          roundNo: currentRound,
+          sortOrder: i,
+          dataJson,
+          schemaVersion: lot.schemaVersion ?? 1,
+          isActive: true,
+        }));
+      }
+    }
+
+    // 被移除的【当前轮】线路：软删除，保留历史报价的 FK 指向。
+    for (const line of existingLines) {
+      if (!keptLineIds.has(line.id) && line.isActive) {
+        line.isActive = false;
+        await em.save(line);
+      }
+    }
+  }
+
   private async saveLotLines(em: EntityManager, tenderId: string, lot: Lot, input: TenderLotInput) {
     const lines = input.lines ?? [];
     if (!lines.length) return;
@@ -984,6 +1122,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         lotId: lot.id,
         lineNo: `LN-${String(i + 1).padStart(4, '0')}`,
         rowNo: lines[i].rowNo ?? i + 1,
+        roundNo: 1,
         sortOrder: i,
         dataJson,
         schemaVersion: lot.schemaVersion ?? 1,

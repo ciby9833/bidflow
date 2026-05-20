@@ -72,7 +72,8 @@
       "file_required": "Please choose a file to upload.",
       "file_type_not_allowed": "File type not allowed.",
       "file_too_large": "File exceeds size limit.",
-      "file_not_found": "File not found."
+      "file_not_found": "File not found.",
+      "file_too_many": "Too many attachments (max 5)."
     },
     "export": {
       "full_requires_manager": "Only purchase managers can perform a full export."

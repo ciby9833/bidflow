@@ -4,7 +4,7 @@
  * 交互：调用 quote.service.ts；依赖 rbac.guard.ts 做角色控制；供 QuoteBidView.vue 和评标/导出流程访问。
  * 作者：吴川
  */
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { QuoteService } from './quote.service';
@@ -100,6 +100,28 @@ export class QuoteController {
   async myQuote(@Param('lotId') lotId: string, @Req() req: Request) {
     const user = req.user as User;
     return ApiResponse.ok(await this.svc.getMyQuoteState(lotId, user.supplierId!));
+  }
+
+  // ── 标包级投标附件（盖章报价单等）──
+  @Get('lots/:lotId/attachments/mine')
+  @RequireScopes('quote:view_own')
+  async myLotAttachments(@Param('lotId') lotId: string, @Req() req: Request) {
+    const user = req.user as User;
+    return ApiResponse.ok(await this.svc.getMyLotAttachments(lotId, user.supplierId!));
+  }
+
+  @Put('lots/:lotId/attachments')
+  @RequireScopes('quote:submit')
+  async saveLotAttachments(@Param('lotId') lotId: string, @Body() body: any, @Req() req: Request) {
+    const user = req.user as User;
+    return ApiResponse.ok(await this.svc.saveLotAttachments(lotId, user.supplierId!, body.attachments ?? []));
+  }
+
+  @Get('lots/:lotId/attachments')
+  @RequireScopes('quote:view_all')
+  async lotAttachmentsForReview(@Param('lotId') lotId: string, @Query('round') round?: string) {
+    const roundNo = round ? Number(round) : undefined;
+    return ApiResponse.ok(await this.svc.getLotAttachmentsForReview(lotId, roundNo));
   }
 
   @Get('lots/:lotId/mine/history')

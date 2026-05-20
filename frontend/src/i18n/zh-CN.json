@@ -304,6 +304,7 @@
     "notStarted": "未开始", "loading": "加载中", "requiredFields": "报价必填项",
     "myQuote": "我的报价", "unquoted": "未报价", "rank": "排名", "leading": "领先",
     "thisQuote": "本次报价", "lineQuote": "线路报价", "lineQuoteDesc": "当前第 {round} 轮，每条线路独立报价并独立排名。",
+    "attachments": "投标附件", "attachmentsDesc": "上传盖章报价单、盖章投标文件等（最多 5 个，单个 20MB 以内）。", "uploadAttachment": "上传附件", "attachmentMax": "最多只能上传 5 个附件", "attachmentSaved": "投标附件已保存", "attachmentEmpty": "暂无附件，点击上方按钮上传", "noSupplierAttachments": "供应商暂未上传投标附件", "removeAttachment": "移除", "confirmRemoveAttachment": "确认移除附件「{name}」？",
     "currentQuote": "当前报价", "nextMaxPrice": "下次最高可报", "rebidRequirement": "改价要求",
     "mustLowerBy": "必须低于当前报价 {pct}%", "quoteStatus": "报价状态",
     "remainingRebids": "剩余 {count} 次改价", "realtime": "实时", "polling": "轮询",

@@ -27,6 +27,35 @@
       <div><span>{{ t('quote.cooldownSeconds') }}</span><strong>{{ t('quote.seconds', { count: tender.cooldownSeconds }) }}</strong></div>
     </section>
 
+    <section v-if="lot && tender" class="attachment-panel">
+      <div class="attachment-head">
+        <div>
+          <h3>{{ t('quote.attachments') }}</h3>
+          <p>{{ t('quote.attachmentsDesc') }}</p>
+        </div>
+        <el-button
+          :loading="attachmentUploading"
+          :disabled="attachments.length >= 5"
+          @click="attachmentInput?.click()"
+        >
+          {{ t('quote.uploadAttachment') }}
+        </el-button>
+      </div>
+      <input ref="attachmentInput" hidden type="file" accept=".pdf,image/*" @change="uploadAttachment" />
+      <div v-if="attachments.length" class="attachment-list">
+        <div v-for="(file, idx) in attachments" :key="file.key" class="attachment-row">
+          <button type="button" class="attachment-link" @click="previewAttachment(file)">
+            <span class="attachment-name">{{ file.name }}</span>
+            <span class="attachment-size">{{ formatSize(file.size) }}</span>
+          </button>
+          <el-button text type="danger" size="small" @click="removeAttachment(idx)">
+            {{ t('quote.removeAttachment') }}
+          </el-button>
+        </div>
+      </div>
+      <p v-else class="attachment-empty">{{ t('quote.attachmentEmpty') }}</p>
+    </section>
+
     <section v-if="hasLineQuotes" class="line-quote-panel">
       <div class="line-panel-head">
         <div>
@@ -302,6 +331,11 @@ const editing = ref(false);
 const isRebid = computed(() => !!myQuote.value);
 let cooldownTimer: ReturnType<typeof setInterval> | undefined;
 
+// ── 标包级投标附件 ──
+const attachmentInput = ref<HTMLInputElement | null>(null);
+const attachments = ref<Array<{ key: string; name: string; size: number; mimeType?: string; fileUrl?: string }>>([]);
+const attachmentUploading = ref(false);
+
 const form = reactive({ totalPrice: 0, currency: 'IDR', remark: '' });
 const lineState = reactive<Record<string, {
   price: number;
@@ -336,6 +370,70 @@ const quoteErrorKeys: Record<string, string> = {
 };
 
 function fmtDate(iso: string) { return dayjs(iso).format('YYYY-MM-DD HH:mm'); }
+
+function formatSize(size?: number) {
+  if (!size) return '';
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function loadAttachments() {
+  try {
+    const res = await api.get(`/api/quotes/lots/${lotId}/attachments/mine`);
+    attachments.value = res.data.data?.attachments ?? [];
+  } catch {
+    attachments.value = [];
+  }
+}
+
+async function persistAttachments() {
+  await api.put(`/api/quotes/lots/${lotId}/attachments`, { attachments: attachments.value });
+}
+
+async function uploadAttachment(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  if (attachments.value.length >= 5) {
+    ElMessage.warning(t('quote.attachmentMax'));
+    input.value = '';
+    return;
+  }
+  attachmentUploading.value = true;
+  try {
+    const body = new FormData();
+    body.append('file', file);
+    const res = await api.post('/api/uploads/quote-attachments', body, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const up = res.data.data;
+    attachments.value.push({
+      key: up.objectKey, name: up.fileName, size: up.fileSize, mimeType: up.mimeType, fileUrl: up.fileUrl,
+    });
+    await persistAttachments();
+    ElMessage.success(t('quote.attachmentSaved'));
+  } finally {
+    attachmentUploading.value = false;
+    input.value = '';
+  }
+}
+
+async function removeAttachment(index: number) {
+  const file = attachments.value[index];
+  await ElMessageBox.confirm(
+    t('quote.confirmRemoveAttachment', { name: file?.name ?? '' }),
+    t('quote.removeAttachment'),
+    { type: 'warning', confirmButtonText: t('quote.removeAttachment'), cancelButtonText: t('common.cancel') },
+  );
+  attachments.value.splice(index, 1);
+  await persistAttachments();
+  ElMessage.success(t('quote.attachmentSaved'));
+}
+
+function previewAttachment(file: any) {
+  const url = file.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(file.key)}`;
+  window.open(url, '_blank');
+}
 function formatMoney(value: number, currency: string) {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
 }
@@ -605,6 +703,8 @@ async function load() {
     tender.value = lotRes.data.data.tender;
     form.currency = lot.value?.budgetCurrency || tender.value?.baseCurrency || 'IDR';
 
+    await loadAttachments();
+
     if (lot.value?.lines?.length) {
       await loadLineQuoteState();
       return;
@@ -844,6 +944,45 @@ onBeforeUnmount(() => {
   background: #fff;
   overflow: hidden;
 }
+.attachment-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  padding: 16px 20px;
+}
+.attachment-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.attachment-head h3 { margin: 0; font-size: 16px; color: #0f172a; }
+.attachment-head p { margin: 4px 0 0; font-size: 12px; color: #94a3b8; }
+.attachment-list { display: grid; gap: 8px; margin-top: 12px; }
+.attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.attachment-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.attachment-link:hover .attachment-name { color: #2563eb; }
+.attachment-name { flex: 1; font-size: 14px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.attachment-size { font-size: 12px; color: #94a3b8; flex-shrink: 0; }
+.attachment-empty { margin: 12px 0 0; font-size: 13px; color: #94a3b8; }
 .line-panel-head {
   display: flex;
   align-items: center;

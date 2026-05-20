@@ -455,8 +455,9 @@ import { api } from '../../composables/useApi';
 
 const DEFAULT_CURRENCY = 'IDR';
 type LineColumn = { key: string; label: string; type?: string; required?: boolean };
-type LotLine = { rowNo?: number; dataJson: Record<string, unknown> };
+type LotLine = { id?: string; rowNo?: number; dataJson: Record<string, unknown> };
 type TenderLotForm = {
+  id?: string;
   title: string;
   description: string;
   quantity?: number;
@@ -617,10 +618,9 @@ async function loadTender() {
   try {
     const res = await api.get(`/api/tenders/${route.params.id}`);
     const tender = res.data.data;
-    const reviewRes = await api.get(`/api/tenders/${route.params.id}/quote-review`).catch(() => ({ data: { data: null } }));
-    lockLotEditing.value = Boolean(reviewRes.data.data?.rounds?.some((round: any) => round.lots?.some((lot: any) => (
-      lot.latestQuotes?.length || lot.lines?.some((line: any) => line.latestQuotes?.length)
-    ))));
+    // 第二轮起允许改报价结构：后端按 lot.id/line.id 增量更新，被移除的线路软删除，
+    // 上一轮报价是快照不受影响，因此前端不再锁定编辑。
+    lockLotEditing.value = false;
     form.title = tender.title ?? '';
     form.type = tender.type ?? 'routine';
     form.baseCurrency = tender.baseCurrency ?? DEFAULT_CURRENCY;
@@ -645,6 +645,7 @@ async function loadTender() {
       fileUrl: item.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(item.key)}`,
     }));
     form.lots = (tender.lots?.length ? tender.lots : [{ title: '', budgetCurrency: DEFAULT_CURRENCY }]).map((lot: any) => ({
+      id: lot.id,
       title: lot.title ?? '',
       description: lot.description ?? '',
       quantity: lot.quantity == null ? undefined : Number(lot.quantity),
@@ -659,6 +660,7 @@ async function loadTender() {
         required: Boolean(col.required),
       })),
       lines: (lot.lines ?? []).map((line: any) => ({
+        id: line.id,
         rowNo: line.rowNo,
         dataJson: line.dataJson ?? {},
       })),
