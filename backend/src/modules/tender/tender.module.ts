@@ -14,13 +14,18 @@ import { Quote } from '../quote/quote.entity';
 import { LineQuote } from '../quote/line-quote.entity';
 import { Supplier } from '../supplier/supplier.entity';
 import { User } from '../auth/user.entity';
+import { SupplierAccount } from '../auth/supplier-account.entity';
 import { SupplierTenderController, TenderController } from './tender.controller';
 import { TenderService } from './tender.service';
 import { AuditLog } from '../../shared/audit/audit-log.entity';
 import { AuditService } from '../../shared/audit/audit.service';
+import { MailModule } from '../../shared/mail/mail.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Tender, Lot, LotLine, Invitation, Quote, LineQuote, Supplier, User, AuditLog])],
+  imports: [
+    TypeOrmModule.forFeature([Tender, Lot, LotLine, Invitation, Quote, LineQuote, Supplier, User, SupplierAccount, AuditLog]),
+    MailModule,
+  ],
   controllers: [TenderController, SupplierTenderController],
   providers: [TenderService, AuditService],
   exports: [TenderService],

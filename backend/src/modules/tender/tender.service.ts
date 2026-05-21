@@ -5,8 +5,9 @@
  * 作者：吴川
  */
 import {
-  BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit,
+  BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   DataSource, EntityManager, In, ObjectLiteral, Repository, SelectQueryBuilder,
@@ -21,7 +22,10 @@ import { LineQuote } from '../quote/line-quote.entity';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 import { User, UserRole } from '../auth/user.entity';
+import { SupplierAccount } from '../auth/supplier-account.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
+import { MailService } from '../../shared/mail/mail.service';
+import { buildTenderInvitationEmail } from '../../shared/mail/templates/tender-invitation.template';
 
 // Three standard templates (spec_json + ui_schema stubs)
 const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
@@ -149,9 +153,14 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     @InjectRepository(LineQuote) private readonly lineQuoteRepo: Repository<LineQuote>,
     @InjectRepository(Supplier) private readonly supplierRepo: Repository<Supplier>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    @InjectRepository(SupplierAccount) private readonly supplierAccountRepo: Repository<SupplierAccount>,
     private readonly audit: AuditService,
+    private readonly mail: MailService,
+    private readonly config: ConfigService,
     private readonly ds: DataSource,
   ) {}
+
+  private readonly logger = new Logger(TenderService.name);
 
   onModuleInit() {
     void this.refreshLifecycleStatuses();
@@ -371,7 +380,52 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     const nextStatus = this.shouldOpenNow(t) ? TenderStatus.OPEN : TenderStatus.PUBLISHED;
     await this.tenderRepo.update(id, { status: nextStatus, updatedBy: ctx.userId } as any);
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_CREATE, { status: t.status }, { status: nextStatus });
-    return this.findById(id);
+    const published = await this.findById(id);
+    // 定向招标发布后，给被邀供应商的关联用户发邮件通知（尽力而为，失败不影响发布）
+    void this.notifyInvitedSuppliers(published);
+    return published;
+  }
+
+  /** 定向招标发布时，向被邀供应商关联的活跃用户发送招标邀请邮件。 */
+  private async notifyInvitedSuppliers(tender: Tender) {
+    try {
+      if ((tender.participationMode ?? ParticipationMode.ALL) !== ParticipationMode.SELECTED) return;
+      const roundNo = tender.currentQuoteRound ?? 1;
+      const invitations = await this.invRepo.find({ where: { tenderId: tender.id, roundNo } });
+      const supplierIds = Array.from(new Set(invitations.map((inv) => inv.supplierId).filter(Boolean)));
+      if (!supplierIds.length) return;
+
+      const [accounts, suppliers] = await Promise.all([
+        this.supplierAccountRepo.find({ where: { supplierId: In(supplierIds), status: 'active' } }),
+        this.supplierRepo.find({ where: { id: In(supplierIds) } }),
+      ]);
+      if (!accounts.length) return;
+
+      const supplierNameMap = new Map(suppliers.map((s) => [s.id, s.legalName || s.shortName || s.businessId || '']));
+      const users = await this.userRepo.find({ where: { id: In(accounts.map((a) => a.authUserId)) } });
+      const userMap = new Map(users.map((u) => [u.id, u]));
+      const portalUrl = this.config.get<string>('FRONTEND_ORIGIN') || undefined;
+
+      for (const account of accounts) {
+        const user = userMap.get(account.authUserId);
+        if (!user?.email) continue;
+        try {
+          await this.mail.send(buildTenderInvitationEmail({
+            to: user.email,
+            locale: user.locale,
+            supplierName: account.displayName || supplierNameMap.get(account.supplierId),
+            tenderNo: tender.tenderNo,
+            tenderTitle: tender.title,
+            bidDeadline: tender.bidDeadline,
+            portalUrl,
+          }));
+        } catch (err) {
+          this.logger.warn(`Tender invitation mail to ${user.email} failed: ${(err as Error).message}`);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`notifyInvitedSuppliers failed for tender ${tender.id}: ${(err as Error).message}`);
+    }
   }
 
   async open(id: string, ctx: AuditContext) {
