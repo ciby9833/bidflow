@@ -135,7 +135,7 @@
   "supplierList": {
     "searchPlaceholder": "搜索公司全称、简称、编号、联系人、电话、邮箱",
     "supplierFilters": "供应商筛选条件", "reviewFilters": "审核筛选条件",
-    "supplierNo": "供应商编号", "reviewStatus": "审核状态", "noSuppliers": "暂无供应商",
+    "supplierNo": "供应商编号", "reviewStatus": "审核状态", "noSuppliers": "暂无供应商", "export": "导出", "exportFailed": "导出失败",
     "editSupplier": "编辑供应商", "allStatuses": "全部状态", "allReviews": "全部审核",
     "updated": "供应商信息已更新", "suspendReasonPrompt": "请输入冻结原因",
     "suspendSupplier": "冻结供应商", "suspended": "已冻结", "resumed": "已解冻",

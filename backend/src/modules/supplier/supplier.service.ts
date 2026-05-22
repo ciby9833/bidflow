@@ -10,7 +10,9 @@ import {
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import * as ExcelJS from 'exceljs';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from './supplier.entity';
+import { I18nService } from '../../shared/i18n/i18n.service';
 import { SupplierDocument } from './supplier-document.entity';
 import { SupplierReviewLog } from './supplier-review-log.entity';
 import { SupplierInvitation } from './supplier-invitation.entity';
@@ -49,6 +51,7 @@ export class SupplierService {
     @InjectRepository(SupplierAccount) private readonly supplierAccountRepo: Repository<SupplierAccount>,
     private readonly ds: DataSource,
     private readonly audit: AuditService,
+    private readonly i18n: I18nService,
   ) {}
 
   async create(data: Partial<Supplier>, ctx: AuditContext) {
@@ -104,6 +107,94 @@ export class SupplierService {
     const s = await this.repo.findOne({ where: { id } });
     if (!s) throw new NotFoundException('error.supplier.not_found');
     return s;
+  }
+
+  /** 导出供应商清单 Excel（按当前筛选条件，含编号/名称/状态/审核状态/国家/联系方式）。 */
+  async exportSuppliers(filters: { status?: SupplierStatus; reviewStatus?: SupplierReviewStatus; search?: string }): Promise<Buffer> {
+    const qb = this.repo.createQueryBuilder('s');
+    if (filters.status) qb.andWhere('s.status = :status', { status: filters.status });
+    if (filters.reviewStatus) qb.andWhere('s.review_status = :reviewStatus', { reviewStatus: filters.reviewStatus });
+    if (filters.search) {
+      qb.andWhere(
+        `(
+          s.legal_name ILIKE :q
+          OR s.short_name ILIKE :q
+          OR s.business_id ILIKE :q
+          OR s.contact_name ILIKE :q
+          OR s.contact_email ILIKE :q
+          OR s.contact_phone ILIKE :q
+        )`,
+        { q: `%${filters.search}%` },
+      );
+    }
+    qb.orderBy('s.createdAt', 'DESC');
+    const suppliers = await qb.getMany();
+
+    const f = (k: string) => this.i18n.t(`supplierExport.field.${k}`);
+    const HEADER_BG = 'FF1E293B';
+    const BAND = 'FFF1F5F9';
+    const BORDER = 'FFE2E8F0';
+    const hair = { style: 'hair' as const, color: { argb: BORDER } };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'BidFlow';
+    wb.created = new Date();
+    const ws = wb.addWorksheet(this.safeSheetName(this.i18n.t('supplierExport.sheet')), {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+
+    const headers = [
+      f('businessId'), f('legalName'), f('shortName'), f('status'), f('reviewStatus'),
+      f('country'), f('contactEmail'), f('contactPhone'), f('contactName'),
+    ];
+    ws.columns = headers.map((h) => ({ header: h, width: 18 }));
+    const headerRow = ws.getRow(1);
+    headerRow.height = 26;
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    suppliers.forEach((s, index) => {
+      const row = ws.addRow([
+        s.businessId ?? '',
+        s.legalName ?? '',
+        s.shortName ?? '',
+        this.i18n.t(`supplierExport.status.${s.status}`),
+        this.i18n.t(`supplierExport.reviewStatus.${s.reviewStatus}`),
+        s.countryCode ?? '',
+        s.contactEmail ?? '',
+        s.contactPhone ?? '',
+        s.contactName ?? '',
+      ]);
+      row.height = 20;
+      row.eachCell((cell) => {
+        cell.border = {
+          top: hair, bottom: hair, left: hair, right: hair,
+        };
+        cell.alignment = { vertical: 'middle', indent: 1 };
+        if (index % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BAND } };
+      });
+    });
+
+    // 列宽自适应（中文按 2 字宽）
+    ws.columns?.forEach((col) => {
+      let max = 8;
+      col.eachCell?.({ includeEmpty: false }, (cell) => {
+        const text = cell.value == null ? '' : String(cell.value);
+        const width = [...text].reduce((sum, ch) => sum + (ch.charCodeAt(0) > 255 ? 2 : 1), 0);
+        if (width > max) max = width;
+      });
+      col.width = Math.min(Math.max(max + 3, 12), 44);
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
+  private safeSheetName(name: string) {
+    return name.replace(/[\\/?*\[\]:]/g, '-').slice(0, 31) || 'Sheet';
   }
 
   async findReviewDetail(id: string) {

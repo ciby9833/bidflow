@@ -5,10 +5,10 @@
  * 作者：吴川
  */
 import {
-  Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards,
+  Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { SupplierService } from './supplier.service';
 import { SupplierReviewStatus, SupplierStatus } from './supplier.entity';
 import { ApiResponse } from '../../shared/dto/response.dto';
@@ -49,6 +49,23 @@ export class SupplierController {
       limit: q.limit ? parseInt(q.limit) : 20,
     });
     return ApiResponse.ok(result.items, { total: result.total, page: result.page, limit: result.limit });
+  }
+
+  @Get('export')
+  @RequireScopes('supplier:view')
+  async export(
+    @Query() q: { status?: SupplierStatus; reviewStatus?: SupplierReviewStatus; search?: string },
+    @Res() res: Response,
+  ) {
+    const buffer = await this.svc.exportSuppliers({
+      status: q.status,
+      reviewStatus: q.reviewStatus,
+      search: q.search,
+    });
+    const filename = `bidflow-suppliers-${Date.now()}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Get(':id')

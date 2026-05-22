@@ -135,7 +135,7 @@
   "supplierList": {
     "searchPlaceholder": "Search company name, short name, number, contact, phone, or email",
     "supplierFilters": "Supplier filters", "reviewFilters": "Review filters",
-    "supplierNo": "Supplier No.", "reviewStatus": "Review Status", "noSuppliers": "No suppliers",
+    "supplierNo": "Supplier No.", "reviewStatus": "Review Status", "noSuppliers": "No suppliers", "export": "Export", "exportFailed": "Export failed",
     "editSupplier": "Edit Supplier", "allStatuses": "All Statuses", "allReviews": "All Reviews",
     "updated": "Supplier information updated", "suspendReasonPrompt": "Enter suspension reason",
     "suspendSupplier": "Suspend Supplier", "suspended": "Suspended", "resumed": "Resumed",

@@ -140,5 +140,35 @@
     },
     "anonymousSupplier": "Supplier {seq}",
     "lotIntegralQuote": "Lot Integral Quote"
+  },
+  "supplierExport": {
+    "sheet": "Suppliers",
+    "title": "Supplier List",
+    "exportedAt": "Exported At",
+    "total": "Records",
+    "field": {
+      "businessId": "Supplier No.",
+      "legalName": "Legal Name",
+      "shortName": "Short Name",
+      "status": "Status",
+      "reviewStatus": "Review Status",
+      "country": "Country",
+      "contactEmail": "Contact Email",
+      "contactPhone": "Contact Phone",
+      "contactName": "Contact Person"
+    },
+    "status": {
+      "pending": "Pending",
+      "active": "Active",
+      "suspended": "Suspended",
+      "blacklisted": "Blacklisted"
+    },
+    "reviewStatus": {
+      "not_submitted": "Not Submitted",
+      "pending_review": "Pending Review",
+      "supplement_required": "Supplement Required",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    }
   }
 }

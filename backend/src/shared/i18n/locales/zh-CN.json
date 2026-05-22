@@ -144,5 +144,35 @@
     },
     "anonymousSupplier": "供应商{seq}",
     "lotIntegralQuote": "标包整体报价"
+  },
+  "supplierExport": {
+    "sheet": "供应商清单",
+    "title": "供应商清单",
+    "exportedAt": "导出时间",
+    "total": "记录数",
+    "field": {
+      "businessId": "供应商编号",
+      "legalName": "法定名称",
+      "shortName": "简称",
+      "status": "状态",
+      "reviewStatus": "审核状态",
+      "country": "国家",
+      "contactEmail": "联系邮箱",
+      "contactPhone": "联系电话",
+      "contactName": "联系人"
+    },
+    "status": {
+      "pending": "待启用",
+      "active": "启用",
+      "suspended": "停用",
+      "blacklisted": "黑名单"
+    },
+    "reviewStatus": {
+      "not_submitted": "未提交",
+      "pending_review": "待审核",
+      "supplement_required": "需补充材料",
+      "approved": "已通过",
+      "rejected": "已驳回"
+    }
   }
 }

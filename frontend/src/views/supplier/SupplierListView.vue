@@ -10,7 +10,12 @@
       <div>
         <h2>{{ t('nav.suppliers') }}</h2>
       </div>
-      <el-button v-if="auth.hasScope('supplier:create')" type="primary" @click="router.push('/suppliers/new')">{{ t('route.supplierCreate') }}</el-button>
+      <div class="header-actions">
+        <el-button v-if="auth.hasScope('supplier:view')" :loading="exporting" @click="exportSuppliers">
+          {{ t('supplierList.export') }}
+        </el-button>
+        <el-button v-if="auth.hasScope('supplier:create')" type="primary" @click="router.push('/suppliers/new')">{{ t('route.supplierCreate') }}</el-button>
+      </div>
     </div>
 
     <section class="filter-panel">
@@ -145,6 +150,7 @@ const auth = useAuthStore();
 const suppliers = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);
+const exporting = ref(false);
 const total = ref(0);
 const editVisible = ref(false);
 const editingId = ref('');
@@ -223,6 +229,30 @@ async function load() {
     total.value = Number(res.data.meta?.total ?? suppliers.value.length);
   }
   finally { loading.value = false; }
+}
+
+async function exportSuppliers() {
+  exporting.value = true;
+  try {
+    const res = await api.get('/api/suppliers/export', {
+      params: {
+        search: filters.search || undefined,
+        status: filters.status || undefined,
+        reviewStatus: filters.reviewStatus || undefined,
+      },
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `suppliers-${Date.now()}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    ElMessage.error(t('supplierList.exportFailed'));
+  } finally {
+    exporting.value = false;
+  }
 }
 
 function reload() {

@@ -135,7 +135,7 @@
   "supplierList": {
     "searchPlaceholder": "Cari nama perusahaan, singkatan, nomor, kontak, telepon, atau email",
     "supplierFilters": "Filter pemasok", "reviewFilters": "Filter ulasan",
-    "supplierNo": "No. Pemasok", "reviewStatus": "Status Ulasan", "noSuppliers": "Belum ada pemasok",
+    "supplierNo": "No. Pemasok", "reviewStatus": "Status Ulasan", "noSuppliers": "Belum ada pemasok", "export": "Ekspor", "exportFailed": "Ekspor gagal",
     "editSupplier": "Edit Pemasok", "allStatuses": "Semua Status", "allReviews": "Semua Ulasan",
     "updated": "Informasi pemasok diperbarui", "suspendReasonPrompt": "Masukkan alasan pembekuan",
     "suspendSupplier": "Bekukan Pemasok", "suspended": "Dibekukan", "resumed": "Diaktifkan kembali",

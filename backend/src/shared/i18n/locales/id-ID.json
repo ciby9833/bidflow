@@ -140,5 +140,35 @@
     },
     "anonymousSupplier": "Pemasok {seq}",
     "lotIntegralQuote": "Penawaran Lot Keseluruhan"
+  },
+  "supplierExport": {
+    "sheet": "Pemasok",
+    "title": "Daftar Pemasok",
+    "exportedAt": "Waktu Ekspor",
+    "total": "Jumlah Data",
+    "field": {
+      "businessId": "No. Pemasok",
+      "legalName": "Nama Resmi",
+      "shortName": "Nama Singkat",
+      "status": "Status",
+      "reviewStatus": "Status Tinjauan",
+      "country": "Negara",
+      "contactEmail": "Email Kontak",
+      "contactPhone": "Telepon Kontak",
+      "contactName": "Narahubung"
+    },
+    "status": {
+      "pending": "Menunggu",
+      "active": "Aktif",
+      "suspended": "Ditangguhkan",
+      "blacklisted": "Daftar Hitam"
+    },
+    "reviewStatus": {
+      "not_submitted": "Belum Dikirim",
+      "pending_review": "Menunggu Tinjauan",
+      "supplement_required": "Perlu Dilengkapi",
+      "approved": "Disetujui",
+      "rejected": "Ditolak"
+    }
   }
 }
