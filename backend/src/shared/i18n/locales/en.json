@@ -141,6 +141,18 @@
     "anonymousSupplier": "Supplier {seq}",
     "lotIntegralQuote": "Lot Integral Quote"
   },
+  "supplierImport": {
+    "sheet": "Supplier Import",
+    "headerBusinessId": "Supplier No.",
+    "headerName": "Supplier Name (reference only, optional)",
+    "exampleId": "S-ID-00001",
+    "exampleName": "Example Supplier",
+    "reason": {
+      "notFound": "Supplier No. does not exist in the system",
+      "notEligible": "Supplier is not approved or is suspended, cannot participate",
+      "duplicate": "Duplicated in the file"
+    }
+  },
   "supplierExport": {
     "sheet": "Suppliers",
     "title": "Supplier List",

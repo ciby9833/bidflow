@@ -5,9 +5,10 @@
  * 作者：吴川
  */
 import {
-  Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards,
+  Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { SupplierService } from './supplier.service';
 import { SupplierReviewStatus, SupplierStatus } from './supplier.entity';
@@ -66,6 +67,22 @@ export class SupplierController {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
+  }
+
+  @Get('participants/import-template')
+  @RequireScopes('supplier:view')
+  async importTemplate(@Res() res: Response) {
+    const buffer = this.svc.buildParticipantImportTemplate();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="bidflow-participant-import-template.xlsx"');
+    res.send(buffer);
+  }
+
+  @Post('participants/import')
+  @RequireScopes('supplier:view')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async importParticipants(@UploadedFile() file: any) {
+    return ApiResponse.ok(await this.svc.resolveParticipantImport(file?.buffer));
   }
 
   @Get(':id')

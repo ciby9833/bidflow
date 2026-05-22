@@ -145,6 +145,18 @@
     "anonymousSupplier": "供应商{seq}",
     "lotIntegralQuote": "标包整体报价"
   },
+  "supplierImport": {
+    "sheet": "供应商导入",
+    "headerBusinessId": "供应商编号",
+    "headerName": "供应商名称（仅参考，可留空）",
+    "exampleId": "S-ID-00001",
+    "exampleName": "示例供应商",
+    "reason": {
+      "notFound": "系统中不存在该供应商编号",
+      "notEligible": "供应商未通过认证或已停用，不能作为参与供应商",
+      "duplicate": "文件中重复出现"
+    }
+  },
   "supplierExport": {
     "sheet": "供应商清单",
     "title": "供应商清单",

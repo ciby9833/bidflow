@@ -9,8 +9,9 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import * as ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from './supplier.entity';
 import { I18nService } from '../../shared/i18n/i18n.service';
 import { SupplierDocument } from './supplier-document.entity';
@@ -195,6 +196,81 @@ export class SupplierService {
 
   private safeSheetName(name: string) {
     return name.replace(/[\\/?*\[\]:]/g, '-').slice(0, 31) || 'Sheet';
+  }
+
+  /** 生成「参与供应商批量导入」模板：A 列供应商编号（必填），B 列名称（仅参考）。 */
+  buildParticipantImportTemplate(): Buffer {
+    const headerId = this.i18n.t('supplierImport.headerBusinessId');
+    const headerName = this.i18n.t('supplierImport.headerName');
+    const rows = [
+      [headerId, headerName],
+      [this.i18n.t('supplierImport.exampleId'), this.i18n.t('supplierImport.exampleName')],
+    ];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 20 }, { wch: 36 }];
+    XLSX.utils.book_append_sheet(wb, ws, this.safeSheetName(this.i18n.t('supplierImport.sheet')));
+    return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+  }
+
+  /**
+   * 解析「参与供应商批量导入」Excel，按供应商编号匹配系统内供应商。
+   * 不落库——仅返回校验后的供应商列表与逐行失败明细，由前端并入已选名单、随招标提交。
+   */
+  async resolveParticipantImport(buffer?: Buffer) {
+    if (!buffer?.length) throw new BadRequestException('error.tender.import_file_required');
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if (!sheet) throw new BadRequestException('error.tender.import_empty_workbook');
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: '' });
+    if (rows.length < 2) throw new BadRequestException('error.tender.import_requires_header_and_rows');
+
+    type ImportError = { row: number; value: string; reason: string };
+    const errors: ImportError[] = [];
+    const seen = new Set<string>();
+    const wanted: Array<{ row: number; businessId: string }> = [];
+
+    rows.slice(1).forEach((raw, index) => {
+      const rowNo = index + 2; // 含表头 + 从 1 计数
+      const businessId = String((raw as unknown[])[0] ?? '').trim();
+      if (!businessId) return; // 容忍空行
+      const norm = businessId.toUpperCase();
+      if (seen.has(norm)) {
+        errors.push({ row: rowNo, value: businessId, reason: this.i18n.t('supplierImport.reason.duplicate') });
+        return;
+      }
+      seen.add(norm);
+      wanted.push({ row: rowNo, businessId: norm });
+    });
+
+    // 非空数据行总数 = 唯一编号 + 重复行（此刻 errors 仅含重复项）
+    const totalRows = wanted.length + errors.length;
+
+    const found = wanted.length
+      ? await this.repo.find({ where: { businessId: In(wanted.map((w) => w.businessId)) } })
+      : [];
+    const foundMap = new Map(found.map((s) => [s.businessId.toUpperCase(), s]));
+
+    const matched: Array<{ id: string; businessId: string; legalName?: string; shortName?: string }> = [];
+    for (const w of wanted) {
+      const supplier = foundMap.get(w.businessId);
+      if (!supplier) {
+        errors.push({ row: w.row, value: w.businessId, reason: this.i18n.t('supplierImport.reason.notFound') });
+        continue;
+      }
+      if (supplier.status !== SupplierStatus.ACTIVE || supplier.reviewStatus !== SupplierReviewStatus.APPROVED) {
+        errors.push({ row: w.row, value: w.businessId, reason: this.i18n.t('supplierImport.reason.notEligible') });
+        continue;
+      }
+      matched.push({
+        id: supplier.id,
+        businessId: supplier.businessId,
+        legalName: supplier.legalName,
+        shortName: supplier.shortName,
+      });
+    }
+
+    return { matched, errors, total: totalRows };
   }
 
   async findReviewDetail(id: string) {

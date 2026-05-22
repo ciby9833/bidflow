@@ -360,6 +360,17 @@
                       <el-option value="name" :label="t('tenderCreate.sortName')" />
                     </el-select>
                     <el-button @click="selectCurrentPage">{{ t('tenderCreate.selectPage') }}</el-button>
+                    <el-button @click="downloadParticipantTemplate">{{ t('tenderCreate.downloadImportTemplate') }}</el-button>
+                    <el-button type="primary" plain :loading="participantImporting" @click="participantFileInput?.click()">
+                      {{ t('tenderCreate.importParticipants') }}
+                    </el-button>
+                    <input
+                      ref="participantFileInput"
+                      hidden
+                      type="file"
+                      accept=".xlsx,.xls"
+                      @change="importParticipants"
+                    />
                   </div>
                   <el-table v-loading="supplierLoading" :data="supplierOptions" border stripe class="supplier-table">
                     <el-table-column width="48" align="center">
@@ -436,6 +447,40 @@
         <p>{{ t('tenderCreate.previewUnsupported') }}</p>
         <el-button type="primary" @click="openPreviewFile">{{ t('tenderCreate.openInNewWindow') }}</el-button>
       </div>
+    </el-dialog>
+
+    <!-- 批量导入参与供应商 — 结果 -->
+    <el-dialog v-model="importResultVisible" :title="t('tenderCreate.importResultTitle')" width="560px">
+      <div v-if="importResult" class="import-result">
+        <div class="import-stat">
+          <span class="import-stat-ok">{{ t('tenderCreate.importMatched', { count: importResult.matched.length }) }}</span>
+          <span v-if="importResult.errors.length" class="import-stat-fail">
+            {{ t('tenderCreate.importFailedCount', { count: importResult.errors.length }) }}
+          </span>
+        </div>
+        <el-table
+          v-if="importResult.errors.length"
+          :data="importResult.errors"
+          border
+          size="small"
+          max-height="320"
+          class="import-error-table"
+        >
+          <el-table-column :label="t('tenderCreate.importRow')" width="70">
+            <template #default="{ row }">{{ row.row }}</template>
+          </el-table-column>
+          <el-table-column :label="t('supplierList.supplierNo')" width="140">
+            <template #default="{ row }">{{ row.value || '—' }}</template>
+          </el-table-column>
+          <el-table-column :label="t('tenderCreate.importReason')" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.reason }}</template>
+          </el-table-column>
+        </el-table>
+        <p v-else class="import-all-ok">{{ t('tenderCreate.importAllOk') }}</p>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="importResultVisible = false">{{ t('common.confirm') }}</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -543,6 +588,12 @@ const selectedSupplierMap = ref<Record<string, any>>({});
 const previousInvitedSupplierIds = ref<string[]>([]);
 const previousQuotedSupplierIds = ref<string[]>([]);
 const roundParticipantMode = ref<'previous_all' | 'previous_select' | 'all'>('all');
+
+// 参与供应商批量导入
+const participantFileInput = ref<HTMLInputElement | null>(null);
+const participantImporting = ref(false);
+const importResultVisible = ref(false);
+const importResult = ref<{ matched: any[]; errors: Array<{ row: number; value: string; reason: string }>; total: number } | null>(null);
 const supplierSelectionHydrated = ref(false);
 const supplierQuery = reactive({
   search: '',
@@ -750,6 +801,46 @@ function selectCurrentPage() {
 
 function removeSelectedSupplier(id: string) {
   selectedSupplierIds.value = selectedSupplierIds.value.filter((supplierId) => supplierId !== id);
+}
+
+async function downloadParticipantTemplate() {
+  const res = await api.get('/api/suppliers/participants/import-template', { responseType: 'blob' });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'participant-import-template.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importParticipants(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  participantImporting.value = true;
+  try {
+    const body = new FormData();
+    body.append('file', file);
+    const res = await api.post('/api/suppliers/participants/import', body, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const result = res.data.data as { matched: any[]; errors: any[]; total: number };
+    // 成功匹配的并入已选名单
+    if (result.matched.length) {
+      rememberSuppliers(result.matched);
+      const ids = new Set(selectedSupplierIds.value);
+      result.matched.forEach((s) => ids.add(s.id));
+      selectedSupplierIds.value = Array.from(ids);
+      form.participationMode = 'selected';
+    }
+    importResult.value = result;
+    importResultVisible.value = true;
+  } catch (e: any) {
+    error.value = e.response?.data?.error?.message ?? e.response?.data?.error?.message_key ?? t('tenderCreate.importFailedGeneric');
+  } finally {
+    participantImporting.value = false;
+    input.value = '';
+  }
 }
 
 function applyRoundMode(mode: 'previous_all' | 'previous_select' | 'all') {

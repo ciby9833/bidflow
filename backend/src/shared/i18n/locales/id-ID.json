@@ -141,6 +141,18 @@
     "anonymousSupplier": "Pemasok {seq}",
     "lotIntegralQuote": "Penawaran Lot Keseluruhan"
   },
+  "supplierImport": {
+    "sheet": "Impor Pemasok",
+    "headerBusinessId": "No. Pemasok",
+    "headerName": "Nama Pemasok (referensi saja, opsional)",
+    "exampleId": "S-ID-00001",
+    "exampleName": "Pemasok Contoh",
+    "reason": {
+      "notFound": "No. Pemasok tidak ada di sistem",
+      "notEligible": "Pemasok belum disetujui atau ditangguhkan, tidak dapat berpartisipasi",
+      "duplicate": "Duplikat dalam berkas"
+    }
+  },
   "supplierExport": {
     "sheet": "Pemasok",
     "title": "Daftar Pemasok",
