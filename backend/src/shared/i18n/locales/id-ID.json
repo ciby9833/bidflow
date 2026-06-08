@@ -141,6 +141,33 @@
     "anonymousSupplier": "Pemasok {seq}",
     "lotIntegralQuote": "Penawaran Lot Keseluruhan"
   },
+  "supplierCreateImport": {
+    "sheet": "Buat Pemasok Massal",
+    "headers": {
+      "legalName": "Nama Resmi (wajib)",
+      "shortName": "Nama Singkat",
+      "contactName": "Narahubung",
+      "contactPhone": "Telepon",
+      "contactEmail": "Email",
+      "taxId": "NPWP / Nomor Pajak",
+      "countryCode": "Kode Negara (default ID)"
+    },
+    "example": {
+      "legalName": "PT Contoh Pemasok",
+      "shortName": "Contoh Pemasok",
+      "contactName": "Budi",
+      "contactPhone": "081234567890",
+      "contactEmail": "contact@example.com",
+      "taxId": "01.234.567.8-901.000",
+      "countryCode": "ID"
+    },
+    "reason": {
+      "missingName": "Nama resmi tidak diisi",
+      "duplicateInFile": "Duplikat dalam berkas",
+      "alreadyExists": "Pemasok dengan nama yang sama sudah ada",
+      "invalidEmail": "Format email tidak valid"
+    }
+  },
   "supplierImport": {
     "sheet": "Impor Pemasok",
     "headerBusinessId": "No. Pemasok",

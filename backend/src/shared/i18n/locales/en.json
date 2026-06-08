@@ -141,6 +141,33 @@
     "anonymousSupplier": "Supplier {seq}",
     "lotIntegralQuote": "Lot Integral Quote"
   },
+  "supplierCreateImport": {
+    "sheet": "Supplier Bulk Create",
+    "headers": {
+      "legalName": "Legal Name (required)",
+      "shortName": "Short Name",
+      "contactName": "Contact Person",
+      "contactPhone": "Contact Phone",
+      "contactEmail": "Contact Email",
+      "taxId": "Tax ID",
+      "countryCode": "Country (default ID)"
+    },
+    "example": {
+      "legalName": "Example Supplier Co. Ltd.",
+      "shortName": "Example Supplier",
+      "contactName": "Budi",
+      "contactPhone": "081234567890",
+      "contactEmail": "contact@example.com",
+      "taxId": "01.234.567.8-901.000",
+      "countryCode": "ID"
+    },
+    "reason": {
+      "missingName": "Missing legal name",
+      "duplicateInFile": "Duplicated in the file",
+      "alreadyExists": "A supplier with the same name already exists",
+      "invalidEmail": "Invalid email format"
+    }
+  },
   "supplierImport": {
     "sheet": "Supplier Import",
     "headerBusinessId": "Supplier No.",

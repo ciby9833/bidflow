@@ -145,6 +145,33 @@
     "anonymousSupplier": "供应商{seq}",
     "lotIntegralQuote": "标包整体报价"
   },
+  "supplierCreateImport": {
+    "sheet": "供应商批量新增",
+    "headers": {
+      "legalName": "法定名称（必填）",
+      "shortName": "简称",
+      "contactName": "联系人",
+      "contactPhone": "联系电话",
+      "contactEmail": "联系邮箱",
+      "taxId": "税号",
+      "countryCode": "国家代码（留空默认 ID）"
+    },
+    "example": {
+      "legalName": "示例供应商有限公司",
+      "shortName": "示例供应商",
+      "contactName": "Budi",
+      "contactPhone": "081234567890",
+      "contactEmail": "contact@example.com",
+      "taxId": "01.234.567.8-901.000",
+      "countryCode": "ID"
+    },
+    "reason": {
+      "missingName": "缺少法定名称",
+      "duplicateInFile": "文件中重复",
+      "alreadyExists": "系统中已存在同名供应商",
+      "invalidEmail": "邮箱格式不正确"
+    }
+  },
   "supplierImport": {
     "sheet": "供应商导入",
     "headerBusinessId": "供应商编号",

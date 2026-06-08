@@ -273,6 +273,131 @@ export class SupplierService {
     return { matched, errors, total: totalRows };
   }
 
+  /** 生成「批量新增供应商」模板：7 列表头 + 1 行示例。 */
+  buildCreateImportTemplate(): Buffer {
+    const h = (k: string) => this.i18n.t(`supplierCreateImport.headers.${k}`);
+    const e = (k: string) => this.i18n.t(`supplierCreateImport.example.${k}`);
+    const rows = [
+      [h('legalName'), h('shortName'), h('contactName'), h('contactPhone'), h('contactEmail'), h('taxId'), h('countryCode')],
+      [e('legalName'), e('shortName'), e('contactName'), e('contactPhone'), e('contactEmail'), e('taxId'), e('countryCode')],
+    ];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 16 }, { wch: 18 }, { wch: 28 }, { wch: 24 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, ws, this.safeSheetName(this.i18n.t('supplierCreateImport.sheet')));
+    return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+  }
+
+  /**
+   * 批量新建供应商：逐行独立创建，失败的行不影响成功的行。
+   * 防重：法定名称（trim + 不区分大小写）在文件内不可重复，且不可与系统已有供应商同名。
+   */
+  async bulkCreateSuppliers(buffer: Buffer | undefined, ctx: AuditContext) {
+    if (!buffer?.length) throw new BadRequestException('error.tender.import_file_required');
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if (!sheet) throw new BadRequestException('error.tender.import_empty_workbook');
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: '' });
+    if (rows.length < 2) throw new BadRequestException('error.tender.import_requires_header_and_rows');
+
+    type ImportError = { row: number; value: string; reason: string };
+    const errors: ImportError[] = [];
+    const seenNames = new Set<string>();
+    type Candidate = {
+      rowNo: number; legalName: string; shortName?: string;
+      contactName?: string; contactPhone?: string; contactEmail?: string;
+      taxId?: string; countryCode: string;
+    };
+    const candidates: Candidate[] = [];
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    let nonEmptyRows = 0;
+
+    rows.slice(1).forEach((raw, idx) => {
+      const rowNo = idx + 2;
+      const cells = raw as unknown[];
+      const legalName = String(cells[0] ?? '').trim();
+      const shortName = String(cells[1] ?? '').trim();
+      const contactName = String(cells[2] ?? '').trim();
+      const contactPhone = String(cells[3] ?? '').trim();
+      const contactEmail = String(cells[4] ?? '').trim();
+      const taxId = String(cells[5] ?? '').trim();
+      let countryCode = String(cells[6] ?? '').trim().toUpperCase();
+
+      // 整行空 → 安静跳过
+      if (!legalName && !shortName && !contactName && !contactPhone && !contactEmail && !taxId && !countryCode) return;
+      nonEmptyRows += 1;
+
+      if (!legalName) {
+        errors.push({ row: rowNo, value: '', reason: this.i18n.t('supplierCreateImport.reason.missingName') });
+        return;
+      }
+      const norm = legalName.toLowerCase();
+      if (seenNames.has(norm)) {
+        errors.push({ row: rowNo, value: legalName, reason: this.i18n.t('supplierCreateImport.reason.duplicateInFile') });
+        return;
+      }
+      seenNames.add(norm);
+
+      if (contactEmail && !emailRe.test(contactEmail)) {
+        errors.push({ row: rowNo, value: legalName, reason: this.i18n.t('supplierCreateImport.reason.invalidEmail') });
+        return;
+      }
+      if (countryCode && !/^[A-Z]{2}$/.test(countryCode)) countryCode = '';
+
+      candidates.push({
+        rowNo, legalName, shortName, contactName, contactPhone, contactEmail, taxId,
+        countryCode: countryCode || DEFAULT_SUPPLIER_COUNTRY_CODE,
+      });
+    });
+
+    // 批量查询库内已存在的同名供应商
+    if (candidates.length) {
+      const namesLower = candidates.map((c) => c.legalName.toLowerCase());
+      const existing = await this.repo.createQueryBuilder('s')
+        .where('LOWER(s.legal_name) IN (:...names)', { names: namesLower })
+        .getMany();
+      const existSet = new Set(existing.map((e) => (e.legalName ?? '').toLowerCase()));
+      for (let i = candidates.length - 1; i >= 0; i -= 1) {
+        const c = candidates[i];
+        if (existSet.has(c.legalName.toLowerCase())) {
+          errors.push({ row: c.rowNo, value: c.legalName, reason: this.i18n.t('supplierCreateImport.reason.alreadyExists') });
+          candidates.splice(i, 1);
+        }
+      }
+    }
+
+    // 逐行独立创建（任一失败不影响其他）
+    const created: Array<{ id: string; businessId: string; legalName: string }> = [];
+    let currentCount = await this.repo.count();
+    for (const c of candidates) {
+      try {
+        currentCount += 1;
+        const businessId = nextBusinessId(currentCount, c.countryCode);
+        const supplier = this.repo.create({
+          businessId,
+          legalName: c.legalName,
+          shortName: c.shortName || undefined,
+          contactName: c.contactName || undefined,
+          contactPhone: c.contactPhone || undefined,
+          contactEmail: c.contactEmail || undefined,
+          taxId: c.taxId || undefined,
+          countryCode: c.countryCode,
+          status: SupplierStatus.ACTIVE,
+          reviewStatus: SupplierReviewStatus.NOT_SUBMITTED,
+        });
+        const saved = await this.repo.save(supplier);
+        await this.audit.log(ctx, AuditEntityType.SUPPLIER, saved.id, AuditAction.SUPPLIER_CREATE, undefined, {
+          businessId, legalName: c.legalName, bulk: true,
+        });
+        created.push({ id: saved.id, businessId, legalName: c.legalName });
+      } catch (err) {
+        errors.push({ row: c.rowNo, value: c.legalName, reason: (err as Error).message });
+      }
+    }
+
+    return { created, errors, total: nonEmptyRows };
+  }
+
   async findReviewDetail(id: string) {
     const supplier = await this.findById(id);
     const [documents, reviewLogs] = await Promise.all([

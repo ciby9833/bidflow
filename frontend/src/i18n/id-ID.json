@@ -136,6 +136,8 @@
     "searchPlaceholder": "Cari nama perusahaan, singkatan, nomor, kontak, telepon, atau email",
     "supplierFilters": "Filter pemasok", "reviewFilters": "Filter ulasan",
     "supplierNo": "No. Pemasok", "reviewStatus": "Status Ulasan", "noSuppliers": "Belum ada pemasok", "export": "Ekspor", "exportFailed": "Ekspor gagal",
+    "downloadImportTemplate": "Unduh Templat", "bulkImport": "Impor Massal", "bulkImportFailed": "Impor massal gagal, periksa berkas",
+    "bulkResultTitle": "Hasil Impor Massal Pemasok", "bulkCreated": "{count} pemasok dibuat", "bulkFailed": "{count} baris gagal", "bulkAllOk": "Semua pemasok berhasil dibuat.",
     "editSupplier": "Edit Pemasok", "allStatuses": "Semua Status", "allReviews": "Semua Ulasan",
     "updated": "Informasi pemasok diperbarui", "suspendReasonPrompt": "Masukkan alasan pembekuan",
     "suspendSupplier": "Bekukan Pemasok", "suspended": "Dibekukan", "resumed": "Diaktifkan kembali",

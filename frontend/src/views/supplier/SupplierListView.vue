@@ -14,9 +14,53 @@
         <el-button v-if="auth.hasScope('supplier:view')" :loading="exporting" @click="exportSuppliers">
           {{ t('supplierList.export') }}
         </el-button>
+        <el-button v-if="auth.hasScope('supplier:create')" @click="downloadCreateTemplate">
+          {{ t('supplierList.downloadImportTemplate') }}
+        </el-button>
+        <el-button
+          v-if="auth.hasScope('supplier:create')"
+          :loading="bulkImporting"
+          @click="createImportFileInput?.click()"
+        >
+          {{ t('supplierList.bulkImport') }}
+        </el-button>
+        <input ref="createImportFileInput" hidden type="file" accept=".xlsx,.xls" @change="bulkCreateSuppliers" />
         <el-button v-if="auth.hasScope('supplier:create')" type="primary" @click="router.push('/suppliers/new')">{{ t('route.supplierCreate') }}</el-button>
       </div>
     </div>
+
+    <!-- 批量新增结果 -->
+    <el-dialog v-model="bulkResultVisible" :title="t('supplierList.bulkResultTitle')" width="580px">
+      <div v-if="bulkResult" class="bulk-result">
+        <div class="bulk-stat">
+          <span class="bulk-stat-ok">{{ t('supplierList.bulkCreated', { count: bulkResult.created.length }) }}</span>
+          <span v-if="bulkResult.errors.length" class="bulk-stat-fail">
+            {{ t('supplierList.bulkFailed', { count: bulkResult.errors.length }) }}
+          </span>
+        </div>
+        <el-table
+          v-if="bulkResult.errors.length"
+          :data="bulkResult.errors"
+          border
+          size="small"
+          max-height="320"
+        >
+          <el-table-column :label="t('tenderCreate.importRow')" width="70">
+            <template #default="{ row }">{{ row.row }}</template>
+          </el-table-column>
+          <el-table-column :label="t('supplier.legal_name')" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.value || '—' }}</template>
+          </el-table-column>
+          <el-table-column :label="t('tenderCreate.importReason')" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.reason }}</template>
+          </el-table-column>
+        </el-table>
+        <p v-else class="bulk-all-ok">{{ t('supplierList.bulkAllOk') }}</p>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="bulkResultVisible = false">{{ t('common.confirm') }}</el-button>
+      </template>
+    </el-dialog>
 
     <section class="filter-panel">
       <div class="filter-main">
@@ -151,6 +195,10 @@ const suppliers = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const exporting = ref(false);
+const bulkImporting = ref(false);
+const bulkResultVisible = ref(false);
+const bulkResult = ref<{ created: any[]; errors: Array<{ row: number; value: string; reason: string }>; total: number } | null>(null);
+const createImportFileInput = ref<HTMLInputElement | null>(null);
 const total = ref(0);
 const editVisible = ref(false);
 const editingId = ref('');
@@ -252,6 +300,40 @@ async function exportSuppliers() {
     ElMessage.error(t('supplierList.exportFailed'));
   } finally {
     exporting.value = false;
+  }
+}
+
+async function downloadCreateTemplate() {
+  const res = await api.get('/api/suppliers/import-template', { responseType: 'blob' });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'supplier-import-template.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function bulkCreateSuppliers(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  bulkImporting.value = true;
+  try {
+    const body = new FormData();
+    body.append('file', file);
+    const res = await api.post('/api/suppliers/import', body, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    bulkResult.value = res.data.data;
+    bulkResultVisible.value = true;
+    if (bulkResult.value && bulkResult.value.created.length) {
+      reload();
+    }
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error?.message ?? t('supplierList.bulkImportFailed'));
+  } finally {
+    bulkImporting.value = false;
+    input.value = '';
   }
 }
 
@@ -365,6 +447,12 @@ onBeforeUnmount(() => {
 .supplier-page { display: block; }
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .page-header h2 { margin: 0; color: #0f172a; font-size: 24px; letter-spacing: -.02em; }
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.bulk-result { display: flex; flex-direction: column; gap: 12px; }
+.bulk-stat { display: flex; gap: 16px; font-size: 14px; }
+.bulk-stat-ok { color: #15803d; font-weight: 600; }
+.bulk-stat-fail { color: #b91c1c; font-weight: 600; }
+.bulk-all-ok { color: #15803d; margin: 0; font-size: 13px; }
 .filter-panel {
   display: grid;
   gap: 12px;
