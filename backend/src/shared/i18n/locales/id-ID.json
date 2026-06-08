@@ -141,6 +141,36 @@
     "anonymousSupplier": "Pemasok {seq}",
     "lotIntegralQuote": "Penawaran Lot Keseluruhan"
   },
+  "supplierAccountImport": {
+    "sheet": "Impor Akun Pemasok",
+    "headers": {
+      "businessId": "No. Pemasok (wajib)",
+      "email": "Email Login (wajib)",
+      "password": "Kata Sandi Awal (wajib, min 6 karakter)",
+      "displayName": "Nama Tampilan",
+      "phone": "Telepon",
+      "locale": "Bahasa (zh-CN / en / id-ID)"
+    },
+    "example": {
+      "businessId": "S-ID-00001",
+      "email": "budi@example.com",
+      "password": "Welcome@2026",
+      "displayName": "Budi",
+      "phone": "081234567890",
+      "locale": "id-ID"
+    },
+    "reason": {
+      "missingBusinessId": "No. Pemasok kosong",
+      "missingEmail": "Email kosong",
+      "invalidEmail": "Format email tidak valid",
+      "missingPassword": "Kata sandi awal kosong",
+      "weakPassword": "Kata sandi terlalu pendek (min 6 karakter)",
+      "duplicateInFile": "Email duplikat dalam berkas",
+      "emailExists": "Email sudah terdaftar",
+      "supplierNotFound": "No. Pemasok tidak ditemukan",
+      "supplierNotEligible": "Pemasok belum disetujui atau ditangguhkan"
+    }
+  },
   "supplierCreateImport": {
     "sheet": "Buat Pemasok Massal",
     "headers": {

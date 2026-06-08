@@ -138,6 +138,8 @@
     "supplierNo": "No. Pemasok", "reviewStatus": "Status Ulasan", "noSuppliers": "Belum ada pemasok", "export": "Ekspor", "exportFailed": "Ekspor gagal",
     "downloadImportTemplate": "Unduh Templat", "bulkImport": "Impor Massal", "bulkImportFailed": "Impor massal gagal, periksa berkas",
     "bulkResultTitle": "Hasil Impor Massal Pemasok", "bulkCreated": "{count} pemasok dibuat", "bulkFailed": "{count} baris gagal", "bulkAllOk": "Semua pemasok berhasil dibuat.",
+    "downloadAccountTemplate": "Templat Akun", "accountBulkImport": "Impor Akun Massal", "accountResultTitle": "Hasil Impor Akun Pemasok",
+    "accountCreated": "{count} akun dibuat", "accountAllOk": "Semua akun berhasil dibuat.", "accountIdentifier": "No. Pemasok / Email",
     "editSupplier": "Edit Pemasok", "allStatuses": "Semua Status", "allReviews": "Semua Ulasan",
     "updated": "Informasi pemasok diperbarui", "suspendReasonPrompt": "Masukkan alasan pembekuan",
     "suspendSupplier": "Bekukan Pemasok", "suspended": "Dibekukan", "resumed": "Diaktifkan kembali",

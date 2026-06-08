@@ -25,6 +25,17 @@
           {{ t('supplierList.bulkImport') }}
         </el-button>
         <input ref="createImportFileInput" hidden type="file" accept=".xlsx,.xls" @change="bulkCreateSuppliers" />
+        <el-button v-if="auth.hasScope('supplier:create')" @click="downloadAccountTemplate">
+          {{ t('supplierList.downloadAccountTemplate') }}
+        </el-button>
+        <el-button
+          v-if="auth.hasScope('supplier:create')"
+          :loading="accountImporting"
+          @click="accountImportFileInput?.click()"
+        >
+          {{ t('supplierList.accountBulkImport') }}
+        </el-button>
+        <input ref="accountImportFileInput" hidden type="file" accept=".xlsx,.xls" @change="bulkImportAccounts" />
         <el-button v-if="auth.hasScope('supplier:create')" type="primary" @click="router.push('/suppliers/new')">{{ t('route.supplierCreate') }}</el-button>
       </div>
     </div>
@@ -59,6 +70,39 @@
       </div>
       <template #footer>
         <el-button type="primary" @click="bulkResultVisible = false">{{ t('common.confirm') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 账号批量导入结果 -->
+    <el-dialog v-model="accountResultVisible" :title="t('supplierList.accountResultTitle')" width="640px">
+      <div v-if="accountResult" class="bulk-result">
+        <div class="bulk-stat">
+          <span class="bulk-stat-ok">{{ t('supplierList.accountCreated', { count: accountResult.created.length }) }}</span>
+          <span v-if="accountResult.errors.length" class="bulk-stat-fail">
+            {{ t('supplierList.bulkFailed', { count: accountResult.errors.length }) }}
+          </span>
+        </div>
+        <el-table
+          v-if="accountResult.errors.length"
+          :data="accountResult.errors"
+          border
+          size="small"
+          max-height="320"
+        >
+          <el-table-column :label="t('tenderCreate.importRow')" width="70">
+            <template #default="{ row }">{{ row.row }}</template>
+          </el-table-column>
+          <el-table-column :label="t('supplierList.accountIdentifier')" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.value || '—' }}</template>
+          </el-table-column>
+          <el-table-column :label="t('tenderCreate.importReason')" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.reason }}</template>
+          </el-table-column>
+        </el-table>
+        <p v-else class="bulk-all-ok">{{ t('supplierList.accountAllOk') }}</p>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="accountResultVisible = false">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
 
@@ -199,6 +243,10 @@ const bulkImporting = ref(false);
 const bulkResultVisible = ref(false);
 const bulkResult = ref<{ created: any[]; errors: Array<{ row: number; value: string; reason: string }>; total: number } | null>(null);
 const createImportFileInput = ref<HTMLInputElement | null>(null);
+const accountImporting = ref(false);
+const accountResultVisible = ref(false);
+const accountResult = ref<{ created: any[]; errors: Array<{ row: number; value: string; reason: string }>; total: number } | null>(null);
+const accountImportFileInput = ref<HTMLInputElement | null>(null);
 const total = ref(0);
 const editVisible = ref(false);
 const editingId = ref('');
@@ -311,6 +359,37 @@ async function downloadCreateTemplate() {
   a.download = 'supplier-import-template.xlsx';
   a.click();
   URL.revokeObjectURL(url);
+}
+
+async function downloadAccountTemplate() {
+  const res = await api.get('/api/suppliers/accounts/import-template', { responseType: 'blob' });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'supplier-account-import-template.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function bulkImportAccounts(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  accountImporting.value = true;
+  try {
+    const body = new FormData();
+    body.append('file', file);
+    const res = await api.post('/api/suppliers/accounts/import', body, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    accountResult.value = res.data.data;
+    accountResultVisible.value = true;
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error?.message ?? t('supplierList.bulkImportFailed'));
+  } finally {
+    accountImporting.value = false;
+    input.value = '';
+  }
 }
 
 async function bulkCreateSuppliers(event: Event) {

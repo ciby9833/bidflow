@@ -138,6 +138,8 @@
     "supplierNo": "供应商编号", "reviewStatus": "审核状态", "noSuppliers": "暂无供应商", "export": "导出", "exportFailed": "导出失败",
     "downloadImportTemplate": "下载导入模板", "bulkImport": "批量导入", "bulkImportFailed": "批量导入失败，请检查文件格式",
     "bulkResultTitle": "供应商批量新增结果", "bulkCreated": "成功新增 {count} 家", "bulkFailed": "{count} 行未导入", "bulkAllOk": "全部供应商已成功新增。",
+    "downloadAccountTemplate": "下载账号模板", "accountBulkImport": "账号批量导入", "accountResultTitle": "供应商账号批量导入结果",
+    "accountCreated": "成功创建 {count} 个账号", "accountAllOk": "全部账号已成功创建。", "accountIdentifier": "供应商编号 / 邮箱",
     "editSupplier": "编辑供应商", "allStatuses": "全部状态", "allReviews": "全部审核",
     "updated": "供应商信息已更新", "suspendReasonPrompt": "请输入冻结原因",
     "suspendSupplier": "冻结供应商", "suspended": "已冻结", "resumed": "已解冻",

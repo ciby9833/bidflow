@@ -141,6 +141,36 @@
     "anonymousSupplier": "Supplier {seq}",
     "lotIntegralQuote": "Lot Integral Quote"
   },
+  "supplierAccountImport": {
+    "sheet": "Supplier Account Import",
+    "headers": {
+      "businessId": "Supplier No. (required)",
+      "email": "Login Email (required)",
+      "password": "Initial Password (required, min 6 chars)",
+      "displayName": "Display Name",
+      "phone": "Phone",
+      "locale": "Language (zh-CN / en / id-ID)"
+    },
+    "example": {
+      "businessId": "S-ID-00001",
+      "email": "budi@example.com",
+      "password": "Welcome@2026",
+      "displayName": "Budi",
+      "phone": "081234567890",
+      "locale": "id-ID"
+    },
+    "reason": {
+      "missingBusinessId": "Missing supplier number",
+      "missingEmail": "Missing email",
+      "invalidEmail": "Invalid email format",
+      "missingPassword": "Missing initial password",
+      "weakPassword": "Password too short (min 6 chars)",
+      "duplicateInFile": "Email duplicated in the file",
+      "emailExists": "Email already registered",
+      "supplierNotFound": "Supplier number does not exist",
+      "supplierNotEligible": "Supplier is not approved or is suspended"
+    }
+  },
   "supplierCreateImport": {
     "sheet": "Supplier Bulk Create",
     "headers": {

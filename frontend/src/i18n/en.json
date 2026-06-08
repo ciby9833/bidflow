@@ -138,6 +138,8 @@
     "supplierNo": "Supplier No.", "reviewStatus": "Review Status", "noSuppliers": "No suppliers", "export": "Export", "exportFailed": "Export failed",
     "downloadImportTemplate": "Download Template", "bulkImport": "Bulk Import", "bulkImportFailed": "Bulk import failed, please check the file",
     "bulkResultTitle": "Bulk Create Result", "bulkCreated": "{count} suppliers created", "bulkFailed": "{count} rows failed", "bulkAllOk": "All suppliers created successfully.",
+    "downloadAccountTemplate": "Account Template", "accountBulkImport": "Bulk Import Accounts", "accountResultTitle": "Supplier Account Bulk Import Result",
+    "accountCreated": "{count} accounts created", "accountAllOk": "All accounts created successfully.", "accountIdentifier": "Supplier No. / Email",
     "editSupplier": "Edit Supplier", "allStatuses": "All Statuses", "allReviews": "All Reviews",
     "updated": "Supplier information updated", "suspendReasonPrompt": "Enter suspension reason",
     "suspendSupplier": "Suspend Supplier", "suspended": "Suspended", "resumed": "Resumed",

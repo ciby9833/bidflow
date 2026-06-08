@@ -145,6 +145,36 @@
     "anonymousSupplier": "供应商{seq}",
     "lotIntegralQuote": "标包整体报价"
   },
+  "supplierAccountImport": {
+    "sheet": "供应商账号导入",
+    "headers": {
+      "businessId": "供应商编号（必填）",
+      "email": "登录邮箱（必填）",
+      "password": "初始密码（必填，至少 6 位）",
+      "displayName": "显示名",
+      "phone": "联系电话",
+      "locale": "语言（zh-CN / en / id-ID）"
+    },
+    "example": {
+      "businessId": "S-ID-00001",
+      "email": "budi@example.com",
+      "password": "Welcome@2026",
+      "displayName": "Budi",
+      "phone": "081234567890",
+      "locale": "id-ID"
+    },
+    "reason": {
+      "missingBusinessId": "缺少供应商编号",
+      "missingEmail": "缺少邮箱",
+      "invalidEmail": "邮箱格式不正确",
+      "missingPassword": "缺少初始密码",
+      "weakPassword": "密码长度不足（至少 6 位）",
+      "duplicateInFile": "文件中邮箱重复",
+      "emailExists": "系统中已存在该邮箱",
+      "supplierNotFound": "供应商编号不存在",
+      "supplierNotEligible": "供应商未通过认证或已停用，不能创建账号"
+    }
+  },
   "supplierCreateImport": {
     "sheet": "供应商批量新增",
     "headers": {

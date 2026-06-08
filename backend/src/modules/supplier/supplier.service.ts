@@ -19,7 +19,8 @@ import { SupplierReviewLog } from './supplier-review-log.entity';
 import { SupplierInvitation } from './supplier-invitation.entity';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
-import { User } from '../auth/user.entity';
+import * as argon2 from 'argon2';
+import { AccountType, RegisterSource, User, UserRole, UserStatus } from '../auth/user.entity';
 import { SupplierAccount } from '../auth/supplier-account.entity';
 
 // 当前产品阶段仅开放印尼供应商认证，后端统一默认 ID。
@@ -392,6 +393,185 @@ export class SupplierService {
         created.push({ id: saved.id, businessId, legalName: c.legalName });
       } catch (err) {
         errors.push({ row: c.rowNo, value: c.legalName, reason: (err as Error).message });
+      }
+    }
+
+    return { created, errors, total: nonEmptyRows };
+  }
+
+  /** 生成「供应商账号批量导入」模板：6 列表头 + 1 行示例。 */
+  buildAccountImportTemplate(): Buffer {
+    const h = (k: string) => this.i18n.t(`supplierAccountImport.headers.${k}`);
+    const e = (k: string) => this.i18n.t(`supplierAccountImport.example.${k}`);
+    const rows = [
+      [h('businessId'), h('email'), h('password'), h('displayName'), h('phone'), h('locale')],
+      [e('businessId'), e('email'), e('password'), e('displayName'), e('phone'), e('locale')],
+    ];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 16 }, { wch: 28 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, ws, this.safeSheetName(this.i18n.t('supplierAccountImport.sheet')));
+    return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+  }
+
+  /**
+   * 批量导入供应商账号：每行一个登录账号，关联到对应供应商。
+   * 逐行独立事务（User + SupplierAccount 同时建），失败的行不影响成功的行。
+   * 同一供应商可多个账号（首个建的若该供应商尚无账号，则标 isPrimary=true）。
+   */
+  async bulkImportSupplierAccounts(buffer: Buffer | undefined, ctx: AuditContext) {
+    if (!buffer?.length) throw new BadRequestException('error.tender.import_file_required');
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if (!sheet) throw new BadRequestException('error.tender.import_empty_workbook');
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: '' });
+    if (rows.length < 2) throw new BadRequestException('error.tender.import_requires_header_and_rows');
+
+    type ImportError = { row: number; value: string; reason: string };
+    const errors: ImportError[] = [];
+    const seenEmails = new Set<string>();
+    const VALID_LOCALES = new Set(['zh-CN', 'en', 'id-ID']);
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    let nonEmptyRows = 0;
+
+    type Candidate = {
+      rowNo: number; businessId: string; email: string; password: string;
+      displayName: string; phone: string; locale: string;
+    };
+    const candidates: Candidate[] = [];
+
+    rows.slice(1).forEach((raw, idx) => {
+      const rowNo = idx + 2;
+      const cells = raw as unknown[];
+      const businessId = String(cells[0] ?? '').trim().toUpperCase();
+      const email = String(cells[1] ?? '').trim().toLowerCase();
+      const password = String(cells[2] ?? '');
+      const displayName = String(cells[3] ?? '').trim();
+      const phone = String(cells[4] ?? '').trim();
+      let locale = String(cells[5] ?? '').trim();
+
+      if (!businessId && !email && !password && !displayName && !phone && !locale) return;
+      nonEmptyRows += 1;
+
+      const value = email || businessId || `row-${rowNo}`;
+      if (!businessId) {
+        errors.push({ row: rowNo, value, reason: this.i18n.t('supplierAccountImport.reason.missingBusinessId') });
+        return;
+      }
+      if (!email) {
+        errors.push({ row: rowNo, value, reason: this.i18n.t('supplierAccountImport.reason.missingEmail') });
+        return;
+      }
+      if (!emailRe.test(email)) {
+        errors.push({ row: rowNo, value, reason: this.i18n.t('supplierAccountImport.reason.invalidEmail') });
+        return;
+      }
+      if (!password) {
+        errors.push({ row: rowNo, value, reason: this.i18n.t('supplierAccountImport.reason.missingPassword') });
+        return;
+      }
+      if (password.length < 6) {
+        errors.push({ row: rowNo, value, reason: this.i18n.t('supplierAccountImport.reason.weakPassword') });
+        return;
+      }
+      if (seenEmails.has(email)) {
+        errors.push({ row: rowNo, value, reason: this.i18n.t('supplierAccountImport.reason.duplicateInFile') });
+        return;
+      }
+      seenEmails.add(email);
+      if (locale && !VALID_LOCALES.has(locale)) locale = '';
+
+      candidates.push({
+        rowNo, businessId, email, password,
+        displayName: displayName || email.split('@')[0],
+        phone, locale: locale || 'zh-CN',
+      });
+    });
+
+    // 批量预查：邮箱已存在 / 供应商不存在 / 供应商不合规
+    if (candidates.length) {
+      const emails = candidates.map((c) => c.email);
+      const businessIds = Array.from(new Set(candidates.map((c) => c.businessId)));
+      const [existingUsers, suppliers] = await Promise.all([
+        this.userRepo.find({ where: [{ email: In(emails) }, { loginName: In(emails) }] }),
+        this.repo.find({ where: { businessId: In(businessIds) } }),
+      ]);
+      const existEmails = new Set([
+        ...existingUsers.map((u) => u.email?.toLowerCase()).filter(Boolean),
+        ...existingUsers.map((u) => u.loginName?.toLowerCase()).filter(Boolean),
+      ] as string[]);
+      const supplierMap = new Map(suppliers.map((s) => [s.businessId.toUpperCase(), s]));
+
+      for (let i = candidates.length - 1; i >= 0; i -= 1) {
+        const c = candidates[i];
+        if (existEmails.has(c.email)) {
+          errors.push({ row: c.rowNo, value: c.email, reason: this.i18n.t('supplierAccountImport.reason.emailExists') });
+          candidates.splice(i, 1);
+          continue;
+        }
+        const supplier = supplierMap.get(c.businessId);
+        if (!supplier) {
+          errors.push({ row: c.rowNo, value: c.businessId, reason: this.i18n.t('supplierAccountImport.reason.supplierNotFound') });
+          candidates.splice(i, 1);
+          continue;
+        }
+        if (supplier.status !== SupplierStatus.ACTIVE || supplier.reviewStatus !== SupplierReviewStatus.APPROVED) {
+          errors.push({ row: c.rowNo, value: c.businessId, reason: this.i18n.t('supplierAccountImport.reason.supplierNotEligible') });
+          candidates.splice(i, 1);
+        }
+      }
+    }
+
+    // 逐行事务创建：User + SupplierAccount。首个账号若该供应商尚无 active 账号则 isPrimary=true。
+    const created: Array<{ id: string; email: string; supplierBusinessId: string }> = [];
+    const supplierHasPrimary = new Map<string, boolean>();
+
+    for (const c of candidates) {
+      try {
+        const result = await this.ds.transaction(async (em) => {
+          // 同一批内重复邮箱由 seenEmails 防护；并发并行写时靠 DB 唯一索引兜底
+          const passwordHash = await argon2.hash(c.password);
+          const user = await em.save(em.create(User, {
+            email: c.email,
+            loginName: c.email,
+            phone: c.phone || undefined,
+            passwordHash,
+            accountType: AccountType.SUPPLIER_ACCOUNT,
+            registerSource: RegisterSource.INTERNAL_CREATED,
+            tokenVersion: 0,
+            role: UserRole.SUPPLIER,
+            displayName: c.displayName,
+            locale: c.locale,
+            status: UserStatus.ACTIVE,
+          }));
+
+          const supplier = (await em.findOne(Supplier, { where: { businessId: c.businessId } }))!;
+          let isPrimary = supplierHasPrimary.get(supplier.id) ?? false;
+          if (!isPrimary) {
+            const existingPrimary = await em.findOne(SupplierAccount, {
+              where: { supplierId: supplier.id, status: 'active', isPrimary: true },
+            });
+            isPrimary = !existingPrimary;
+          }
+          if (isPrimary) supplierHasPrimary.set(supplier.id, true);
+
+          await em.save(em.create(SupplierAccount, {
+            authUserId: user.id,
+            supplierId: supplier.id,
+            displayName: c.displayName,
+            isPrimary,
+            relationRole: 'operator',
+            status: 'active',
+            createdByUserId: ctx.userId,
+          }));
+          await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.USER_CREATE, undefined, {
+            email: c.email, supplierId: supplier.id, source: 'bulk_import',
+          });
+          return { id: user.id, email: c.email, supplierBusinessId: supplier.businessId };
+        });
+        created.push(result);
+      } catch (err) {
+        errors.push({ row: c.rowNo, value: c.email, reason: (err as Error).message });
       }
     }
 

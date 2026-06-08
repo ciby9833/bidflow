@@ -101,6 +101,22 @@ export class SupplierController {
     return ApiResponse.ok(await this.svc.bulkCreateSuppliers(file?.buffer, ctx(req)));
   }
 
+  @Get('accounts/import-template')
+  @RequireScopes('supplier:create')
+  async accountImportTemplate(@Res() res: Response) {
+    const buffer = this.svc.buildAccountImportTemplate();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="bidflow-supplier-account-import-template.xlsx"');
+    res.send(buffer);
+  }
+
+  @Post('accounts/import')
+  @RequireScopes('supplier:create')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async bulkImportAccounts(@UploadedFile() file: any, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.bulkImportSupplierAccounts(file?.buffer, ctx(req)));
+  }
+
   @Get(':id')
   @RequireScopes('supplier:view')
   async findOne(@Param('id') id: string) {
