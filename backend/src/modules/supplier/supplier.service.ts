@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import * as ExcelJS from 'exceljs';
 import * as XLSX from 'xlsx';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from './supplier.entity';
@@ -57,8 +57,9 @@ export class SupplierService {
   ) {}
 
   async create(data: Partial<Supplier>, ctx: AuditContext) {
-    const count = await this.repo.count();
-    const businessId = nextBusinessId(count + 1, data.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE);
+    const region = data.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
+    const nextSeq = await this.computeNextBusinessSeq(region);
+    const businessId = nextBusinessId(nextSeq, region);
 
     const existing = await this.repo.findOne({ where: { businessId } });
     if (existing) throw new ConflictException('error.supplier.business_id_conflict');
@@ -197,6 +198,20 @@ export class SupplierService {
 
   private safeSheetName(name: string) {
     return name.replace(/[\\/?*\[\]:]/g, '-').slice(0, 31) || 'Sheet';
+  }
+
+  /**
+   * 计算指定国家代码下下一个 businessId 序号：取该区段当前最大后缀 + 1。
+   * 与 repo.count()+1 不同——后者遇历史删除留下的空洞会撞库；此处按 businessId 实际后缀推进，安全。
+   */
+  private async computeNextBusinessSeq(region: string, em?: EntityManager): Promise<number> {
+    const runner = em ?? this.repo.manager;
+    const rows = await runner.query(
+      `SELECT COALESCE(MAX(CAST(SPLIT_PART(business_id, '-', 3) AS INTEGER)), 0) AS max_seq
+       FROM suppliers WHERE business_id LIKE $1`,
+      [`S-${region}-%`],
+    );
+    return Number(rows?.[0]?.max_seq ?? 0) + 1;
   }
 
   /** 生成「参与供应商批量导入」模板：A 列供应商编号（必填），B 列名称（仅参考）。 */
@@ -368,12 +383,23 @@ export class SupplierService {
     }
 
     // 逐行独立创建（任一失败不影响其他）
+    // 按国家代码取该区段现有 businessId 的最大后缀，避免被历史删除留下的空洞撞库。
     const created: Array<{ id: string; businessId: string; legalName: string }> = [];
-    let currentCount = await this.repo.count();
+    const seqByRegion = new Map<string, number>();
+    const regions = Array.from(new Set(candidates.map((c) => c.countryCode)));
+    for (const region of regions) {
+      const rows = await this.repo.query(
+        `SELECT COALESCE(MAX(CAST(SPLIT_PART(business_id, '-', 3) AS INTEGER)), 0) AS max_seq
+         FROM suppliers WHERE business_id LIKE $1`,
+        [`S-${region}-%`],
+      );
+      seqByRegion.set(region, Number(rows?.[0]?.max_seq ?? 0));
+    }
     for (const c of candidates) {
       try {
-        currentCount += 1;
-        const businessId = nextBusinessId(currentCount, c.countryCode);
+        const next = (seqByRegion.get(c.countryCode) ?? 0) + 1;
+        seqByRegion.set(c.countryCode, next);
+        const businessId = nextBusinessId(next, c.countryCode);
         const supplier = this.repo.create({
           businessId,
           legalName: c.legalName,
@@ -624,9 +650,9 @@ export class SupplierService {
     if (!data.legalName || !data.shortName) throw new BadRequestException('error.supplier.company_required');
 
     const result = await this.ds.transaction(async (em) => {
-      const count = await em.count(Supplier);
       const countryCode = data.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
-      const businessId = nextBusinessId(count + 1, countryCode);
+      const nextSeq = await this.computeNextBusinessSeq(countryCode, em);
+      const businessId = nextBusinessId(nextSeq, countryCode);
       const supplier = em.create(Supplier, {
         ...data,
         businessId,
@@ -1041,9 +1067,9 @@ export class SupplierService {
     }
 
     const result = await this.ds.transaction(async (em) => {
-      const count = await em.count(Supplier);
       const countryCode = payload.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
-      const businessId = nextBusinessId(count + 1, countryCode);
+      const nextSeq = await this.computeNextBusinessSeq(countryCode, em);
+      const businessId = nextBusinessId(nextSeq, countryCode);
       const user = await em.findOne(User, { where: { id: authUserId } });
       const supplier = em.create(Supplier, {
         businessId,
