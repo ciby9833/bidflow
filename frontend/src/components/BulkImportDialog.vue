@@ -10,7 +10,7 @@
     :title="title"
     width="640px"
     :close-on-click-modal="!uploading"
-    @update:model-value="(v) => emit('update:modelValue', v)"
+    @update:model-value="updateModelValue"
     @closed="reset"
   >
     <!-- 上传阶段 -->
@@ -113,6 +113,10 @@ const createdCount = computed(() => (result.value.created?.length ?? result.valu
 const failedCount = computed(() => result.value.errors?.length ?? 0);
 
 watch(() => props.modelValue, (visible) => { if (visible) reset(); });
+
+function updateModelValue(value: boolean) {
+  emit('update:modelValue', value);
+}
 
 function reset() {
   stage.value = 'upload';
