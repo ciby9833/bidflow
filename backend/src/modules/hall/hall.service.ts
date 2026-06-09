@@ -7,7 +7,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Tender, TenderStatus } from '../tender/tender.entity';
+import { ParticipationMode, Tender, TenderStatus } from '../tender/tender.entity';
 
 @Injectable()
 export class HallService {
@@ -28,14 +28,61 @@ export class HallService {
     const qb = this.tenderRepo.createQueryBuilder('t')
       .leftJoinAndSelect('t.lots', 'lots')
       .where('t.isHallVisible = :visible', { visible: true })
-      .andWhere('t.status IN (:...statuses)', {
-        statuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED],
-      })
+      .andWhere('t.status IN (:...statuses)', { statuses: this.publicStatuses() })
       .skip((page - 1) * limit)
       .take(limit)
       .orderBy('t.createdAt', 'DESC');
     const [items, total] = await qb.getManyAndCount();
     return { items, total, page, limit };
+  }
+
+  async getPortalSummary() {
+    await this.refreshLifecycleStatuses();
+    const now = new Date();
+    const closingBefore = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+    const publicStatuses = this.publicStatuses();
+
+    const publicTenderCount = await this.publicTenderBaseQuery()
+      .getCount();
+
+    const lotCountRow = await this.publicTenderBaseQuery()
+      .leftJoin('t.lots', 'lots')
+      .select('COUNT(lots.id)', 'count')
+      .getRawOne<{ count: string }>();
+
+    const publicQuoteOpenCount = await this.publicTenderBaseQuery()
+      .andWhere('t.status = :status', { status: TenderStatus.OPEN })
+      .andWhere('t.participationMode = :participationMode', { participationMode: ParticipationMode.ALL })
+      .andWhere('(t.bidDeadline IS NULL OR t.bidDeadline > :now)', { now })
+      .getCount();
+
+    const closingSoonCount = await this.publicTenderBaseQuery()
+      .andWhere('t.status IN (:...activeStatuses)', { activeStatuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN] })
+      .andWhere('t.bidDeadline IS NOT NULL')
+      .andWhere('t.bidDeadline > :now', { now })
+      .andWhere('t.bidDeadline <= :closingBefore', { closingBefore })
+      .getCount();
+
+    const nextDeadlineRow = await this.publicTenderBaseQuery()
+      .andWhere('t.status IN (:...activeStatuses)', { activeStatuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN] })
+      .andWhere('t.bidDeadline IS NOT NULL')
+      .andWhere('t.bidDeadline > :now', { now })
+      .select('MIN(t.bidDeadline)', 'nextDeadlineAt')
+      .getRawOne<{ nextDeadlineAt?: Date | string }>();
+
+    return {
+      publicTenderCount,
+      publicLotCount: Number(lotCountRow?.count ?? 0),
+      publicQuoteOpenCount,
+      closingSoonCount,
+      nextDeadlineAt: nextDeadlineRow?.nextDeadlineAt ?? null,
+      rules: {
+        publicTenderStatuses: publicStatuses,
+        quoteOpenStatus: TenderStatus.OPEN,
+        quoteOpenParticipationMode: ParticipationMode.ALL,
+        closingSoonHours: 72,
+      },
+    };
   }
 
   async getPublicTender(id: string) {
@@ -48,6 +95,16 @@ export class HallService {
       throw new NotFoundException('error.tender.not_found');
     }
     return tender;
+  }
+
+  private publicStatuses() {
+    return [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED];
+  }
+
+  private publicTenderBaseQuery() {
+    return this.tenderRepo.createQueryBuilder('t')
+      .where('t.isHallVisible = :visible', { visible: true })
+      .andWhere('t.status IN (:...statuses)', { statuses: this.publicStatuses() });
   }
 
   private async refreshLifecycleStatuses() {

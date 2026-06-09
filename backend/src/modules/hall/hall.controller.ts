@@ -17,6 +17,11 @@ export class HallController {
     return ApiResponse.ok(await this.svc.getCompanyProfile());
   }
 
+  @Get('portal-summary')
+  async portalSummary() {
+    return ApiResponse.ok(await this.svc.getPortalSummary());
+  }
+
   @Get('tenders')
   async list(@Query() q: { page?: string; limit?: string }) {
     const result = await this.svc.listPublicTenders(
