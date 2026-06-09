@@ -23,6 +23,19 @@
     "close": "Tutup", "collapse": "Tutup", "clear": "Bersihkan", "delete": "Hapus", "remove": "Hapus",
     "confirmDelete": "Hapus", "saved": "Tersimpan"
   },
+  "bulkImport": {
+    "downloadTemplate": "Unduh Templat",
+    "uploading": "Mengunggah…",
+    "dropOrClick": "Seret berkas ke sini atau klik untuk memilih",
+    "formatHint": "Mendukung .xlsx / .xls",
+    "uploadFailed": "Unggah gagal, periksa berkas",
+    "downloadFailed": "Unduh templat gagal",
+    "failedCount": "{count} baris gagal",
+    "row": "Baris",
+    "reason": "Alasan",
+    "allOk": "Semua berhasil diimpor.",
+    "importAgain": "Impor Lagi"
+  },
   "currency": { "idr": "IDR Rupiah Indonesia", "usd": "USD Dolar AS", "cny": "CNY Yuan China" },
   "mobile": { "mainNav": "Navigasi utama mobile" },
   "route": {

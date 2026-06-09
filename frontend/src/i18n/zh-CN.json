@@ -23,6 +23,19 @@
     "optional": "可选", "close": "关闭", "collapse": "收起", "clear": "清空", "delete": "删除",
     "remove": "移除", "confirmDelete": "确认删除", "saved": "已保存"
   },
+  "bulkImport": {
+    "downloadTemplate": "下载模板",
+    "uploading": "正在上传…",
+    "dropOrClick": "拖拽文件到此处，或点击选择",
+    "formatHint": "支持 .xlsx / .xls 格式",
+    "uploadFailed": "上传失败，请检查文件",
+    "downloadFailed": "模板下载失败",
+    "failedCount": "{count} 行未导入",
+    "row": "行号",
+    "reason": "失败原因",
+    "allOk": "全部导入成功。",
+    "importAgain": "再次导入"
+  },
   "currency": { "idr": "IDR 印尼盾", "usd": "USD 美元", "cny": "CNY 人民币" },
   "mobile": { "mainNav": "移动端主导航" },
   "route": {

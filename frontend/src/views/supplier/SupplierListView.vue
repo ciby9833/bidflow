@@ -14,97 +14,42 @@
         <el-button v-if="auth.hasScope('supplier:view')" :loading="exporting" @click="exportSuppliers">
           {{ t('supplierList.export') }}
         </el-button>
-        <el-button v-if="auth.hasScope('supplier:create')" @click="downloadCreateTemplate">
-          {{ t('supplierList.downloadImportTemplate') }}
-        </el-button>
-        <el-button
-          v-if="auth.hasScope('supplier:create')"
-          :loading="bulkImporting"
-          @click="createImportFileInput?.click()"
-        >
+        <el-button v-if="auth.hasScope('supplier:create')" @click="supplierImportVisible = true">
           {{ t('supplierList.bulkImport') }}
         </el-button>
-        <input ref="createImportFileInput" hidden type="file" accept=".xlsx,.xls" @change="bulkCreateSuppliers" />
-        <el-button v-if="auth.hasScope('supplier:create')" @click="downloadAccountTemplate">
-          {{ t('supplierList.downloadAccountTemplate') }}
-        </el-button>
-        <el-button
-          v-if="auth.hasScope('supplier:create')"
-          :loading="accountImporting"
-          @click="accountImportFileInput?.click()"
-        >
+        <el-button v-if="auth.hasScope('supplier:create')" @click="accountImportVisible = true">
           {{ t('supplierList.accountBulkImport') }}
         </el-button>
-        <input ref="accountImportFileInput" hidden type="file" accept=".xlsx,.xls" @change="bulkImportAccounts" />
         <el-button v-if="auth.hasScope('supplier:create')" type="primary" @click="router.push('/suppliers/new')">{{ t('route.supplierCreate') }}</el-button>
       </div>
     </div>
 
-    <!-- 批量新增结果 -->
-    <el-dialog v-model="bulkResultVisible" :title="t('supplierList.bulkResultTitle')" width="580px">
-      <div v-if="bulkResult" class="bulk-result">
-        <div class="bulk-stat">
-          <span class="bulk-stat-ok">{{ t('supplierList.bulkCreated', { count: bulkResult.created.length }) }}</span>
-          <span v-if="bulkResult.errors.length" class="bulk-stat-fail">
-            {{ t('supplierList.bulkFailed', { count: bulkResult.errors.length }) }}
-          </span>
-        </div>
-        <el-table
-          v-if="bulkResult.errors.length"
-          :data="bulkResult.errors"
-          border
-          size="small"
-          max-height="320"
-        >
-          <el-table-column :label="t('tenderCreate.importRow')" width="70">
-            <template #default="{ row }">{{ row.row }}</template>
-          </el-table-column>
-          <el-table-column :label="t('supplier.legal_name')" min-width="180" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.value || '—' }}</template>
-          </el-table-column>
-          <el-table-column :label="t('tenderCreate.importReason')" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.reason }}</template>
-          </el-table-column>
-        </el-table>
-        <p v-else class="bulk-all-ok">{{ t('supplierList.bulkAllOk') }}</p>
-      </div>
-      <template #footer>
-        <el-button type="primary" @click="bulkResultVisible = false">{{ t('common.confirm') }}</el-button>
-      </template>
-    </el-dialog>
+    <!-- 批量新增供应商弹窗 -->
+    <BulkImportDialog
+      v-model="supplierImportVisible"
+      :title="t('supplierList.bulkResultTitle')"
+      template-url="/api/suppliers/import-template"
+      template-filename="supplier-import-template.xlsx"
+      upload-url="/api/suppliers/import"
+      :template-hint="t('supplierList.supplierTemplateHint')"
+      :success-label="(c: number) => t('supplierList.bulkCreated', { count: c })"
+      :identifier-label="t('supplier.legal_name')"
+      :all-ok-label="t('supplierList.bulkAllOk')"
+      @imported="onSupplierImported"
+    />
 
-    <!-- 账号批量导入结果 -->
-    <el-dialog v-model="accountResultVisible" :title="t('supplierList.accountResultTitle')" width="640px">
-      <div v-if="accountResult" class="bulk-result">
-        <div class="bulk-stat">
-          <span class="bulk-stat-ok">{{ t('supplierList.accountCreated', { count: accountResult.created.length }) }}</span>
-          <span v-if="accountResult.errors.length" class="bulk-stat-fail">
-            {{ t('supplierList.bulkFailed', { count: accountResult.errors.length }) }}
-          </span>
-        </div>
-        <el-table
-          v-if="accountResult.errors.length"
-          :data="accountResult.errors"
-          border
-          size="small"
-          max-height="320"
-        >
-          <el-table-column :label="t('tenderCreate.importRow')" width="70">
-            <template #default="{ row }">{{ row.row }}</template>
-          </el-table-column>
-          <el-table-column :label="t('supplierList.accountIdentifier')" min-width="200" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.value || '—' }}</template>
-          </el-table-column>
-          <el-table-column :label="t('tenderCreate.importReason')" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.reason }}</template>
-          </el-table-column>
-        </el-table>
-        <p v-else class="bulk-all-ok">{{ t('supplierList.accountAllOk') }}</p>
-      </div>
-      <template #footer>
-        <el-button type="primary" @click="accountResultVisible = false">{{ t('common.confirm') }}</el-button>
-      </template>
-    </el-dialog>
+    <!-- 批量导入供应商账号弹窗 -->
+    <BulkImportDialog
+      v-model="accountImportVisible"
+      :title="t('supplierList.accountResultTitle')"
+      template-url="/api/suppliers/accounts/import-template"
+      template-filename="supplier-account-import-template.xlsx"
+      upload-url="/api/suppliers/accounts/import"
+      :template-hint="t('supplierList.accountTemplateHint')"
+      :success-label="(c: number) => t('supplierList.accountCreated', { count: c })"
+      :identifier-label="t('supplierList.accountIdentifier')"
+      :all-ok-label="t('supplierList.accountAllOk')"
+    />
 
     <section class="filter-panel">
       <div class="filter-main">
@@ -231,6 +176,7 @@ import { ElMessageBox, ElMessage } from 'element-plus';
 import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
 import { getSupplierActions, type SupplierActionKey } from '../../shared/supplier-action-rules';
+import BulkImportDialog from '../../components/BulkImportDialog.vue';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -239,14 +185,12 @@ const suppliers = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const exporting = ref(false);
-const bulkImporting = ref(false);
-const bulkResultVisible = ref(false);
-const bulkResult = ref<{ created: any[]; errors: Array<{ row: number; value: string; reason: string }>; total: number } | null>(null);
-const createImportFileInput = ref<HTMLInputElement | null>(null);
-const accountImporting = ref(false);
-const accountResultVisible = ref(false);
-const accountResult = ref<{ created: any[]; errors: Array<{ row: number; value: string; reason: string }>; total: number } | null>(null);
-const accountImportFileInput = ref<HTMLInputElement | null>(null);
+const supplierImportVisible = ref(false);
+const accountImportVisible = ref(false);
+
+function onSupplierImported(result: any) {
+  if (result?.created?.length) reload();
+}
 const total = ref(0);
 const editVisible = ref(false);
 const editingId = ref('');

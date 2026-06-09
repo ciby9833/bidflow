@@ -23,6 +23,19 @@
     "close": "Close", "collapse": "Collapse", "clear": "Clear", "delete": "Delete", "remove": "Remove",
     "confirmDelete": "Delete", "saved": "Saved"
   },
+  "bulkImport": {
+    "downloadTemplate": "Download Template",
+    "uploading": "Uploading…",
+    "dropOrClick": "Drop file here, or click to select",
+    "formatHint": "Supports .xlsx / .xls",
+    "uploadFailed": "Upload failed, please check the file",
+    "downloadFailed": "Template download failed",
+    "failedCount": "{count} rows failed",
+    "row": "Row",
+    "reason": "Reason",
+    "allOk": "All imported successfully.",
+    "importAgain": "Import Again"
+  },
   "currency": { "idr": "IDR Indonesian Rupiah", "usd": "USD US Dollar", "cny": "CNY Chinese Yuan" },
   "mobile": { "mainNav": "Mobile main navigation" },
   "route": {
