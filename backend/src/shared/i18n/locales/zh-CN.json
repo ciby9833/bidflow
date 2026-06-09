@@ -172,7 +172,7 @@
       "duplicateInFile": "文件中邮箱重复",
       "emailExists": "系统中已存在该邮箱",
       "supplierNotFound": "供应商编号不存在",
-      "supplierNotEligible": "供应商未通过认证或已停用，不能创建账号"
+      "supplierNotEligible": "供应商状态不是正常，不能创建账号"
     }
   },
   "supplierCreateImport": {

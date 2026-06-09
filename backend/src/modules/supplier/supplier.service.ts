@@ -514,7 +514,7 @@ export class SupplierService {
       });
     });
 
-    // 批量预查：邮箱已存在 / 供应商不存在 / 供应商不合规
+    // 批量预查：邮箱已存在 / 供应商不存在 / 供应商非正常状态
     if (candidates.length) {
       const emails = candidates.map((c) => c.email);
       const businessIds = Array.from(new Set(candidates.map((c) => c.businessId)));
@@ -541,7 +541,7 @@ export class SupplierService {
           candidates.splice(i, 1);
           continue;
         }
-        if (supplier.status !== SupplierStatus.ACTIVE || supplier.reviewStatus !== SupplierReviewStatus.APPROVED) {
+        if (supplier.status !== SupplierStatus.ACTIVE) {
           errors.push({ row: c.rowNo, value: c.businessId, reason: this.i18n.t('supplierAccountImport.reason.supplierNotEligible') });
           candidates.splice(i, 1);
         }

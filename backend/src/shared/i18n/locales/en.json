@@ -168,7 +168,7 @@
       "duplicateInFile": "Email duplicated in the file",
       "emailExists": "Email already registered",
       "supplierNotFound": "Supplier number does not exist",
-      "supplierNotEligible": "Supplier is not approved or is suspended"
+      "supplierNotEligible": "Supplier status is not active"
     }
   },
   "supplierCreateImport": {

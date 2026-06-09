@@ -168,7 +168,7 @@
       "duplicateInFile": "Email duplikat dalam berkas",
       "emailExists": "Email sudah terdaftar",
       "supplierNotFound": "No. Pemasok tidak ditemukan",
-      "supplierNotEligible": "Pemasok belum disetujui atau ditangguhkan"
+      "supplierNotEligible": "Status pemasok tidak aktif"
     }
   },
   "supplierCreateImport": {
