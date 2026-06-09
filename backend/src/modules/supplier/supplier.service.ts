@@ -457,6 +457,9 @@ export class SupplierService {
     const errors: ImportError[] = [];
     const seenEmails = new Set<string>();
     const VALID_LOCALES = new Set(['zh-CN', 'en', 'id-ID']);
+    const MAX_EMAIL_LENGTH = 100;
+    const MAX_DISPLAY_NAME_LENGTH = 100;
+    const MAX_PHONE_LENGTH = 30;
     const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     let nonEmptyRows = 0;
 
@@ -488,6 +491,10 @@ export class SupplierService {
         errors.push({ row: rowNo, value, reason: this.i18n.t('supplierAccountImport.reason.missingEmail') });
         return;
       }
+      if (email.length > MAX_EMAIL_LENGTH) {
+        errors.push({ row: rowNo, value: email, reason: this.i18n.t('supplierAccountImport.reason.emailTooLong') });
+        return;
+      }
       if (!emailRe.test(email)) {
         errors.push({ row: rowNo, value, reason: this.i18n.t('supplierAccountImport.reason.invalidEmail') });
         return;
@@ -502,6 +509,14 @@ export class SupplierService {
       }
       if (seenEmails.has(email)) {
         errors.push({ row: rowNo, value, reason: this.i18n.t('supplierAccountImport.reason.duplicateInFile') });
+        return;
+      }
+      if (displayName.length > MAX_DISPLAY_NAME_LENGTH) {
+        errors.push({ row: rowNo, value: displayName, reason: this.i18n.t('supplierAccountImport.reason.displayNameTooLong') });
+        return;
+      }
+      if (phone.length > MAX_PHONE_LENGTH) {
+        errors.push({ row: rowNo, value: phone, reason: this.i18n.t('supplierAccountImport.reason.phoneTooLong') });
         return;
       }
       seenEmails.add(email);
