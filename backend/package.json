@@ -10,6 +10,7 @@
     "migration:generate": "typeorm migration:generate -d dist/shared/config/typeorm.config.js",
     "migration:run": "typeorm migration:run -d dist/shared/config/typeorm.config.js",
     "migration:revert": "typeorm migration:revert -d dist/shared/config/typeorm.config.js",
+    "suppliers:approve": "node scripts/approve-suppliers.js",
     "lint": "eslint src --ext .ts",
     "test": "jest"
   },
