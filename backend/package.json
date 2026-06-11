@@ -11,6 +11,7 @@
     "migration:run": "typeorm migration:run -d dist/shared/config/typeorm.config.js",
     "migration:revert": "typeorm migration:revert -d dist/shared/config/typeorm.config.js",
     "suppliers:approve": "node scripts/approve-suppliers.js",
+    "tenders:invite-approved": "node scripts/backfill-selected-tender-invitations.js",
     "lint": "eslint src --ext .ts",
     "test": "jest"
   },
