@@ -5,7 +5,7 @@
  * 作者：吴川
  */
 import {
-  BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors,
+  BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
@@ -112,6 +112,12 @@ export class TenderController {
   @RequireScopes('tender:edit')
   async update(@Param('id') id: string, @Body() body: any, @Req() req: Request) {
     return ApiResponse.ok(await this.svc.updateDraft(id, body, ctx(req)));
+  }
+
+  @Delete(':id')
+  @RequireScopes('tender:edit')
+  async remove(@Param('id') id: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.remove(id, ctx(req)));
   }
 
   @Post(':id/publish')

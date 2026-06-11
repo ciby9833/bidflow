@@ -19,6 +19,8 @@ import { LotLine } from './lot-line.entity';
 import { Invitation, InvitationStatus } from './invitation.entity';
 import { Quote } from '../quote/quote.entity';
 import { LineQuote } from '../quote/line-quote.entity';
+import { LotQuoteAttachment } from '../quote/lot-quote-attachment.entity';
+import { RankingSnapshot } from '../quote/ranking-snapshot.entity';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 import { User, UserRole } from '../auth/user.entity';
@@ -451,6 +453,33 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     await this.tenderRepo.update(id, { status: TenderStatus.DRAFT, updatedBy: ctx.userId } as any);
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_WITHDRAW, { status: t.status }, { status: TenderStatus.DRAFT });
     return this.findById(id);
+  }
+
+  async remove(id: string, ctx: AuditContext) {
+    if (ctx.userRole !== UserRole.SUPER_ADMIN) throw new ForbiddenException('error.auth.forbidden');
+
+    const before = await this.findById(id);
+    if (![TenderStatus.DRAFT, TenderStatus.CLOSED].includes(before.status)) {
+      throw new BadRequestException('error.tender.invalid_status_transition');
+    }
+
+    await this.ds.transaction(async (em) => {
+      await em.delete(LotQuoteAttachment, { tenderId: id });
+      await em.delete(RankingSnapshot, { tenderId: id });
+      await em.delete(LineQuote, { tenderId: id });
+      await em.delete(Quote, { tenderId: id });
+      await em.delete(Invitation, { tenderId: id });
+      await em.delete(LotLine, { tenderId: id });
+      await em.delete(Lot, { tenderId: id });
+      await em.delete(Tender, { id });
+    });
+
+    await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_DELETE, before as any, undefined, {
+      tenderNo: before.tenderNo,
+      title: before.title,
+      status: before.status,
+    });
+    return { deleted: true, id };
   }
 
   async updateDraft(id: string, data: {

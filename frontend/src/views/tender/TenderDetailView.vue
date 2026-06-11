@@ -55,6 +55,12 @@
           <el-button v-if="auth.hasScope('export:masked') || auth.hasScope('export:full')" @click="openExportDialog">
             {{ t('export.export') }} <el-icon class="el-icon--right"><arrow-down /></el-icon>
           </el-button>
+          <el-button
+            v-if="canDeleteTender"
+            type="danger"
+            plain
+            @click="deleteTender"
+          >{{ t('common.delete') }}</el-button>
         </div>
       </div>
 
@@ -582,6 +588,7 @@ const defaultExportFields = [
   'version',
   'submittedAt',
 ];
+const canDeleteTender = computed(() => auth.user?.role === 'super_admin' && ['draft', 'closed'].includes(tender.value?.status));
 const exportForm = reactive({
   mode: 'masked',
   view: 'item',
@@ -727,6 +734,17 @@ async function doWithdraw() {
   await api.post(`/api/tenders/${tender.value.id}/withdraw`);
   ElMessage.success(t('tenderDetail.withdrawn'));
   load();
+}
+
+async function deleteTender() {
+  await ElMessageBox.confirm(t('tenderList.deleteConfirm', { title: tender.value.title }), t('tenderList.deleteTitle'), {
+    type: 'warning',
+    confirmButtonText: t('common.confirmDelete'),
+    cancelButtonText: t('common.cancel'),
+  });
+  await api.delete(`/api/tenders/${tender.value.id}`);
+  ElMessage.success(t('tenderList.deleted'));
+  router.push('/tenders');
 }
 
 async function doOpen() {

@@ -42,9 +42,9 @@
             <el-tag :type="statusTag(item.status)" size="small">{{ statusLabel(item.status) }}</el-tag>
           </div>
         </div>
-        <h3>{{ item.title }}</h3>
-        <p>{{ item.hallSummary || item.description || t('supplierTenderHall.noSummary') }}</p>
-        <dl>
+        <h3 class="card-title">{{ item.title }}</h3>
+        <p class="card-summary">{{ item.hallSummary || item.description || t('supplierTenderHall.noSummary') }}</p>
+        <dl class="card-meta">
           <div>
             <dt>{{ t('common.type') }}</dt>
             <dd>{{ typeLabel(item.type) }}</dd>
@@ -186,38 +186,128 @@ onBeforeUnmount(() => {
   gap: 12px;
   align-items: center;
 }
+.toolbar :deep(.el-input__wrapper),
+.toolbar :deep(.el-select__wrapper) {
+  min-height: 36px;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #d9dee8 inset;
+}
+.toolbar :deep(.el-segmented) {
+  --el-segmented-item-selected-bg-color: #2563eb;
+  --el-segmented-item-selected-color: #fff;
+  padding: 2px;
+  border-radius: 8px;
+}
 .tender-grid {
   min-height: 260px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  align-items: start;
+  gap: 16px;
 }
 .tender-card {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+.tender-card:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 .card-top, .card-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.card-top { min-width: 0; }
 .card-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.tender-no { color: #64748b; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; }
-.tender-card h3 { margin: 0; color: #0f172a; font-size: 18px; line-height: 1.35; }
-.tender-card p { min-height: 42px; margin: 0; color: #64748b; line-height: 1.5; }
-.tender-card dl {
+.tender-no {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-title {
+  display: -webkit-box;
+  min-height: 48px;
+  margin: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.card-summary {
+  display: -webkit-box;
+  min-height: 63px;
+  margin: 0;
+  overflow: hidden;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.card-meta {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
   margin: 0;
   padding: 12px;
-  border-radius: 10px;
+  border: 1px solid #edf1f7;
+  border-radius: 8px;
   background: #f8fafc;
 }
-.tender-card dt { color: #94a3b8; font-size: 12px; }
-.tender-card dd { margin: 3px 0 0; color: #0f172a; font-weight: 600; }
+.card-meta div {
+  min-width: 0;
+}
+.card-meta dt {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.card-meta dd {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-actions {
+  padding-top: 2px;
+}
 .pagination { display: flex; justify-content: flex-end; }
+@media (max-width: 1280px) {
+  .tender-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .card-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 900px) {
   .toolbar { grid-template-columns: 1fr; }
+  .tender-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .card-top,
+  .card-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .card-tags { justify-content: flex-start; }
+  .card-actions :deep(.el-button) {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 </style>

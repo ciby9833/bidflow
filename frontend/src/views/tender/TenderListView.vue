@@ -145,7 +145,7 @@
       <el-table-column :label="t('common.updatedAt')" width="165">
         <template #default="{ row }">{{ row.updatedAt ? fmtDate(row.updatedAt) : '—' }}</template>
       </el-table-column>
-      <el-table-column :label="t('common.actions')" width="200" fixed="right">
+      <el-table-column :label="t('common.actions')" width="240" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="router.push(`/tenders/${row.id}`)">{{ t('common.view') }}</el-button>
           <el-button
@@ -158,6 +158,11 @@
             size="small" plain
             @click="withdraw(row)"
           >{{ t('common.withdraw') }}</el-button>
+          <el-button
+            v-if="canDeleteTender(row)"
+            size="small" type="danger" plain
+            @click="deleteTender(row)"
+          >{{ t('common.delete') }}</el-button>
         </template>
       </el-table-column>
       <template #empty>
@@ -262,6 +267,9 @@ function userName(user?: any, fallback?: string) {
 function statusTag(s: string) {
   return { draft: 'info', published: '', open: 'success', closed: 'danger', cancelled: 'danger', awarded: 'warning' }[s] ?? '';
 }
+function canDeleteTender(row: any) {
+  return auth.user?.role === 'super_admin' && ['draft', 'closed'].includes(row.status);
+}
 
 async function load() {
   loading.value = true;
@@ -297,6 +305,17 @@ async function withdraw(row: any) {
   });
   await api.post(`/api/tenders/${row.id}/withdraw`);
   ElMessage.success(t('tenderList.withdrawn'));
+  load();
+}
+
+async function deleteTender(row: any) {
+  await ElMessageBox.confirm(t('tenderList.deleteConfirm', { title: row.title }), t('tenderList.deleteTitle'), {
+    type: 'warning',
+    confirmButtonText: t('common.confirmDelete'),
+    cancelButtonText: t('common.cancel'),
+  });
+  await api.delete(`/api/tenders/${row.id}`);
+  ElMessage.success(t('tenderList.deleted'));
   load();
 }
 

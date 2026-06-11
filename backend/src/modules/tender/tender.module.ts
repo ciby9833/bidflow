@@ -12,6 +12,8 @@ import { LotLine } from './lot-line.entity';
 import { Invitation } from './invitation.entity';
 import { Quote } from '../quote/quote.entity';
 import { LineQuote } from '../quote/line-quote.entity';
+import { LotQuoteAttachment } from '../quote/lot-quote-attachment.entity';
+import { RankingSnapshot } from '../quote/ranking-snapshot.entity';
 import { Supplier } from '../supplier/supplier.entity';
 import { User } from '../auth/user.entity';
 import { SupplierAccount } from '../auth/supplier-account.entity';
@@ -23,7 +25,7 @@ import { MailModule } from '../../shared/mail/mail.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Tender, Lot, LotLine, Invitation, Quote, LineQuote, Supplier, User, SupplierAccount, AuditLog]),
+    TypeOrmModule.forFeature([Tender, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, Supplier, User, SupplierAccount, AuditLog]),
     MailModule,
   ],
   controllers: [TenderController, SupplierTenderController],

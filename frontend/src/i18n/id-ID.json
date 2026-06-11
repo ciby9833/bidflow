@@ -247,7 +247,9 @@
     "currentRound": "Ronde Saat Ini", "roundNo": "Ronde {round}",
     "noMatched": "Tidak ada tender yang cocok", "noTenders": "Belum ada tender",
     "withdrawConfirm": "Tarik \"{title}\"?", "withdrawTitle": "Konfirmasi Penarikan",
-    "confirmWithdraw": "Tarik", "withdrawn": "Ditarik"
+    "confirmWithdraw": "Tarik", "withdrawn": "Ditarik",
+    "deleteConfirm": "Hapus \"{title}\"? Tender, lot, dan catatan penawaran terkait tidak dapat dipulihkan.",
+    "deleteTitle": "Konfirmasi Hapus", "deleted": "Dihapus"
   },
   "tenderCreate": {
     "editDraft": "Edit Draf Tender", "basicInfo": "Informasi Dasar", "basicDesc": "Atur nama proyek, jenis, mata uang, dan waktu penawaran.",

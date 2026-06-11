@@ -247,7 +247,9 @@
     "currentRound": "Current Round", "roundNo": "Round {round}",
     "noMatched": "No matching tenders", "noTenders": "No tenders",
     "withdrawConfirm": "Withdraw \"{title}\"?", "withdrawTitle": "Withdraw Confirmation",
-    "confirmWithdraw": "Withdraw", "withdrawn": "Withdrawn"
+    "confirmWithdraw": "Withdraw", "withdrawn": "Withdrawn",
+    "deleteConfirm": "Delete \"{title}\"? This tender, its lots, and related quote records cannot be restored.",
+    "deleteTitle": "Delete Confirmation", "deleted": "Deleted"
   },
   "tenderCreate": {
     "editDraft": "Edit Tender Draft", "basicInfo": "Basic Information", "basicDesc": "Set project name, type, currency, and bidding time.",

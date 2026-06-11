@@ -247,7 +247,9 @@
     "currentRound": "当前轮次", "roundNo": "第 {round} 轮",
     "noMatched": "没有符合条件的招标", "noTenders": "暂无招标",
     "withdrawConfirm": "确认撤回「{title}」？", "withdrawTitle": "撤回确认",
-    "confirmWithdraw": "确认撤回", "withdrawn": "已撤回"
+    "confirmWithdraw": "确认撤回", "withdrawn": "已撤回",
+    "deleteConfirm": "确认删除「{title}」？删除后该招标及相关标包、报价记录将不可恢复。",
+    "deleteTitle": "删除确认", "deleted": "已删除"
   },
   "tenderCreate": {
     "editDraft": "编辑招标草稿", "basicInfo": "基础信息", "basicDesc": "设置项目名称、类型、币种与报价时间。",
