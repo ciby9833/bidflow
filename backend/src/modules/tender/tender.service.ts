@@ -5,7 +5,7 @@
  * 作者：吴川
  */
 import {
-  BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit,
+  BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,6 +17,7 @@ import { ParticipationMode, Tender, TenderStatus, TenderType } from './tender.en
 import { Lot } from './lot.entity';
 import { LotLine } from './lot-line.entity';
 import { Invitation, InvitationStatus } from './invitation.entity';
+import { TenderNotificationLog, TenderNotificationTrigger, TenderNotificationType } from './tender-notification-log.entity';
 import { Quote } from '../quote/quote.entity';
 import { LineQuote } from '../quote/line-quote.entity';
 import { LotQuoteAttachment } from '../quote/lot-quote-attachment.entity';
@@ -28,6 +29,8 @@ import { SupplierAccount } from '../auth/supplier-account.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
 import { MailService } from '../../shared/mail/mail.service';
 import { buildTenderInvitationEmail } from '../../shared/mail/templates/tender-invitation.template';
+import { buildTenderWithdrawalEmail } from '../../shared/mail/templates/tender-withdrawal.template';
+import { RedisService } from '../../shared/config/redis.config';
 
 // Three standard templates (spec_json + ui_schema stubs)
 const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
@@ -79,6 +82,8 @@ const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
   },
 };
 const DEFAULT_TENDER_CURRENCY = 'IDR';
+const NOTIFICATION_RESEND_LOCK_TTL_SECONDS = 300;
+const TENDER_WITHDRAW_LOCK_TTL_SECONDS = 120;
 type TenderAttachmentInput = {
   objectKey?: string;
   key?: string;
@@ -121,6 +126,14 @@ type ParticipationInput = {
   participantSource?: string;
 };
 export type SupplierParticipationScopeFilter = 'invited' | 'public';
+type SupplierNotificationResult = {
+  supplierCount: number;
+  accountCount: number;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+};
+type SupplierNotificationEmailType = TenderNotificationType.INVITATION | TenderNotificationType.WITHDRAWAL;
 
 function nextTenderNo(seq: number): string {
   const ym = new Date().toISOString().slice(0, 7).replace('-', '');
@@ -151,6 +164,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     @InjectRepository(Lot) private readonly lotRepo: Repository<Lot>,
     @InjectRepository(LotLine) private readonly lineRepo: Repository<LotLine>,
     @InjectRepository(Invitation) private readonly invRepo: Repository<Invitation>,
+    @InjectRepository(TenderNotificationLog) private readonly notificationLogRepo: Repository<TenderNotificationLog>,
     @InjectRepository(Quote) private readonly quoteRepo: Repository<Quote>,
     @InjectRepository(LineQuote) private readonly lineQuoteRepo: Repository<LineQuote>,
     @InjectRepository(Supplier) private readonly supplierRepo: Repository<Supplier>,
@@ -159,6 +173,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     private readonly audit: AuditService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly redis: RedisService,
     private readonly ds: DataSource,
   ) {}
 
@@ -188,6 +203,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     description?: string;
     isHallVisible?: boolean;
     isPublicRankingVisible?: boolean;
+    notifySuppliers?: boolean;
     hallSummary?: string;
     attachments?: TenderAttachmentInput[];
     lots?: TenderLotInput[];
@@ -213,6 +229,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         description: data.description,
         isHallVisible: data.isHallVisible ?? false,
         isPublicRankingVisible: data.isPublicRankingVisible ?? false,
+        notifySuppliers: data.notifySuppliers ?? false,
         participationMode: this.normalizeParticipationMode(data.participationMode),
         hallSummary: data.hallSummary,
         attachments: this.normalizeAttachments(data.attachments),
@@ -383,36 +400,120 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     await this.tenderRepo.update(id, { status: nextStatus, updatedBy: ctx.userId } as any);
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_CREATE, { status: t.status }, { status: nextStatus });
     const published = await this.findById(id);
-    // 定向招标发布后，给被邀供应商的关联用户发邮件通知（尽力而为，失败不影响发布）
-    void this.notifyInvitedSuppliers(published);
+    // 发布后按草稿中的显式开关邮件通知当前参与范围内的供应商（尽力而为，失败不影响发布）
+    if (published.notifySuppliers) {
+      void this.sendAndRecordSupplierNotifications(published, TenderNotificationType.INVITATION, TenderNotificationTrigger.PUBLISH, ctx)
+        .catch((err) => this.logger.warn(`notifySuppliers failed for tender ${published.id}: ${(err as Error).message}`));
+    }
     return published;
   }
 
-  /** 定向招标发布时，向被邀供应商关联的活跃用户发送招标邀请邮件。 */
-  private async notifyInvitedSuppliers(tender: Tender) {
+  async getNotificationSummary(id: string) {
+    const tender = await this.findById(id);
+    const roundNo = tender.currentQuoteRound ?? 1;
+    const latestInvitation = await this.notificationLogRepo.findOne({
+      where: { tenderId: id, roundNo, type: TenderNotificationType.INVITATION },
+      order: { createdAt: 'DESC' },
+    });
+    const hasSentInvitationNotice = Number(latestInvitation?.sentCount ?? 0) > 0;
+    const shouldHaveInvitationNotice = Boolean(tender.notifySuppliers);
+    return {
+      tenderId: id,
+      tenderNo: tender.tenderNo,
+      roundNo,
+      hasInvitationNotice: hasSentInvitationNotice || shouldHaveInvitationNotice,
+      notifySuppliers: shouldHaveInvitationNotice,
+      latestInvitationNotice: latestInvitation ? {
+        type: latestInvitation.type,
+        trigger: latestInvitation.trigger,
+        supplierCount: latestInvitation.supplierCount,
+        accountCount: latestInvitation.accountCount,
+        sentCount: latestInvitation.sentCount,
+        failedCount: latestInvitation.failedCount,
+        skippedCount: latestInvitation.skippedCount,
+        createdAt: latestInvitation.createdAt,
+      } : null,
+    };
+  }
+
+  async resendSupplierNotifications(id: string, ctx: AuditContext) {
+    const tender = await this.findById(id);
+    if (![TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED].includes(tender.status)) {
+      throw new BadRequestException('error.tender.invalid_status_transition');
+    }
+    const lockKey = this.notificationLockKey(id);
+    const locked = await this.redis.setnx(lockKey, ctx.userId, NOTIFICATION_RESEND_LOCK_TTL_SECONDS);
+    if (!locked) throw new ConflictException('error.tender.notification_resend_in_progress');
     try {
-      if ((tender.participationMode ?? ParticipationMode.ALL) !== ParticipationMode.SELECTED) return;
-      const roundNo = tender.currentQuoteRound ?? 1;
-      const invitations = await this.invRepo.find({ where: { tenderId: tender.id, roundNo } });
-      const supplierIds = Array.from(new Set(invitations.map((inv) => inv.supplierId).filter(Boolean)));
-      if (!supplierIds.length) return;
+      const result = await this.sendAndRecordSupplierNotifications(tender, TenderNotificationType.INVITATION, TenderNotificationTrigger.MANUAL_RESEND, ctx);
+      await this.audit.log(ctx, AuditEntityType.INVITATION, id, AuditAction.INVITATION_SEND, undefined, result, {
+        tenderNo: tender.tenderNo,
+        manualResend: true,
+      });
+      return result;
+    } finally {
+      await this.redis.del(lockKey);
+    }
+  }
 
-      const [accounts, suppliers] = await Promise.all([
-        this.supplierAccountRepo.find({ where: { supplierId: In(supplierIds), status: 'active' } }),
-        this.supplierRepo.find({ where: { id: In(supplierIds) } }),
-      ]);
-      if (!accounts.length) return;
+  /** 向当前参与范围内供应商关联的活跃用户发送招标通知邮件，并记录发送结果。 */
+  private async sendAndRecordSupplierNotifications(
+    tender: Tender,
+    type: SupplierNotificationEmailType,
+    trigger: TenderNotificationTrigger,
+    ctx: AuditContext,
+  ): Promise<SupplierNotificationResult> {
+    const result = await this.sendSupplierNotifications(tender, type);
+    await this.notificationLogRepo.save(this.notificationLogRepo.create({
+      tenderId: tender.id,
+      roundNo: tender.currentQuoteRound ?? 1,
+      type,
+      trigger,
+      supplierCount: result.supplierCount,
+      accountCount: result.accountCount,
+      sentCount: result.sentCount,
+      failedCount: result.failedCount,
+      skippedCount: result.skippedCount,
+      createdBy: ctx.userId,
+      metadata: { tenderNo: tender.tenderNo },
+    }));
+    return result;
+  }
 
-      const supplierNameMap = new Map(suppliers.map((s) => [s.id, s.legalName || s.shortName || s.businessId || '']));
-      const users = await this.userRepo.find({ where: { id: In(accounts.map((a) => a.authUserId)) } });
-      const userMap = new Map(users.map((u) => [u.id, u]));
-      const portalUrl = this.config.get<string>('FRONTEND_ORIGIN') || undefined;
+  private async sendSupplierNotifications(tender: Tender, type: SupplierNotificationEmailType): Promise<SupplierNotificationResult> {
+    const roundNo = tender.currentQuoteRound ?? 1;
+    const supplierIds = await this.getNotificationSupplierIds(tender, roundNo);
+    if (!supplierIds.length) return {
+      supplierCount: 0, accountCount: 0, sentCount: 0, failedCount: 0, skippedCount: 0,
+    };
 
-      for (const account of accounts) {
-        const user = userMap.get(account.authUserId);
-        if (!user?.email) continue;
-        try {
-          await this.mail.send(buildTenderInvitationEmail({
+    const [accounts, suppliers] = await Promise.all([
+      this.supplierAccountRepo.find({ where: { supplierId: In(supplierIds), status: 'active' } }),
+      this.supplierRepo.find({ where: { id: In(supplierIds) } }),
+    ]);
+    if (!accounts.length) return {
+      supplierCount: supplierIds.length, accountCount: 0, sentCount: 0, failedCount: 0, skippedCount: 0,
+    };
+
+    const supplierNameMap = new Map(suppliers.map((s) => [s.id, s.legalName || s.shortName || s.businessId || '']));
+    const users = await this.userRepo.find({ where: { id: In(accounts.map((a) => a.authUserId)) } });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const portalUrl = this.config.get<string>('FRONTEND_ORIGIN') || undefined;
+    const recipients = new Map<string, { user: User; account: SupplierAccount }>();
+
+    for (const account of accounts) {
+      const user = userMap.get(account.authUserId);
+      const email = user?.email?.trim().toLowerCase();
+      if (!user || !email || recipients.has(email)) continue;
+      recipients.set(email, { user, account });
+    }
+
+    let sentCount = 0;
+    let failedCount = 0;
+    for (const { user, account } of recipients.values()) {
+      try {
+        const message = type === TenderNotificationType.WITHDRAWAL
+          ? buildTenderWithdrawalEmail({
             to: user.email,
             locale: user.locale,
             supplierName: account.displayName || supplierNameMap.get(account.supplierId),
@@ -420,14 +521,54 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
             tenderTitle: tender.title,
             bidDeadline: tender.bidDeadline,
             portalUrl,
-          }));
-        } catch (err) {
-          this.logger.warn(`Tender invitation mail to ${user.email} failed: ${(err as Error).message}`);
-        }
+          })
+          : buildTenderInvitationEmail({
+            to: user.email,
+            locale: user.locale,
+            supplierName: account.displayName || supplierNameMap.get(account.supplierId),
+            tenderNo: tender.tenderNo,
+            tenderTitle: tender.title,
+            bidDeadline: tender.bidDeadline,
+            portalUrl,
+          });
+        await this.mail.send(message);
+        sentCount += 1;
+      } catch (err) {
+        failedCount += 1;
+        this.logger.warn(`Tender ${type} mail to ${user.email} failed: ${(err as Error).message}`);
       }
-    } catch (err) {
-      this.logger.warn(`notifyInvitedSuppliers failed for tender ${tender.id}: ${(err as Error).message}`);
     }
+
+    return {
+      supplierCount: supplierIds.length,
+      accountCount: recipients.size,
+      sentCount,
+      failedCount,
+      skippedCount: accounts.length - recipients.size,
+    };
+  }
+
+  private async getNotificationSupplierIds(tender: Tender, roundNo: number) {
+    if ((tender.participationMode ?? ParticipationMode.ALL) === ParticipationMode.SELECTED) {
+      const invitations = await this.invRepo.find({ where: { tenderId: tender.id, roundNo } });
+      return Array.from(new Set(invitations.map((inv) => inv.supplierId).filter(Boolean)));
+    }
+    const suppliers = await this.supplierRepo.find({
+      where: {
+        status: SupplierStatus.ACTIVE,
+        reviewStatus: SupplierReviewStatus.APPROVED,
+      },
+      select: ['id'],
+    });
+    return suppliers.map((supplier) => supplier.id);
+  }
+
+  private notificationLockKey(tenderId: string) {
+    return `tender:${tenderId}:supplier-notification`;
+  }
+
+  private withdrawLockKey(tenderId: string) {
+    return `tender:${tenderId}:withdraw`;
   }
 
   async open(id: string, ctx: AuditContext) {
@@ -447,12 +588,38 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return this.findById(id);
   }
 
-  async withdraw(id: string, ctx: AuditContext) {
-    const t = await this.findById(id);
-    if (![TenderStatus.PUBLISHED, TenderStatus.OPEN].includes(t.status)) throw new BadRequestException('error.tender.invalid_status_transition');
-    await this.tenderRepo.update(id, { status: TenderStatus.DRAFT, updatedBy: ctx.userId } as any);
-    await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_WITHDRAW, { status: t.status }, { status: TenderStatus.DRAFT });
-    return this.findById(id);
+  async withdraw(id: string, ctx: AuditContext, options?: { sendWithdrawalNotice?: boolean }) {
+    const withdrawLockKey = this.withdrawLockKey(id);
+    const withdrawLocked = await this.redis.setnx(withdrawLockKey, ctx.userId, TENDER_WITHDRAW_LOCK_TTL_SECONDS);
+    if (!withdrawLocked) throw new ConflictException('error.tender.withdraw_in_progress');
+
+    let notificationLocked = false;
+    const notificationLockKey = this.notificationLockKey(id);
+    try {
+      const t = await this.findById(id);
+      if (![TenderStatus.PUBLISHED, TenderStatus.OPEN].includes(t.status)) throw new BadRequestException('error.tender.invalid_status_transition');
+      const shouldSendWithdrawalNotice = Boolean(options?.sendWithdrawalNotice);
+      let withdrawalNotice: SupplierNotificationResult | null = null;
+
+      if (shouldSendWithdrawalNotice) {
+        const summary = await this.getNotificationSummary(id);
+        if (summary.hasInvitationNotice) {
+          notificationLocked = await this.redis.setnx(notificationLockKey, ctx.userId, NOTIFICATION_RESEND_LOCK_TTL_SECONDS);
+          if (!notificationLocked) throw new ConflictException('error.tender.notification_resend_in_progress');
+        }
+      }
+
+      await this.tenderRepo.update(id, { status: TenderStatus.DRAFT, updatedBy: ctx.userId } as any);
+      await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_WITHDRAW, { status: t.status }, { status: TenderStatus.DRAFT });
+      if (notificationLocked) {
+        withdrawalNotice = await this.sendAndRecordSupplierNotifications(t, TenderNotificationType.WITHDRAWAL, TenderNotificationTrigger.WITHDRAW, ctx);
+      }
+      const tender = await this.findById(id);
+      return { tender, withdrawalNotice };
+    } finally {
+      if (notificationLocked) await this.redis.del(notificationLockKey);
+      await this.redis.del(withdrawLockKey);
+    }
   }
 
   async remove(id: string, ctx: AuditContext) {
@@ -497,6 +664,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     isHallVisible?: boolean;
     hallSummary?: string;
     isPublicRankingVisible?: boolean;
+    notifySuppliers?: boolean;
     attachments?: TenderAttachmentInput[];
     lots?: TenderLotInput[];
   } & ParticipationInput, ctx: AuditContext) {
@@ -524,6 +692,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         description: data.description ?? before.description,
         isHallVisible: data.isHallVisible ?? before.isHallVisible,
         isPublicRankingVisible: data.isPublicRankingVisible ?? before.isPublicRankingVisible,
+        notifySuppliers: data.notifySuppliers ?? before.notifySuppliers ?? false,
         participationMode: this.normalizeParticipationMode(data.participationMode ?? before.participationMode),
         hallSummary: data.hallSummary ?? before.hallSummary,
         attachments: data.attachments ? this.normalizeAttachments(data.attachments) : before.attachments,

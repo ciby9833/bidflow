@@ -207,6 +207,16 @@
       "request_supplement": "Requested Supplement", "suspend": "Suspended Supplier", "resume": "Resumed Supplier"
     }
   },
+  "supplierMembers": {
+    "title": "Member Accounts", "total": "{count} accounts", "role": "Role", "primary": "Primary",
+    "setPrimary": "Set Primary", "source": "Source", "resetPassword": "Reset Password",
+    "updated": "Member updated", "passwordWeak": "Password must be at least 6 characters", "passwordReset": "Password reset",
+    "roles": { "owner": "Owner", "admin": "Admin", "operator": "Operator" },
+    "sources": {
+      "internal_created": "Internal", "external_signup": "External signup", "google": "Google signup",
+      "wechat": "WeChat signup", "apple": "Apple signup", "unknown": "Unknown"
+    }
+  },
   "supplierProfile": {
     "currentReviewStatus": "Current review status:", "submitProfile": "Submit Certification Details",
     "notSubmittedTitle": "Certification details not submitted", "notSubmittedDesc": "Enter company details and upload required certification attachments. After submission, the company will review them before you can bid.",
@@ -289,6 +299,7 @@
     "validationLotTitleRequired": "Enter all lot names", "validationSupplierRequired": "Select at least one participating supplier",
     "participants": "Participating Suppliers", "directedTender": "Directed Tender", "allSuppliers": "All Suppliers", "allSuppliersDesc": "All approved active suppliers can participate by default",
     "selectedSuppliers": "Selected Suppliers", "selectedSuppliersDesc": "Only checked suppliers can view and quote",
+    "notifySuppliers": "Email suppliers", "notifyAllSuppliersDesc": "Send email notifications to all approved active supplier accounts when publishing", "notifySelectedSuppliersDesc": "Send email notifications to active accounts of selected suppliers when publishing",
     "previousRoundAll": "Fill: Invited Last Round", "previousRoundSelect": "Fill: Quoted Last Round", "continuePublicAll": "Public", "nextRoundParticipantHint": "Buttons are quick-fill shortcuts. After filling you can still freely search, add or remove suppliers in the list below.",
     "searchSupplier": "Search supplier name, ID, or contact", "sortSuppliers": "Quote Sort",
     "sortName": "By name", "sortQuoteAmount": "By quote amount", "sortQuoteTime": "By last quote time", "sortQuoteCount": "By quote count",
@@ -388,6 +399,8 @@
     "closeConfirmTitle": "Close Bidding Confirmation", "confirmClose": "Close", "closed": "Bidding closed",
     "nextRoundConfirmMessage": "Starting the next round returns the project to draft. Quote time must be reset and republished. Continue?",
     "nextRoundConfirmTitle": "Start Next Round", "confirmNextRound": "Start", "nextRoundCreated": "Next-round draft created",
+    "withdrawNoticeConfirmTitle": "Withdrawal Notice", "withdrawNoticeConfirmMessage": "Email notices have already been sent for this tender. Send a withdrawal reminder after withdrawing \"{title}\"?", "withdrawAndNotify": "Withdraw and notify", "withdrawWithoutNotify": "Withdraw only", "withdrawnWithNoticeDone": "Withdrawn. Withdrawal reminder sent: {sent} sent, {failed} failed",
+    "resendNotifications": "Resend email notices", "resendNotificationsConfirmMessage": "Resend email notices to suppliers currently eligible for \"{title}\"?", "resendNotificationsConfirmTitle": "Resend Email Notices", "confirmResendNotifications": "Resend", "resendNotificationsDone": "Email resend finished: {sent} sent, {failed} failed, {accounts} notifiable accounts",
     "selectExportField": "Select at least one export field",
     "lineCount": "{count} lines", "supplierQuoteCount": "{count} supplier quotes", "supplierCount": "{count} suppliers",
     "quoted": "Quoted", "minPrice": "Min Price", "maxPrice": "Max Price", "avgPrice": "Avg Price",

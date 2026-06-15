@@ -23,7 +23,7 @@ export default registerAs('mail', (): MailConfig => ({
   default: {
     host: process.env.SMTP_HOST || undefined,
     port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === 'true',
+    secure: process.env.SMTP_SECURE === 'true' || Number(process.env.SMTP_PORT || 587) === 465,
     user: process.env.SMTP_USER || undefined,
     pass: process.env.SMTP_PASS || undefined,
     from: process.env.SMTP_FROM || 'noreply@bidflow.local',

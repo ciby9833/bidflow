@@ -29,7 +29,7 @@
     <section v-else class="join-card top-card">
       <strong>{{ t('supplierReviewDetail.memberInvitations') }}</strong>
       <span>{{ t('supplierProfile.invitationExpiresHint') }}</span>
-      <button type="button" @click="createMemberInvitation">{{ t('supplierReviewDetail.createInvitation') }}</button>
+      <button v-if="canManageMembers" type="button" @click="createMemberInvitation">{{ t('supplierReviewDetail.createInvitation') }}</button>
     </section>
 
     <nav class="segmented-tabs" :aria-label="t('supplierProfile.certificationInfo')">
@@ -75,6 +75,34 @@
         <em>{{ item.fileUrl || item.objectKey ? t('common.view') : t('supplierProfile.missing') }}</em>
       </button>
       <div v-if="!displayDocuments.length" class="empty-card">{{ t('supplierProfile.noAttachments') }}</div>
+    </section>
+
+    <section v-if="activeTab === 'members'" class="member-list">
+      <div class="section-head">
+        <span>{{ t('supplierMembers.title') }}</span>
+        <button type="button" @click="refreshMembers">{{ t('common.refresh') }}</button>
+      </div>
+      <article v-for="member in members" :key="member.id" class="member-card">
+        <div class="member-main">
+          <span class="member-avatar">{{ memberInitial(member) }}</span>
+          <div>
+            <strong>{{ member.displayName || member.relationDisplayName || t('userList.namePlaceholder') }}</strong>
+            <small>{{ member.email }}</small>
+          </div>
+        </div>
+        <div class="member-meta">
+          <span>{{ roleText(member.relationRole) }}</span>
+          <span :class="{ warn: member.status !== 'active' }">{{ statusText(member.status) }}</span>
+          <span v-if="member.isPrimary" class="ok">{{ t('supplierMembers.primary') }}</span>
+        </div>
+        <div v-if="canManageMembers" class="member-actions">
+          <button v-if="!member.isPrimary && member.status === 'active'" type="button" @click="updateMember(member, { isPrimary: true })">{{ t('supplierMembers.setPrimary') }}</button>
+          <button v-if="!member.isPrimary" type="button" @click="toggleMember(member)">{{ member.status === 'active' ? t('userList.disabled') : t('userList.enabled') }}</button>
+          <button type="button" @click="resetMemberPassword(member)">{{ t('supplierMembers.resetPassword') }}</button>
+        </div>
+      </article>
+      <div v-if="!members.length" class="empty-card">{{ t('userList.noUsers') }}</div>
+      <button v-if="members.length < memberTotal" class="load-more-button" type="button" @click="loadMoreMembers">{{ t('supplierProfile.swipeLoadMore') }}</button>
     </section>
 
     <section v-if="activeTab === 'logs'" class="log-list" @touchstart="onRecordTouchStart" @touchend="onRecordTouchEnd">
@@ -175,21 +203,26 @@ const inviteQuery = reactive({ page: 1, limit: 10 });
 const logQuery = reactive({ page: 1, limit: 10 });
 const recordLoading = ref(false);
 const reviewStatus = ref('not_submitted');
-const activeTab = ref<'profile' | 'documents' | 'logs'>('profile');
+const activeTab = ref<'profile' | 'documents' | 'members' | 'logs'>('profile');
 const recordTab = ref<'invitations' | 'reviewLogs'>('invitations');
 const touchStartX = ref(0);
 const scrollContainer = ref<HTMLElement | Window | null>(null);
 const tabs = [
   { key: 'profile', labelKey: 'supplierProfile.profileTab' },
   { key: 'documents', labelKey: 'supplierProfile.documentsTab' },
+  { key: 'members', labelKey: 'supplierMembers.title' },
   { key: 'logs', labelKey: 'supplierProfile.logsTab' },
 ] as const;
 const hasSubmitted = computed(() => reviewStatus.value !== 'not_submitted');
 const canEditProfile = computed(() => ['not_submitted', 'supplement_required', 'rejected'].includes(reviewStatus.value));
 const editButtonText = computed(() => (reviewStatus.value === 'supplement_required' ? t('supplierProfile.supplementProfile') : t('supplierProfile.editProfile')));
+const canManageMembers = computed(() => ['owner', 'admin'].includes(String(auth.user?.supplierRelationRole || '')));
 const reviewStatusText = computed(() => t(`supplierReview.${reviewStatus.value}`));
 const statusHint = computed(() => t(`supplierProfile.statusHint.${reviewStatus.value}`, t('supplierProfile.statusHint.default')));
 const displayDocuments = computed(() => rawDocuments.value.filter((doc) => doc.fileUrl || doc.objectKey || doc.fileName));
+const members = ref<any[]>([]);
+const memberTotal = ref(0);
+const memberQuery = reactive({ page: 1, limit: 10 });
 function docLabel(doc: any) { return t(`supplierDocs.${doc.docType}`, doc.docLabel || doc.docType); }
 
 function buildRequiredDocs(countryCode = FIXED_SUPPLIER_COUNTRY_CODE, existing: any[] = []) {
@@ -236,7 +269,7 @@ async function load() {
     rawDocuments.value = documents ?? [];
     documents.value = buildRequiredDocs(form.countryCode, rawDocuments.value);
     logs.value = reviewLogs ?? [];
-    if (auth.user?.supplierId) await Promise.all([loadInvitations(), loadReviewLogs()]);
+    if (auth.user?.supplierId) await Promise.all([loadInvitations(), loadReviewLogs(), loadMembers()]);
     activeTab.value = 'profile';
   } finally {
     loading.value = false;
@@ -311,6 +344,62 @@ async function loadReviewLogs(append = false) {
   const items = res.data.data?.items ?? [];
   logs.value = append ? [...logs.value, ...items] : items;
   logTotal.value = res.data.data?.total ?? 0;
+}
+
+async function loadMembers(append = false) {
+  const res = await api.get('/api/supplier/members', { params: memberQuery });
+  const items = res.data.data?.items ?? [];
+  members.value = append ? [...members.value, ...items] : items;
+  memberTotal.value = res.data.data?.total ?? 0;
+}
+
+async function refreshMembers() {
+  memberQuery.page = 1;
+  await loadMembers();
+}
+
+async function loadMoreMembers() {
+  if (members.value.length >= memberTotal.value) return;
+  memberQuery.page += 1;
+  await loadMembers(true);
+}
+
+async function updateMember(member: any, patch: Record<string, unknown>) {
+  await api.patch(`/api/supplier/members/${member.id}`, patch);
+  ElMessage.success(t('supplierMembers.updated'));
+  memberQuery.page = 1;
+  await loadMembers();
+}
+
+async function toggleMember(member: any) {
+  await updateMember(member, { status: member.status === 'active' ? 'suspended' : 'active' });
+}
+
+async function resetMemberPassword(member: any) {
+  const { value } = await ElMessageBox.prompt(t('userList.initialPassword'), t('supplierMembers.resetPassword'), {
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
+    inputType: 'password',
+    inputPlaceholder: t('userList.passwordPlaceholder'),
+  });
+  if (!value || value.length < 6) {
+    ElMessage.warning(t('supplierMembers.passwordWeak'));
+    return;
+  }
+  await api.post(`/api/supplier/members/${member.id}/reset-password`, { password: value });
+  ElMessage.success(t('supplierMembers.passwordReset'));
+}
+
+function roleText(role?: string) {
+  return t(`supplierMembers.roles.${role || 'operator'}`);
+}
+
+function statusText(status?: string) {
+  return status === 'active' ? t('userList.enabled') : t('userList.disabled');
+}
+
+function memberInitial(member: any) {
+  return String(member.displayName || member.relationDisplayName || member.email || '?').slice(0, 1).toUpperCase();
 }
 
 async function revokeInvitation(item: any) {
@@ -479,7 +568,7 @@ onUnmounted(() => {
 }
 .segmented-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 3px;
   padding: 3px;
   margin: 0 0 12px;
@@ -767,6 +856,96 @@ onUnmounted(() => {
 .log-list {
   display: grid;
   gap: 10px;
+}
+.member-list {
+  display: grid;
+  gap: 10px;
+}
+.member-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: #fff;
+}
+.member-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.member-avatar {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #eef6ff;
+  color: #007aff;
+  font-size: 15px;
+  font-weight: 750;
+}
+.member-main div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.member-main strong,
+.member-main small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-main strong {
+  color: #111827;
+  font-size: 15px;
+}
+.member-main small {
+  color: #6b7280;
+  font-size: 13px;
+}
+.member-meta,
+.member-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.member-meta span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #f3f4f6;
+  padding: 0 9px;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 650;
+}
+.member-meta span.ok {
+  background: #ecfdf5;
+  color: #047857;
+}
+.member-meta span.warn {
+  background: #fffbeb;
+  color: #b45309;
+}
+.member-actions button,
+.load-more-button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: #eef6ff;
+  color: #007aff;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.load-more-button {
+  width: 100%;
+  min-height: 40px;
 }
 .record-switch {
   display: grid;

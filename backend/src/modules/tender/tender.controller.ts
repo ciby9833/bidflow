@@ -95,6 +95,12 @@ export class TenderController {
     return ApiResponse.ok(await this.svc.getQuoteReview(id));
   }
 
+  @Get(':id/notification-summary')
+  @RequireScopes('tender:view')
+  async notificationSummary(@Param('id') id: string) {
+    return ApiResponse.ok(await this.svc.getNotificationSummary(id));
+  }
+
   @Get('lots/:lotId')
   async getLot(@Param('lotId') lotId: string, @Req() req: Request) {
     const user = req.user as User;
@@ -126,6 +132,12 @@ export class TenderController {
     return ApiResponse.ok(await this.svc.publish(id, ctx(req)));
   }
 
+  @Post(':id/notifications/resend')
+  @RequireScopes('tender:publish')
+  async resendNotifications(@Param('id') id: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.resendSupplierNotifications(id, ctx(req)));
+  }
+
   @Post(':id/rounds/next')
   @RequireScopes('tender:edit')
   async nextRound(@Param('id') id: string, @Req() req: Request) {
@@ -134,8 +146,12 @@ export class TenderController {
 
   @Post(':id/withdraw')
   @RequireScopes('tender:publish')
-  async withdraw(@Param('id') id: string, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.withdraw(id, ctx(req)));
+  async withdraw(
+    @Param('id') id: string,
+    @Body() body: { sendWithdrawalNotice?: boolean },
+    @Req() req: Request,
+  ) {
+    return ApiResponse.ok(await this.svc.withdraw(id, ctx(req), { sendWithdrawalNotice: Boolean(body?.sendWithdrawalNotice) }));
   }
 
   @Post(':id/open')

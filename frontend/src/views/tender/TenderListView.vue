@@ -156,6 +156,7 @@
           <el-button
             v-if="row.status === 'published' && auth.hasScope('tender:publish')"
             size="small" plain
+            :loading="withdrawingId === row.id"
             @click="withdraw(row)"
           >{{ t('common.withdraw') }}</el-button>
           <el-button
@@ -203,6 +204,7 @@ const router = useRouter();
 const auth = useAuthStore();
 const tenders = ref<any[]>([]);
 const loading = ref(false);
+const withdrawingId = ref('');
 const total = ref(0);
 const page = ref(1);
 const pageSize = 20;
@@ -298,14 +300,43 @@ function scheduleLoad() {
 }
 
 async function withdraw(row: any) {
-  await ElMessageBox.confirm(t('tenderList.withdrawConfirm', { title: row.title }), t('tenderList.withdrawTitle'), {
-    type: 'warning',
-    confirmButtonText: t('tenderList.confirmWithdraw'),
-    cancelButtonText: t('common.cancel'),
-  });
-  await api.post(`/api/tenders/${row.id}/withdraw`);
-  ElMessage.success(t('tenderList.withdrawn'));
-  load();
+  if (withdrawingId.value) return;
+  withdrawingId.value = row.id;
+  let sendWithdrawalNotice = false;
+  try {
+    const summaryRes = await api.get(`/api/tenders/${row.id}/notification-summary`).catch(() => ({ data: { data: null } }));
+    if (summaryRes.data.data?.hasInvitationNotice) {
+      try {
+        await ElMessageBox.confirm(
+          t('tenderDetail.withdrawNoticeConfirmMessage', { title: row.title }),
+          t('tenderDetail.withdrawNoticeConfirmTitle'),
+          {
+            type: 'warning',
+            confirmButtonText: t('tenderDetail.withdrawAndNotify'),
+            cancelButtonText: t('tenderDetail.withdrawWithoutNotify'),
+            distinguishCancelAndClose: true,
+          },
+        );
+        sendWithdrawalNotice = true;
+      } catch (action) {
+        if (action !== 'cancel') return;
+      }
+    } else {
+      await ElMessageBox.confirm(t('tenderList.withdrawConfirm', { title: row.title }), t('tenderList.withdrawTitle'), {
+        type: 'warning',
+        confirmButtonText: t('tenderList.confirmWithdraw'),
+        cancelButtonText: t('common.cancel'),
+      });
+    }
+    const res = await api.post(`/api/tenders/${row.id}/withdraw`, { sendWithdrawalNotice });
+    const notice = res.data.data?.withdrawalNotice;
+    ElMessage.success(notice
+      ? t('tenderDetail.withdrawnWithNoticeDone', { sent: notice.sentCount, failed: notice.failedCount })
+      : t('tenderList.withdrawn'));
+    load();
+  } finally {
+    withdrawingId.value = '';
+  }
 }
 
 async function deleteTender(row: any) {

@@ -1,7 +1,7 @@
 /**
- * 文件：backend/src/shared/mail/templates/tender-invitation.template.ts
- * 功能：生成「招标邀请」通知邮件的主题、纯文本与 HTML，支持 zh-CN / en / id-ID 三语。
- * 交互：由 tender.service.ts 在招标发布时调用后交给 MailService 发送给参与范围内供应商的关联用户。
+ * 文件：backend/src/shared/mail/templates/tender-withdrawal.template.ts
+ * 功能：生成「招标撤回通知」邮件的主题、纯文本与 HTML，支持 zh-CN / en / id-ID 三语。
+ * 交互：由 tender.service.ts 在招标撤回时调用后交给 MailService 发送给参与范围内供应商的关联用户。
  * 作者：吴川
  */
 import { existsSync } from 'fs';
@@ -12,7 +12,7 @@ const LOGO_CID = 'bidflow-jnt-logo';
 
 type Locale = 'zh-CN' | 'en' | 'id-ID';
 
-export interface TenderInvitationEmailInput {
+export interface TenderWithdrawalEmailInput {
   to: string;
   locale?: string;
   supplierName?: string;
@@ -26,7 +26,7 @@ export interface TenderInvitationEmailInput {
 const STRINGS: Record<Locale, {
   subject: (t: string) => string;
   greeting: (name: string) => string;
-  intro: (product: string) => string;
+  intro: string;
   labelTenderNo: string;
   labelTenderTitle: string;
   labelDeadline: string;
@@ -35,37 +35,37 @@ const STRINGS: Record<Locale, {
   footer: string;
 }> = {
   'zh-CN': {
-    subject: (t) => `【J&T Cargo 招标邀请】${t}`,
+    subject: (t) => `【J&T Cargo 招标撤回通知】${t}`,
     greeting: (name) => `${name} 您好：`,
-    intro: (product) => `您已被邀请参与 ${product} 上的一个新招标项目，详情如下：`,
+    intro: '您此前收到的招标项目已由采购方撤回，当前暂不再接受查看或报价。',
     labelTenderNo: '招标编号',
     labelTenderTitle: '招标名称',
-    labelDeadline: '报价截止时间',
-    noDeadline: '发布后立即开始，以系统公告为准',
-    cta: '登录查看并报价',
-    footer: '如果您未参与该招标业务，请忽略此邮件。',
+    labelDeadline: '原报价截止时间',
+    noDeadline: '未设置',
+    cta: '登录查看',
+    footer: '如后续重新发布或发起新一轮报价，请以系统通知为准。如有疑问，请联系采购方。',
   },
   en: {
-    subject: (t) => `[J&T Cargo Tender Invitation] ${t}`,
+    subject: (t) => `[J&T Cargo Tender Withdrawal] ${t}`,
     greeting: (name) => `Dear ${name},`,
-    intro: (product) => `You have been invited to a new tender on ${product}. Details below:`,
+    intro: 'The tender you were previously notified about has been withdrawn by the buyer. It is no longer available for viewing or quoting.',
     labelTenderNo: 'Tender No.',
     labelTenderTitle: 'Tender Title',
-    labelDeadline: 'Bid Deadline',
-    noDeadline: 'Starts right after publishing — see system notice',
-    cta: 'Sign in to view & bid',
-    footer: 'If this tender is not relevant to you, please ignore this email.',
+    labelDeadline: 'Original Bid Deadline',
+    noDeadline: 'Not set',
+    cta: 'Sign in to view',
+    footer: 'If the tender is republished or a new round is started, please follow the system notification. Contact the buyer if you have questions.',
   },
   'id-ID': {
-    subject: (t) => `[J&T Cargo Undangan Tender] ${t}`,
+    subject: (t) => `[J&T Cargo Penarikan Tender] ${t}`,
     greeting: (name) => `Yth. ${name},`,
-    intro: (product) => `Anda diundang untuk mengikuti tender baru di ${product}. Rincian di bawah ini:`,
+    intro: 'Tender yang sebelumnya Anda terima telah ditarik oleh pihak pembeli. Tender ini saat ini tidak lagi tersedia untuk dilihat atau ditawar.',
     labelTenderNo: 'No. Tender',
     labelTenderTitle: 'Judul Tender',
-    labelDeadline: 'Tenggat Penawaran',
-    noDeadline: 'Dimulai segera setelah dipublikasikan — lihat pengumuman sistem',
-    cta: 'Masuk untuk melihat & menawar',
-    footer: 'Jika tender ini tidak relevan bagi Anda, abaikan email ini.',
+    labelDeadline: 'Tenggat Penawaran Awal',
+    noDeadline: 'Belum diatur',
+    cta: 'Masuk untuk melihat',
+    footer: 'Jika tender diterbitkan ulang atau ronde baru dimulai, ikuti notifikasi sistem. Hubungi pembeli jika ada pertanyaan.',
   },
 };
 
@@ -85,7 +85,7 @@ function formatDeadline(value: Date | string | null | undefined): string | null 
   return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
 }
 
-export function buildTenderInvitationEmail(input: TenderInvitationEmailInput): SendMailInput {
+export function buildTenderWithdrawalEmail(input: TenderWithdrawalEmailInput): SendMailInput {
   const productName = input.productName ?? 'BidFlow';
   const locale = normalizeLocale(input.locale);
   const s = STRINGS[locale];
@@ -97,7 +97,7 @@ export function buildTenderInvitationEmail(input: TenderInvitationEmailInput): S
   const text = [
     s.greeting(supplierName),
     '',
-    s.intro(productName),
+    s.intro,
     '',
     `${s.labelTenderNo}: ${input.tenderNo}`,
     `${s.labelTenderTitle}: ${input.tenderTitle}`,
@@ -169,7 +169,7 @@ function buildHtml(input: {
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
             <tr><td style="padding:40px 32px 24px;text-align:center;">${logo}</td></tr>
             <tr><td style="padding:0 32px 8px;font-size:16px;font-weight:600;color:#0f172a;">${s.greeting(input.supplierName)}</td></tr>
-            <tr><td style="padding:0 32px 24px;font-size:14px;line-height:22px;color:#475569;">${s.intro(input.productName)}</td></tr>
+            <tr><td style="padding:0 32px 24px;font-size:14px;line-height:22px;color:#475569;">${s.intro}</td></tr>
             <tr><td style="padding:0 32px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
                 ${row(s.labelTenderNo, input.tenderNo)}

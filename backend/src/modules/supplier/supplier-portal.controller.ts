@@ -5,7 +5,7 @@
  * 作者：吴川
  */
 import {
-  Body, Controller, Get, Param, Post, Query, Req, UseGuards,
+  Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
@@ -57,6 +57,7 @@ export class SupplierPortalController {
     const user = req.user as User;
     const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
     if (!supplierId) return ApiResponse.ok({ needsSupplierBinding: true });
+    await this.svc.ensureCanManageSupplierMembers(supplierId, user.id);
     return ApiResponse.ok(await this.svc.createInvitation(supplierId, body, supplierCtx(req)));
   }
 
@@ -66,6 +67,36 @@ export class SupplierPortalController {
     const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
     if (!supplierId) return ApiResponse.ok({ items: [], total: 0, page: Number(page) || 1, limit: Number(limit) || 10 });
     return ApiResponse.ok(await this.svc.listInvitations(supplierId, Number(page), Number(limit)));
+  }
+
+  @Get('members')
+  async listMembers(@Req() req: Request, @Query('page') page?: string, @Query('limit') limit?: string) {
+    const user = req.user as User;
+    const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
+    if (!supplierId) return ApiResponse.ok({ items: [], total: 0, page: Number(page) || 1, limit: Number(limit) || 10 });
+    return ApiResponse.ok(await this.svc.listMembers(supplierId, Number(page), Number(limit)));
+  }
+
+  @Patch('members/:id')
+  async updateMember(
+    @Param('id') id: string,
+    @Body() body: { relationRole?: 'owner' | 'admin' | 'operator'; status?: 'active' | 'suspended'; isPrimary?: boolean; displayName?: string },
+    @Req() req: Request,
+  ) {
+    const user = req.user as User;
+    const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
+    if (!supplierId) return ApiResponse.ok({ needsSupplierBinding: true });
+    await this.svc.ensureCanManageSupplierMembers(supplierId, user.id);
+    return ApiResponse.ok(await this.svc.updateMember(supplierId, id, body, supplierCtx(req)));
+  }
+
+  @Post('members/:id/reset-password')
+  async resetMemberPassword(@Param('id') id: string, @Body() body: { password: string }, @Req() req: Request) {
+    const user = req.user as User;
+    const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
+    if (!supplierId) return ApiResponse.ok({ needsSupplierBinding: true });
+    await this.svc.ensureCanManageSupplierMembers(supplierId, user.id);
+    return ApiResponse.ok(await this.svc.resetMemberPassword(supplierId, id, body.password, supplierCtx(req)));
   }
 
   @Get('review-logs')
@@ -81,6 +112,7 @@ export class SupplierPortalController {
     const user = req.user as User;
     const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
     if (!supplierId) return ApiResponse.ok({ needsSupplierBinding: true });
+    await this.svc.ensureCanManageSupplierMembers(supplierId, user.id);
     return ApiResponse.ok(await this.svc.revokeInvitation(supplierId, id, supplierCtx(req)));
   }
 }

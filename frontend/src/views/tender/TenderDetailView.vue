@@ -36,6 +36,7 @@
           <el-button
             v-if="['published', 'open'].includes(tender.status) && auth.hasScope('tender:publish')"
             plain
+            :loading="withdrawing"
             @click="doWithdraw"
           >{{ t('tenderList.confirmWithdraw') }}</el-button>
           <el-button
@@ -52,6 +53,13 @@
             v-if="['closed', 'open', 'published'].includes(tender.status) && auth.hasScope('tender:edit')"
             @click="startNextRound"
           >{{ t('tenderDetail.nextRound') }}</el-button>
+          <el-button
+            v-if="['published', 'open', 'closed', 'awarded'].includes(tender.status) && auth.hasScope('tender:publish')"
+            :loading="resendingNotifications"
+            @click="resendSupplierNotifications"
+          >
+            <el-icon><Message /></el-icon>{{ t('tenderDetail.resendNotifications') }}
+          </el-button>
           <el-button v-if="auth.hasScope('export:masked') || auth.hasScope('export:full')" @click="openExportDialog">
             {{ t('export.export') }} <el-icon class="el-icon--right"><arrow-down /></el-icon>
           </el-button>
@@ -549,7 +557,7 @@ import {
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowDown, Refresh } from '@element-plus/icons-vue';
+import { ArrowDown, Message, Refresh } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api } from '../../composables/useApi';
@@ -573,6 +581,8 @@ const reviewDetailVisible = ref(false);
 const selectedReviewQuote = ref<any>(null);
 const loading = ref(false);
 const exporting = ref(false);
+const withdrawing = ref(false);
+const resendingNotifications = ref(false);
 const exportDialogVisible = ref(false);
 const defaultExportFields = [
   'roundNo',
@@ -731,9 +741,43 @@ async function doPublish() {
 }
 
 async function doWithdraw() {
-  await api.post(`/api/tenders/${tender.value.id}/withdraw`);
-  ElMessage.success(t('tenderDetail.withdrawn'));
-  load();
+  if (withdrawing.value) return;
+  let sendWithdrawalNotice = false;
+  withdrawing.value = true;
+  try {
+    const summaryRes = await api.get(`/api/tenders/${tender.value.id}/notification-summary`).catch(() => ({ data: { data: null } }));
+    if (summaryRes.data.data?.hasInvitationNotice) {
+      try {
+        await ElMessageBox.confirm(
+          t('tenderDetail.withdrawNoticeConfirmMessage', { title: tender.value.title }),
+          t('tenderDetail.withdrawNoticeConfirmTitle'),
+          {
+            type: 'warning',
+            confirmButtonText: t('tenderDetail.withdrawAndNotify'),
+            cancelButtonText: t('tenderDetail.withdrawWithoutNotify'),
+            distinguishCancelAndClose: true,
+          },
+        );
+        sendWithdrawalNotice = true;
+      } catch (action) {
+        if (action !== 'cancel') return;
+      }
+    } else {
+      await ElMessageBox.confirm(t('tenderList.withdrawConfirm', { title: tender.value.title }), t('tenderList.withdrawTitle'), {
+        type: 'warning',
+        confirmButtonText: t('tenderList.confirmWithdraw'),
+        cancelButtonText: t('common.cancel'),
+      });
+    }
+    const res = await api.post(`/api/tenders/${tender.value.id}/withdraw`, { sendWithdrawalNotice });
+    const notice = res.data.data?.withdrawalNotice;
+    ElMessage.success(notice
+      ? t('tenderDetail.withdrawnWithNoticeDone', { sent: notice.sentCount, failed: notice.failedCount })
+      : t('tenderDetail.withdrawn'));
+    load();
+  } finally {
+    withdrawing.value = false;
+  }
 }
 
 async function deleteTender() {
@@ -778,6 +822,30 @@ async function startNextRound() {
   await api.post(`/api/tenders/${tender.value.id}/rounds/next`);
   ElMessage.success(t('tenderDetail.nextRoundCreated'));
   router.push(`/tenders/${tender.value.id}/edit`);
+}
+
+async function resendSupplierNotifications() {
+  await ElMessageBox.confirm(
+    t('tenderDetail.resendNotificationsConfirmMessage', { title: tender.value.title }),
+    t('tenderDetail.resendNotificationsConfirmTitle'),
+    {
+      type: 'warning',
+      confirmButtonText: t('tenderDetail.confirmResendNotifications'),
+      cancelButtonText: t('common.cancel'),
+    },
+  );
+  resendingNotifications.value = true;
+  try {
+    const res = await api.post(`/api/tenders/${tender.value.id}/notifications/resend`);
+    const result = res.data.data;
+    ElMessage.success(t('tenderDetail.resendNotificationsDone', {
+      sent: result.sentCount ?? 0,
+      failed: result.failedCount ?? 0,
+      accounts: result.accountCount ?? 0,
+    }));
+  } finally {
+    resendingNotifications.value = false;
+  }
 }
 
 function openExportDialog() {

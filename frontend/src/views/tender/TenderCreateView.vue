@@ -312,6 +312,7 @@
               <div class="review-row"><span>{{ t('tenderCreate.lotCount') }}</span><strong>{{ t('tenderCreate.countUnit', { count: form.lots.length }) }}</strong></div>
               <div class="review-row"><span>{{ t('tenderCreate.attachments') }}</span><strong>{{ t('tenderCreate.countUnit', { count: form.attachments.length }) }}</strong></div>
               <div class="review-row"><span>{{ t('tenderCreate.participants') }}</span><strong>{{ participantSummary }}</strong></div>
+              <div class="review-row"><span>{{ t('tenderCreate.notifySuppliers') }}</span><strong>{{ form.notifySuppliers ? t('common.yes') : t('common.no') }}</strong></div>
             </div>
           </div>
 
@@ -348,6 +349,14 @@
                   </div>
                 </label>
               </div>
+
+              <label :class="['notification-card', { selected: form.notifySuppliers }]">
+                <el-checkbox v-model="form.notifySuppliers" size="large" />
+                <div>
+                  <strong>{{ t('tenderCreate.notifySuppliers') }}</strong>
+                  <span>{{ notifySuppliersDesc }}</span>
+                </div>
+              </label>
 
               <div v-if="form.participationMode === 'selected'" class="supplier-picker">
                 <div class="supplier-pool">
@@ -556,6 +565,7 @@ const form = reactive({
   description: '',
   isHallVisible: false,
   isPublicRankingVisible: false,
+  notifySuppliers: false,
   participationMode: 'all' as 'all' | 'selected',
   hallSummary: '',
   attachments: [] as Array<{ key: string; name: string; size: number; mimeType?: string; fileUrl?: string }>,
@@ -606,6 +616,11 @@ const participantSummary = computed(() => (
   form.participationMode === 'all'
     ? t('tenderCreate.allSuppliers')
     : t('tenderCreate.selectedSupplierCount', { count: selectedSupplierIds.value.length })
+));
+const notifySuppliersDesc = computed(() => (
+  form.participationMode === 'all'
+    ? t('tenderCreate.notifyAllSuppliersDesc')
+    : t('tenderCreate.notifySelectedSuppliersDesc')
 ));
 const selectedSupplierRows = computed(() => selectedSupplierIds.value.map((id) => selectedSupplierMap.value[id] ?? { id }));
 
@@ -685,6 +700,7 @@ async function loadTender() {
     form.description = tender.description ?? '';
     form.isHallVisible = Boolean(tender.isHallVisible);
     form.isPublicRankingVisible = Boolean(tender.isPublicRankingVisible);
+    form.notifySuppliers = Boolean(tender.notifySuppliers);
     form.hallSummary = tender.hallSummary ?? '';
     (form as any).currentQuoteRound = tender.currentQuoteRound ?? 1;
     form.participationMode = tender.participationMode ?? 'all';
@@ -1492,6 +1508,24 @@ onMounted(async () => {
 .visibility-card input { margin-top: 4px; accent-color: #2563eb; flex-shrink: 0; }
 .visibility-card strong { display: block; font-size: 14px; color: #0f172a; margin-bottom: 4px; }
 .visibility-card span { font-size: 12px; color: #64748b; line-height: 1.5; }
+.notification-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.notification-card:hover { border-color: #cbd5e1; }
+.notification-card.selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+.notification-card strong { display: block; font-size: 14px; color: #0f172a; margin-bottom: 4px; }
+.notification-card span { font-size: 12px; color: #64748b; line-height: 1.5; }
 
 /* ── Participants ── */
 .review-step-layout {

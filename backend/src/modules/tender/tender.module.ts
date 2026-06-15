@@ -7,6 +7,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Tender } from './tender.entity';
+import { TenderNotificationLog } from './tender-notification-log.entity';
 import { Lot } from './lot.entity';
 import { LotLine } from './lot-line.entity';
 import { Invitation } from './invitation.entity';
@@ -22,14 +23,15 @@ import { TenderService } from './tender.service';
 import { AuditLog } from '../../shared/audit/audit-log.entity';
 import { AuditService } from '../../shared/audit/audit.service';
 import { MailModule } from '../../shared/mail/mail.module';
+import { RedisService } from '../../shared/config/redis.config';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Tender, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, Supplier, User, SupplierAccount, AuditLog]),
+    TypeOrmModule.forFeature([Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, Supplier, User, SupplierAccount, AuditLog]),
     MailModule,
   ],
   controllers: [TenderController, SupplierTenderController],
-  providers: [TenderService, AuditService],
+  providers: [TenderService, AuditService, RedisService],
   exports: [TenderService],
 })
 export class TenderModule {}

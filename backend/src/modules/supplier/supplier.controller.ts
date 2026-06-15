@@ -129,6 +129,34 @@ export class SupplierController {
     return ApiResponse.ok(await this.svc.findReviewDetail(id));
   }
 
+  @Get(':id/members')
+  @RequireScopes('supplier:view')
+  async listMembers(@Param('id') id: string, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return ApiResponse.ok(await this.svc.listMembers(id, Number(page), Number(limit)));
+  }
+
+  @Patch(':id/members/:memberId')
+  @RequireScopes('supplier:edit')
+  async updateMember(
+    @Param('id') id: string,
+    @Param('memberId') memberId: string,
+    @Body() body: { relationRole?: 'owner' | 'admin' | 'operator'; status?: 'active' | 'suspended'; isPrimary?: boolean; displayName?: string },
+    @Req() req: Request,
+  ) {
+    return ApiResponse.ok(await this.svc.updateMember(id, memberId, body, ctx(req)));
+  }
+
+  @Post(':id/members/:memberId/reset-password')
+  @RequireScopes('supplier:edit')
+  async resetMemberPassword(
+    @Param('id') id: string,
+    @Param('memberId') memberId: string,
+    @Body() body: { password: string },
+    @Req() req: Request,
+  ) {
+    return ApiResponse.ok(await this.svc.resetMemberPassword(id, memberId, body.password, ctx(req)));
+  }
+
   @Patch(':id')
   @RequireScopes('supplier:edit')
   async update(@Param('id') id: string, @Body() body: any, @Req() req: Request) {

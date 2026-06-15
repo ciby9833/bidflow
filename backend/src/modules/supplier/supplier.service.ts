@@ -5,7 +5,7 @@
  * 作者：吴川
  */
 import {
-  BadRequestException, ConflictException, Injectable, NotFoundException,
+  BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -41,6 +41,9 @@ interface SupplierDocumentInput {
   mimeType?: string;
   fileSize?: number;
 }
+
+type SupplierRelationRole = 'owner' | 'admin' | 'operator';
+type SupplierMemberStatus = 'active' | 'suspended';
 
 @Injectable()
 export class SupplierService {
@@ -563,9 +566,9 @@ export class SupplierService {
       }
     }
 
-    // 逐行事务创建：User + SupplierAccount。首个账号若该供应商尚无 active 账号则 isPrimary=true。
+    // 逐行事务创建：User + SupplierAccount。首个账号若该供应商尚无 active 主账号则 isPrimary=true。
     const created: Array<{ id: string; email: string; supplierBusinessId: string }> = [];
-    const supplierHasPrimary = new Map<string, boolean>();
+    const supplierPrimaryKnown = new Map<string, boolean>();
 
     for (const c of candidates) {
       try {
@@ -587,24 +590,26 @@ export class SupplierService {
           }));
 
           const supplier = (await em.findOne(Supplier, { where: { businessId: c.businessId } }))!;
-          let isPrimary = supplierHasPrimary.get(supplier.id) ?? false;
-          if (!isPrimary) {
+          let hasPrimary = supplierPrimaryKnown.get(supplier.id);
+          if (hasPrimary === undefined) {
             const existingPrimary = await em.findOne(SupplierAccount, {
               where: { supplierId: supplier.id, status: 'active', isPrimary: true },
             });
-            isPrimary = !existingPrimary;
+            hasPrimary = Boolean(existingPrimary);
           }
-          if (isPrimary) supplierHasPrimary.set(supplier.id, true);
+          const isPrimary = !hasPrimary;
+          supplierPrimaryKnown.set(supplier.id, true);
 
           await em.save(em.create(SupplierAccount, {
             authUserId: user.id,
             supplierId: supplier.id,
             displayName: c.displayName,
             isPrimary,
-            relationRole: 'operator',
+            relationRole: isPrimary ? 'owner' : 'operator',
             status: 'active',
             createdByUserId: ctx.userId,
           }));
+          await em.update(User, user.id, { supplierId: supplier.id });
           await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.USER_CREATE, undefined, {
             email: c.email, supplierId: supplier.id, source: 'bulk_import',
           });
@@ -657,6 +662,164 @@ export class SupplierService {
       order: { isPrimary: 'DESC', createdAt: 'ASC' },
     });
     return relation?.supplierId;
+  }
+
+  async listMembers(supplierId: string, page = 1, limit = 10) {
+    await this.findById(supplierId);
+    const safePage = Math.max(Number(page) || 1, 1);
+    const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
+    const qb = this.supplierAccountRepo.createQueryBuilder('account')
+      .innerJoin(User, 'user', 'user.id = account.auth_user_id')
+      .where('account.supplier_id = :supplierId', { supplierId })
+      .orderBy('account.is_primary', 'DESC')
+      .addOrderBy('account.created_at', 'ASC')
+      .offset((safePage - 1) * safeLimit)
+      .limit(safeLimit)
+      .select([
+        'account.id AS "id"',
+        'account.auth_user_id AS "authUserId"',
+        'account.supplier_id AS "supplierId"',
+        'account.display_name AS "relationDisplayName"',
+        'account.is_primary AS "isPrimary"',
+        'account.relation_role AS "relationRole"',
+        'account.status AS "relationStatus"',
+        'account.created_at AS "createdAt"',
+        'account.updated_at AS "updatedAt"',
+        'user.email AS "email"',
+        'user.login_name AS "loginName"',
+        'user.display_name AS "displayName"',
+        'user.phone AS "phone"',
+        'user.status AS "userStatus"',
+        'user.register_source AS "registerSource"',
+        'user.locale AS "locale"',
+        'user.supplier_id AS "userSupplierId"',
+      ]);
+    const [rows, total] = await Promise.all([qb.getRawMany(), qb.getCount()]);
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        authUserId: row.authUserId,
+        supplierId: row.supplierId,
+        email: row.email,
+        loginName: row.loginName,
+        displayName: row.displayName,
+        relationDisplayName: row.relationDisplayName,
+        phone: row.phone,
+        userStatus: row.userStatus,
+        registerSource: row.registerSource,
+        locale: row.locale,
+        relationRole: row.relationRole,
+        isPrimary: row.isPrimary,
+        status: row.relationStatus,
+        userSupplierMatches: row.userSupplierId === supplierId,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      })),
+      total,
+      page: safePage,
+      limit: safeLimit,
+    };
+  }
+
+  async ensureCanManageSupplierMembers(supplierId: string, authUserId: string) {
+    const relation = await this.supplierAccountRepo.findOne({
+      where: { supplierId, authUserId, status: 'active' },
+    });
+    if (!relation || !['owner', 'admin'].includes(relation.relationRole)) {
+      throw new ForbiddenException('error.supplier.member_manage_forbidden');
+    }
+    return relation;
+  }
+
+  async updateMember(
+    supplierId: string,
+    memberId: string,
+    data: {
+      relationRole?: SupplierRelationRole;
+      status?: SupplierMemberStatus;
+      isPrimary?: boolean;
+      displayName?: string;
+    },
+    ctx: AuditContext,
+  ) {
+    await this.findById(supplierId);
+    const member = await this.supplierAccountRepo.findOne({ where: { id: memberId, supplierId } });
+    if (!member) throw new NotFoundException('error.supplier.member_not_found');
+
+    if (data.relationRole && !['owner', 'admin', 'operator'].includes(data.relationRole)) {
+      throw new BadRequestException('error.supplier.member_role_invalid');
+    }
+    if (data.status && !['active', 'suspended'].includes(data.status)) {
+      throw new BadRequestException('error.supplier.member_status_invalid');
+    }
+
+    const activeCount = await this.supplierAccountRepo.count({ where: { supplierId, status: 'active' } });
+    if (member.status === 'active' && data.status === 'suspended' && activeCount <= 1) {
+      throw new BadRequestException('error.supplier.member_last_active');
+    }
+    if (member.isPrimary && data.status === 'suspended') {
+      throw new BadRequestException('error.supplier.member_primary_cannot_suspend');
+    }
+    if (member.isPrimary && data.isPrimary === false) {
+      throw new BadRequestException('error.supplier.member_primary_required');
+    }
+
+    const before = { ...member };
+    const updated = await this.ds.transaction(async (em) => {
+      if (data.isPrimary === true && !member.isPrimary) {
+        await em.update(SupplierAccount, { supplierId }, { isPrimary: false });
+        member.isPrimary = true;
+        member.status = 'active';
+      }
+      if (data.relationRole) member.relationRole = data.relationRole;
+      if (data.status) member.status = data.status;
+      if (data.displayName !== undefined) member.displayName = data.displayName;
+      await em.save(member);
+      await em.update(User, member.authUserId, { supplierId });
+      return em.findOne(SupplierAccount, { where: { id: member.id } });
+    });
+
+    await this.audit.log(
+      ctx,
+      AuditEntityType.USER,
+      member.authUserId,
+      AuditAction.USER_UPDATE,
+      before as unknown as Record<string, unknown>,
+      updated as unknown as Record<string, unknown>,
+      { supplierId, source: 'supplier_member_update' },
+    );
+    return updated;
+  }
+
+  async resetMemberPassword(
+    supplierId: string,
+    memberId: string,
+    password: string,
+    ctx: AuditContext,
+  ) {
+    if (!password || password.length < 6) throw new BadRequestException('error.supplier.member_password_weak');
+    await this.findById(supplierId);
+    const member = await this.supplierAccountRepo.findOne({ where: { id: memberId, supplierId } });
+    if (!member) throw new NotFoundException('error.supplier.member_not_found');
+
+    const user = await this.userRepo.findOne({ where: { id: member.authUserId } });
+    if (!user || user.accountType !== AccountType.SUPPLIER_ACCOUNT) {
+      throw new NotFoundException('error.supplier.member_not_found');
+    }
+    await this.userRepo.update(user.id, {
+      passwordHash: await argon2.hash(password),
+      tokenVersion: user.tokenVersion + 1,
+    });
+    await this.audit.log(
+      ctx,
+      AuditEntityType.USER,
+      user.id,
+      AuditAction.USER_UPDATE,
+      undefined,
+      { passwordReset: true },
+      { supplierId, source: 'supplier_member_password_reset' },
+    );
+    return { updated: true };
   }
 
   async createCompanyForAccount(authUserId: string, data: Partial<Supplier>, ctx: AuditContext) {

@@ -55,6 +55,12 @@
       <el-col :lg="10" :span="24">
         <el-card>
           <el-tabs v-model="sideTab">
+            <el-tab-pane :label="t('supplierMembers.title')" name="members">
+              <SupplierMembersPanel
+                :api-base="`/api/suppliers/${route.params.id}/members`"
+                :can-manage="auth.hasScope('supplier:edit')"
+              />
+            </el-tab-pane>
             <el-tab-pane :label="t('supplierReviewDetail.memberInvitations')" name="invitations">
               <el-button v-if="auth.hasScope('supplier:edit')" class="full-action" type="primary" @click="createInvitation">{{ t('supplierReviewDetail.createInvitation') }}</el-button>
               <div v-if="invitations.length === 0" class="empty">{{ t('supplierReviewDetail.noInvitations') }}</div>
@@ -114,6 +120,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
 import { getSupplierActions, type SupplierActionKey } from '../../shared/supplier-action-rules';
+import SupplierMembersPanel from './SupplierMembersPanel.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -121,7 +128,7 @@ const auth = useAuthStore();
 const { t } = useI18n();
 const loading = ref(false);
 const detail = ref<any>(null);
-const sideTab = ref('invitations');
+const sideTab = ref('members');
 const invitations = ref<any[]>([]);
 const inviteTotal = ref(0);
 const inviteQuery = ref({ page: 1, limit: 5 });

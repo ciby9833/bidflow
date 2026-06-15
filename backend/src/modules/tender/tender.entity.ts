@@ -101,6 +101,9 @@ export class Tender {
   @Column({ name: 'is_public_ranking_visible', type: 'boolean', default: false })
   isPublicRankingVisible: boolean;
 
+  @Column({ name: 'notify_suppliers', type: 'boolean', default: false })
+  notifySuppliers: boolean;
+
   @Column({ name: 'hall_summary', type: 'text', nullable: true })
   hallSummary?: string;
 

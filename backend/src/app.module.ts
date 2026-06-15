@@ -33,6 +33,7 @@ import { SupplierDocument } from './modules/supplier/supplier-document.entity';
 import { SupplierReviewLog } from './modules/supplier/supplier-review-log.entity';
 import { SupplierInvitation } from './modules/supplier/supplier-invitation.entity';
 import { Tender } from './modules/tender/tender.entity';
+import { TenderNotificationLog } from './modules/tender/tender-notification-log.entity';
 import { Lot } from './modules/tender/lot.entity';
 import { LotLine } from './modules/tender/lot-line.entity';
 import { Invitation } from './modules/tender/invitation.entity';
@@ -56,7 +57,7 @@ import { RankingSnapshot } from './modules/quote/ranking-snapshot.entity';
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres',
         url: cfg.getOrThrow('DB_URL'),
-        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, AuditLog],
+        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, AuditLog],
         migrations: ['dist/migrations/*{.ts,.js}'],
         synchronize: cfg.get('NODE_ENV') === 'development',
         logging: cfg.get('NODE_ENV') === 'development',

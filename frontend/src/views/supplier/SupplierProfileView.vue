@@ -109,9 +109,12 @@
 
         <el-card v-else class="side-card">
           <el-tabs v-model="sideTab">
+            <el-tab-pane :label="t('supplierMembers.title')" name="members">
+              <SupplierMembersPanel api-base="/api/supplier/members" :can-manage="canManageMembers" />
+            </el-tab-pane>
             <el-tab-pane :label="t('supplierReviewDetail.memberInvitations')" name="invitations">
               <p class="hint">{{ t('supplierProfile.invitationExpiresHint') }}</p>
-              <el-button class="full-action" @click="createMemberInvitation">{{ t('supplierReviewDetail.createInvitation') }}</el-button>
+              <el-button v-if="canManageMembers" class="full-action" @click="createMemberInvitation">{{ t('supplierReviewDetail.createInvitation') }}</el-button>
               <div class="invite-list">
                 <div v-if="invitations.length === 0" class="empty">{{ t('supplierReviewDetail.noInvitations') }}</div>
                 <div v-for="item in invitations" :key="item.id" class="invite-item">
@@ -181,6 +184,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { CopyDocument, Delete } from '@element-plus/icons-vue';
 import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
+import SupplierMembersPanel from './SupplierMembersPanel.vue';
 
 const loading = ref(false);
 const submitting = ref(false);
@@ -190,7 +194,7 @@ const inviteTotal = ref(0);
 const logTotal = ref(0);
 const inviteQuery = reactive({ page: 1, limit: 5 });
 const logQuery = reactive({ page: 1, limit: 5 });
-const sideTab = ref('invitations');
+const sideTab = ref('members');
 const auth = useAuthStore();
 const { t } = useI18n();
 const fileInputs = ref<Record<number, HTMLInputElement>>({});
@@ -236,6 +240,7 @@ const form = reactive({
 });
 const hasSubmitted = computed(() => form.reviewStatus !== 'not_submitted');
 const canEditProfile = computed(() => ['not_submitted', 'supplement_required', 'rejected'].includes(form.reviewStatus));
+const canManageMembers = computed(() => ['owner', 'admin'].includes(String(auth.user?.supplierRelationRole || '')));
 const editButtonText = computed(() => (form.reviewStatus === 'supplement_required' ? t('supplierProfile.supplementProfile') : t('supplierProfile.editProfile')));
 function reviewStatusLabel(status?: string) { return status ? t(`supplierReview.${status}`) : t('supplierReview.not_submitted'); }
 function docLabel(doc: any) { return t(`supplierDocs.${doc.docType}`, doc.docLabel || doc.docType); }

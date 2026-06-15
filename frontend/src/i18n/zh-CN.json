@@ -207,6 +207,16 @@
       "request_supplement": "要求补件", "suspend": "冻结供应商", "resume": "恢复供应商"
     }
   },
+  "supplierMembers": {
+    "title": "成员账号", "total": "共 {count} 个账号", "role": "成员角色", "primary": "主账号",
+    "setPrimary": "设为主账号", "source": "来源", "resetPassword": "重置密码",
+    "updated": "成员信息已更新", "passwordWeak": "密码至少 6 位", "passwordReset": "密码已重置",
+    "roles": { "owner": "所有者", "admin": "管理员", "operator": "操作员" },
+    "sources": {
+      "internal_created": "内部创建", "external_signup": "外部注册", "google": "Google 注册",
+      "wechat": "微信注册", "apple": "Apple 注册", "unknown": "未知来源"
+    }
+  },
   "supplierProfile": {
     "currentReviewStatus": "当前审核状态：", "submitProfile": "提交认证资料",
     "notSubmittedTitle": "尚未提交认证资料", "notSubmittedDesc": "请先录入供应商公司资料，并上传必填认证附件。提交后由公司审核，通过后才可以参与投标。",
@@ -289,6 +299,7 @@
     "validationLotTitleRequired": "请填写所有标包名称", "validationSupplierRequired": "请选择至少一家参与供应商",
     "participants": "参与供应商", "directedTender": "定向招标", "allSuppliers": "全部供应商", "allSuppliersDesc": "默认全部已认证启用供应商可参与",
     "selectedSuppliers": "指定供应商", "selectedSuppliersDesc": "仅勾选的供应商可查看和报价",
+    "notifySuppliers": "邮件通知供应商", "notifyAllSuppliersDesc": "发布时向全部已认证启用供应商账号发送邮件通知", "notifySelectedSuppliersDesc": "发布时向已选择供应商的活跃账号发送邮件通知",
     "previousRoundAll": "填入上一轮受邀", "previousRoundSelect": "填入上一轮已投标", "continuePublicAll": "全部公开", "nextRoundParticipantHint": "按钮为一键填入，填入后仍可在下方列表自由搜索、增删供应商。",
     "searchSupplier": "搜索供应商名称、编号或联系人", "sortSuppliers": "报价排序",
     "sortName": "按名称", "sortQuoteAmount": "按报价金额", "sortQuoteTime": "按最后报价时间", "sortQuoteCount": "按报价次数",
@@ -388,6 +399,8 @@
     "closeConfirmTitle": "关标确认", "confirmClose": "确认关标", "closed": "已关标",
     "nextRoundConfirmMessage": "发起下一轮后项目会回到草稿状态，需要重新设置报价时间并发布。确认继续？",
     "nextRoundConfirmTitle": "发起下一轮报价", "confirmNextRound": "确认发起", "nextRoundCreated": "已创建下一轮报价草稿",
+    "withdrawNoticeConfirmTitle": "撤回通知确认", "withdrawNoticeConfirmMessage": "该招标已向供应商发送过邮件通知。撤回「{title}」后是否发送撤回提醒？", "withdrawAndNotify": "撤回并发送提醒", "withdrawWithoutNotify": "仅撤回", "withdrawnWithNoticeDone": "已撤回，撤回提醒已发送：成功 {sent} 个，失败 {failed} 个",
+    "resendNotifications": "补发邮件通知", "resendNotificationsConfirmMessage": "确认向「{title}」当前可参与的供应商补发邮件通知？", "resendNotificationsConfirmTitle": "补发邮件通知", "confirmResendNotifications": "确认补发", "resendNotificationsDone": "邮件补发完成：成功 {sent} 个，失败 {failed} 个，可通知账号 {accounts} 个",
     "selectExportField": "请选择至少一个导出字段",
     "lineCount": "{count} 条线路", "supplierQuoteCount": "{count} 家供应商报价", "supplierCount": "{count} 家",
     "quoted": "已报价", "minPrice": "最低价", "maxPrice": "最高价", "avgPrice": "平均价",
