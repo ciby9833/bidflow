@@ -495,6 +495,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       supplierCount: supplierIds.length, accountCount: 0, sentCount: 0, failedCount: 0, skippedCount: 0,
     };
 
+    const supplierMap = new Map(suppliers.map((s) => [s.id, s]));
     const supplierNameMap = new Map(suppliers.map((s) => [s.id, s.legalName || s.shortName || s.businessId || '']));
     const users = await this.userRepo.find({ where: { id: In(accounts.map((a) => a.authUserId)) } });
     const userMap = new Map(users.map((u) => [u.id, u]));
@@ -512,10 +513,12 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     let failedCount = 0;
     for (const { user, account } of recipients.values()) {
       try {
+        const supplier = supplierMap.get(account.supplierId);
+        const locale = this.resolveSupplierMailLocale(user.locale, supplier);
         const message = type === TenderNotificationType.WITHDRAWAL
           ? buildTenderWithdrawalEmail({
             to: user.email,
-            locale: user.locale,
+            locale,
             supplierName: account.displayName || supplierNameMap.get(account.supplierId),
             tenderNo: tender.tenderNo,
             tenderTitle: tender.title,
@@ -524,7 +527,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
           })
           : buildTenderInvitationEmail({
             to: user.email,
-            locale: user.locale,
+            locale,
             supplierName: account.displayName || supplierNameMap.get(account.supplierId),
             tenderNo: tender.tenderNo,
             tenderTitle: tender.title,
@@ -561,6 +564,18 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       select: ['id'],
     });
     return suppliers.map((supplier) => supplier.id);
+  }
+
+  private resolveSupplierMailLocale(userLocale?: string, supplier?: Supplier): 'zh-CN' | 'en' | 'id-ID' {
+    const countryCode = supplier?.countryCode?.trim().toUpperCase();
+    const normalized = String(userLocale || '').replace('_', '-').toLowerCase();
+
+    // 历史供应商账号没有显式语言时会落到 users 默认 zh-CN；印尼供应商不能因此收到中文邮件。
+    if (countryCode === 'ID' && (!normalized || normalized === 'zh-cn' || normalized === 'zh')) return 'id-ID';
+    if (countryCode === 'CN' && (!normalized || normalized === 'zh-cn' || normalized === 'zh')) return 'zh-CN';
+    if (normalized === 'id' || normalized.startsWith('id-')) return 'id-ID';
+    if (normalized === 'zh' || normalized.startsWith('zh-')) return 'zh-CN';
+    return 'en';
   }
 
   private notificationLockKey(tenderId: string) {

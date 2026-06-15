@@ -89,7 +89,7 @@ export function buildTenderInvitationEmail(input: TenderInvitationEmailInput): S
   const productName = input.productName ?? 'BidFlow';
   const locale = normalizeLocale(input.locale);
   const s = STRINGS[locale];
-  const supplierName = input.supplierName?.trim() || (locale === 'zh-CN' ? '供应商' : 'Supplier');
+  const supplierName = input.supplierName?.trim() || (locale === 'zh-CN' ? '供应商' : locale === 'id-ID' ? 'Pemasok' : 'Supplier');
   const deadline = formatDeadline(input.bidDeadline) ?? s.noDeadline;
   const logoPath = resolve(process.cwd(), 'src/public/jnt-Logo.png');
   const subject = s.subject(input.tenderTitle);
