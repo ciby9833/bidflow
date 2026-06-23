@@ -210,8 +210,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   } & ParticipationInput, ctx: AuditContext) {
     this.validateTenderSchedule(data.bidStartAt, data.bidDeadline);
     return this.ds.transaction(async (em) => {
-      const tenderCount = await em.count(Tender);
-      const tenderNo = nextTenderNo(tenderCount + 1);
+      const nextSeq = await this.computeNextTenderSeq(em);
+      const tenderNo = nextTenderNo(nextSeq);
       const template = TEMPLATES[data.type];
 
       const tender = em.create(Tender, {
@@ -1443,5 +1443,17 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       .andWhere('(bid_start_at IS NULL OR bid_start_at <= :now)', { now })
       .andWhere('(bid_deadline IS NULL OR bid_deadline > :now)', { now })
       .execute();
+  }
+
+  /**
+   * 计算下一个招标号序号：取当前最大后缀 + 1。
+   * 与 count()+1 不同——后者遇历史删除留下的空洞会撞库；此处按后缀推进，安全。
+   */
+  private async computeNextTenderSeq(em: EntityManager): Promise<number> {
+    const rows = await em.query(
+      `SELECT COALESCE(MAX(CAST(SPLIT_PART(tender_no, '-', 3) AS INTEGER)), 0) AS max_seq
+       FROM tenders`,
+    );
+    return Number(rows?.[0]?.max_seq ?? 0) + 1;
   }
 }
