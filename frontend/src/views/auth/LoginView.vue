@@ -15,6 +15,11 @@
         </el-form-item>
         <el-form-item :label="t('auth.password')">
           <el-input v-model="form.password" type="password" autocomplete="current-password" show-password size="large" />
+          <div class="password-help">
+            <button type="button" class="forget-link" @click.prevent="router.replace('/forget-password')">
+              {{ t('auth.forget_password') }}
+            </button>
+          </div>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" native-type="submit" :loading="loading" class="primary-action">
@@ -100,6 +105,22 @@ h1 {
   width: 100%;
   height: 44px;
   font-weight: 600;
+}
+.password-help {
+  margin-top: 8px;
+  text-align: right;
+}
+.forget-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #2563eb;
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.forget-link:hover {
+  text-decoration: underline;
 }
 .switch-action {
   width: 100%;

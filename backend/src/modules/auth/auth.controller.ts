@@ -57,6 +57,20 @@ class SupplierRegisterEmailCodeDto {
   email: string;
 }
 
+class PasswordResetRequestDto {
+  @IsEmail()
+  email: string;
+}
+
+class PasswordResetConfirmDto {
+  @IsString()
+  token: string;
+
+  @IsString()
+  @MinLength(6)
+  password: string;
+}
+
 class GoogleSupplierRegisterDto {
   @IsString()
   credential: string;
@@ -142,5 +156,23 @@ export class AuthController {
   async capabilities(@Req() req: Request) {
     const user = req.user as User;
     return ApiResponse.ok({ scopes: this.svc.getCapabilities(user), accountType: user.accountType });
+  }
+
+  @Post('password-reset/request')
+  async passwordResetRequest(@Body() dto: PasswordResetRequestDto, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.requestPasswordReset(dto.email, {
+      userId: 'anonymous', userRole: 'anonymous',
+      ipAddress: req.ip ?? '0.0.0.0',
+      userAgent: req.headers['user-agent'],
+    }));
+  }
+
+  @Post('password-reset/confirm')
+  async passwordResetConfirm(@Body() dto: PasswordResetConfirmDto, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.confirmPasswordReset(dto.token, dto.password, {
+      userId: 'anonymous', userRole: 'anonymous',
+      ipAddress: req.ip ?? '0.0.0.0',
+      userAgent: req.headers['user-agent'],
+    }));
   }
 }

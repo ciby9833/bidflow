@@ -12,6 +12,11 @@
       "email_exists": "邮箱已被注册",
       "email_code_too_frequent": "验证码发送过于频繁，请稍后再试",
       "email_code_too_many_attempts": "验证码错误次数过多，请重新获取验证码",
+      "email_not_found": "账号邮箱不存在",
+      "password_reset_too_frequent": "密码重置请求过于频繁，请稍后再试",
+      "password_reset_token_invalid": "密码重置链接已过期或无效",
+      "user_not_found": "用户不存在",
+      "account_password_required": "账号和密码必填",
       "google_not_configured": "Google 登录暂未配置",
       "google_email_unverified": "Google 邮箱未验证，暂无法注册"
     },

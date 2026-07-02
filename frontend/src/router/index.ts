@@ -42,6 +42,8 @@ const routes = [
   },
   { path: '/register/supplier', component: () => import('../views/auth/SupplierRegisterView.vue'), meta: { public: true } },
   { path: '/login', component: () => import('../views/auth/LoginView.vue'), meta: { public: true } },
+  { path: '/forget-password', component: () => import('../views/auth/ForgetPasswordView.vue'), meta: { public: true } },
+  { path: '/reset-password', component: () => import('../views/auth/ResetPasswordView.vue'), meta: { public: true } },
   { path: '/supplier/review-pending', component: () => import('../views/supplier/SupplierReviewPendingView.vue') },
   {
     path: '/',

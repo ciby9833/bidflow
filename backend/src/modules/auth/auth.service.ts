@@ -57,6 +57,8 @@ const REGISTER_EMAIL_CODE_PREFIX = 'auth:supplier-register:email-code';
 const REGISTER_EMAIL_REQUEST_PREFIX = 'auth:supplier-register:email-code-request';
 const REGISTER_EMAIL_COOLDOWN_PREFIX = 'auth:supplier-register:email-code-cooldown';
 const REGISTER_EMAIL_FAIL_PREFIX = 'auth:supplier-register:email-code-fail';
+const PASSWORD_RESET_TOKEN_PREFIX = 'auth:password-reset:token';
+const PASSWORD_RESET_COOLDOWN_PREFIX = 'auth:password-reset:cooldown';
 
 @Injectable()
 export class AuthService {
@@ -650,5 +652,62 @@ export class AuthService {
       scopes: profile.scopes,
       user: profile.user,
     };
+  }
+
+  async requestPasswordReset(email: string, ctx: AuditContext) {
+    const normalizedEmail = this.normalizeEmail(email);
+    const user = await this.userRepo.findOne({
+      where: [{ email: normalizedEmail }, { loginName: normalizedEmail }],
+    });
+    if (!user) throw new BadRequestException('error.auth.email_not_found');
+
+    const cooldownSeconds = this.config.get<number>('PASSWORD_RESET_COOLDOWN_SECONDS', 60);
+    const cooldownKey = `${PASSWORD_RESET_COOLDOWN_PREFIX}:${normalizedEmail}`;
+    const allowed = await this.redis.setnx(cooldownKey, '1', cooldownSeconds);
+    if (!allowed) throw new BadRequestException('error.auth.password_reset_too_frequent');
+
+    const ttlSeconds = this.config.get<number>('PASSWORD_RESET_EXPIRES_SECONDS', 3600);
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+
+    await this.redis.set(
+      `${PASSWORD_RESET_TOKEN_PREFIX}:${tokenHash}`,
+      JSON.stringify({ userId: user.id, email: normalizedEmail }),
+      ttlSeconds,
+    );
+
+    const resetUrl = this.config.get<string>('PASSWORD_RESET_URL', 'http://localhost:3000/reset-password');
+    const resetLink = `${resetUrl}?token=${token}`;
+
+    await this.mail.send({
+      to: normalizedEmail,
+      subject: '[BidFlow] 重置密码',
+      text: `点击下面的链接重置你的密码（有效期1小时）:\n\n${resetLink}\n\n如果你没有请求重置密码，请忽略此邮件。`,
+      html: `<p>点击下面的链接重置你的密码（有效期1小时）:</p><p><a href="${resetLink}">${resetLink}</a></p><p>如果你没有请求重置密码，请忽略此邮件。</p>`,
+    });
+
+    await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.PASSWORD_RESET_REQUESTED, {}, { email: normalizedEmail });
+
+    return { message: 'password_reset_email_sent' };
+  }
+
+  async confirmPasswordReset(token: string, newPassword: string, ctx: AuditContext) {
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const stored = await this.redis.get(`${PASSWORD_RESET_TOKEN_PREFIX}:${tokenHash}`);
+    if (!stored) throw new BadRequestException('error.auth.password_reset_token_invalid');
+
+    const { userId } = JSON.parse(stored);
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new BadRequestException('error.auth.user_not_found');
+
+    const hashedPassword = await argon2.hash(newPassword);
+    user.passwordHash = hashedPassword;
+    user.tokenVersion += 1;
+    await this.userRepo.save(user);
+
+    await this.redis.del(`${PASSWORD_RESET_TOKEN_PREFIX}:${tokenHash}`);
+    await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.PASSWORD_RESET_CONFIRMED, {}, { email: user.email });
+
+    return { message: 'password_reset_success' };
   }
 }
