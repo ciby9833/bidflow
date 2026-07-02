@@ -161,7 +161,8 @@ export class AuthController {
   @Post('password-reset/request')
   async passwordResetRequest(@Body() dto: PasswordResetRequestDto, @Req() req: Request) {
     return ApiResponse.ok(await this.svc.requestPasswordReset(dto.email, {
-      userId: 'anonymous', userRole: 'anonymous',
+      userId: '00000000-0000-0000-0000-000000000000',
+      userRole: 'anonymous',
       ipAddress: req.ip ?? '0.0.0.0',
       userAgent: req.headers['user-agent'],
     }));
@@ -170,7 +171,8 @@ export class AuthController {
   @Post('password-reset/confirm')
   async passwordResetConfirm(@Body() dto: PasswordResetConfirmDto, @Req() req: Request) {
     return ApiResponse.ok(await this.svc.confirmPasswordReset(dto.token, dto.password, {
-      userId: 'anonymous', userRole: 'anonymous',
+      userId: '00000000-0000-0000-0000-000000000000',
+      userRole: 'anonymous',
       ipAddress: req.ip ?? '0.0.0.0',
       userAgent: req.headers['user-agent'],
     }));
