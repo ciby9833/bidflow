@@ -342,7 +342,8 @@
     "bidMethod": "投标方式", "latestAmount": "最新金额", "quoteCount": "报价次数",
     "lineCount": "{submitted}/{total} 线路", "continueBid": "继续投标", "closed": "已截止",
     "recordCount": "{count} 条", "noMatched": "暂无匹配投标记录",
-    "searchResults": "搜索结果", "searchPrompt": "输入关键词或选择筛选条件"
+    "searchResults": "搜索结果", "searchPrompt": "输入关键词或选择筛选条件",
+    "historyPrice": "历史价格", "historyLoadFailed": "历史报价加载失败，请稍后重试"
   },
   "mobileConsole": { "noFeatures": "暂无可用功能" },
   "userRole": {

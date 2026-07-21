@@ -62,6 +62,7 @@
         </button>
         <div class="card-actions">
           <button type="button" @click="openTender(item)">{{ t('common.details') }}</button>
+          <button type="button" @click="openHistory(item)">{{ t('bidRecords.historyPrice') }}</button>
           <button
             class="primary"
             type="button"
@@ -74,6 +75,8 @@
       </article>
       <div v-if="!loading && records.length === 0" class="empty">{{ t('bidRecords.noRecords') }}</div>
     </section>
+
+    <BidHistoryDrawer v-model="historyOpen" :record="selectedRecord" />
   </main>
 </template>
 
@@ -84,6 +87,7 @@ import {
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import dayjs from 'dayjs';
+import BidHistoryDrawer from '../../components/BidHistoryDrawer.vue';
 import { api } from '../../composables/useApi';
 import { participationClass, participationLabelKey, resolveParticipationScope } from '../../utils/participation';
 
@@ -94,6 +98,8 @@ const records = ref<any[]>([]);
 const total = ref(0);
 const page = ref(1);
 const pageSize = 50;
+const historyOpen = ref(false);
+const selectedRecord = ref<any | null>(null);
 let queryTimer: ReturnType<typeof setTimeout> | undefined;
 
 const filters = reactive({
@@ -174,6 +180,10 @@ function openTender(item: any) {
 }
 function openQuote(item: any) {
   if (item.tenderStatus === 'open') router.push(`/m/quotes/lots/${item.lotId}`);
+}
+function openHistory(item: any) {
+  selectedRecord.value = item;
+  historyOpen.value = true;
 }
 
 watch(filters, scheduleLoad, { deep: true });

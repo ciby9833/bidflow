@@ -51,6 +51,12 @@ export interface BidRecordItem {
   roundNo?: number;
   submittedLineCount?: number;
   totalLineCount?: number;
+  lineSummaries?: Array<{
+    lineId: string;
+    lineNo: string;
+    rowNo: number;
+    title: string;
+  }>;
 }
 
 @Injectable()
@@ -180,6 +186,15 @@ export class BidRecordService {
       const lotId = latest.lotId;
       const total = quotes.reduce((sum, quote) => sum + Number(quote.totalPrice), 0);
       const maxVersion = Math.max(...quotes.map((quote) => Number(quote.version ?? 1)));
+      const lineSummaries = quotes
+        .slice()
+        .sort((a, b) => (a.line?.sortOrder ?? a.line?.rowNo ?? 0) - (b.line?.sortOrder ?? b.line?.rowNo ?? 0))
+        .map((quote) => ({
+          lineId: quote.lineId,
+          lineNo: quote.line.lineNo,
+          rowNo: quote.line.rowNo,
+          title: this.getLineSummaryTitle(quote.line),
+        }));
       return {
         id: `line:${key}`,
         kind: 'line',
@@ -205,8 +220,16 @@ export class BidRecordService {
         roundNo: latest.roundNo,
         submittedLineCount: quotes.length,
         totalLineCount: lineCountMap.get(lotId) ?? quotes.length,
+        lineSummaries,
       };
     });
+  }
+
+  private getLineSummaryTitle(line: LotLine) {
+    const values = Object.values(line.dataJson ?? {})
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean);
+    return values.slice(0, 3).join(' / ') || line.lineNo || `#${line.rowNo}`;
   }
 
   private countBy<T, K extends keyof T>(items: T[], key: K) {

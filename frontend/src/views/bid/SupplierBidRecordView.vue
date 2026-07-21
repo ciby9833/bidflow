@@ -85,10 +85,11 @@
         <el-table-column :label="t('hall.deadline')" width="160">
           <template #default="{ row }">{{ row.bidDeadline ? fmtDate(row.bidDeadline) : t('common.not_set') }}</template>
         </el-table-column>
-        <el-table-column :label="t('common.actions')" width="180" fixed="right">
+        <el-table-column :label="t('common.actions')" width="250" fixed="right">
           <template #default="{ row }">
             <div class="actions">
               <el-button link type="primary" @click="router.push(`/supplier/tenders/${row.tenderId}`)">{{ t('common.details') }}</el-button>
+              <el-button link type="primary" @click="openHistory(row)">{{ t('bidRecords.historyPrice') }}</el-button>
               <el-button
                 link
                 type="primary"
@@ -112,6 +113,8 @@
         @current-change="load"
       />
     </el-card>
+
+    <BidHistoryDrawer v-model="historyOpen" :record="selectedRecord" />
   </div>
 </template>
 
@@ -123,6 +126,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import dayjs from 'dayjs';
 import { Refresh, Search } from '@element-plus/icons-vue';
+import BidHistoryDrawer from '../../components/BidHistoryDrawer.vue';
 import { api } from '../../composables/useApi';
 import { participationLabelKey, participationTagType, resolveParticipationScope } from '../../utils/participation';
 
@@ -133,6 +137,8 @@ const records = ref<any[]>([]);
 const total = ref(0);
 const page = ref(1);
 const pageSize = 20;
+const historyOpen = ref(false);
+const selectedRecord = ref<any | null>(null);
 let queryTimer: ReturnType<typeof setTimeout> | undefined;
 
 const filters = reactive({
@@ -202,6 +208,11 @@ function scheduleLoad() {
     page.value = 1;
     void load();
   }, 260);
+}
+
+function openHistory(row: any) {
+  selectedRecord.value = row;
+  historyOpen.value = true;
 }
 
 watch(filters, scheduleLoad, { deep: true });

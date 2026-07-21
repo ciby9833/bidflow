@@ -325,7 +325,8 @@
     "bidMethod": "Bid Method", "latestAmount": "Latest Amount", "quoteCount": "Quote Count",
     "lineCount": "{submitted}/{total} lines", "continueBid": "Continue Bid", "closed": "Closed",
     "recordCount": "{count} records", "noMatched": "No matching bid records",
-    "searchResults": "Search Results", "searchPrompt": "Enter keywords or select filters"
+    "searchResults": "Search Results", "searchPrompt": "Enter keywords or select filters",
+    "historyPrice": "Price History", "historyLoadFailed": "Failed to load quote history. Try again later."
   },
   "mobileConsole": { "noFeatures": "No available features" },
   "userRole": {

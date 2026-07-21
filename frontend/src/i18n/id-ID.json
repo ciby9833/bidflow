@@ -325,7 +325,8 @@
     "bidMethod": "Metode Penawaran", "latestAmount": "Jumlah Terbaru", "quoteCount": "Jumlah Penawaran",
     "lineCount": "{submitted}/{total} rute", "continueBid": "Lanjutkan Penawaran", "closed": "Ditutup",
     "recordCount": "{count} catatan", "noMatched": "Tidak ada catatan penawaran yang cocok",
-    "searchResults": "Hasil Pencarian", "searchPrompt": "Masukkan kata kunci atau pilih filter"
+    "searchResults": "Hasil Pencarian", "searchPrompt": "Masukkan kata kunci atau pilih filter",
+    "historyPrice": "Riwayat Harga", "historyLoadFailed": "Gagal memuat riwayat penawaran. Coba lagi nanti."
   },
   "mobileConsole": { "noFeatures": "Belum ada fitur tersedia" },
   "userRole": {
