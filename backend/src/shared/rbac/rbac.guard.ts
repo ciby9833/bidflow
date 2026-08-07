@@ -7,25 +7,10 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UserRole } from '../../modules/auth/user.entity';
+import { scopesForRole } from './scope-map';
 
 export const SCOPES_KEY = 'required_scopes';
 export const RequireScopes = (...scopes: string[]) => SetMetadata(SCOPES_KEY, scopes);
-
-const SCOPE_MAP: Record<UserRole, string[]> = {
-  super_admin: ['*'],
-  purchase_manager: [
-    'tender:view', 'tender:create', 'tender:edit', 'tender:publish', 'tender:close',
-    'supplier:view', 'supplier:create', 'supplier:edit',
-    'quote:view_all', 'export:full', 'export:masked',
-    'admin:unlock', 'eval:freeze', 'user:view',
-  ],
-  purchase_staff: [
-    'tender:view', 'tender:create', 'tender:edit', 'supplier:view', 'supplier:create',
-    'quote:view_all', 'export:masked',
-  ],
-  evaluator: ['tender:view', 'quote:view_all', 'eval:freeze', 'export:masked'],
-  supplier: ['tender:view', 'quote:submit', 'quote:rebid', 'quote:view_own', 'tender:view_invited'],
-};
 
 @Injectable()
 export class RbacGuard implements CanActivate {
@@ -40,7 +25,7 @@ export class RbacGuard implements CanActivate {
     const { user } = ctx.switchToHttp().getRequest();
     if (!user) throw new ForbiddenException('error.auth.unauthenticated');
 
-    const granted = SCOPE_MAP[user.role as UserRole] ?? [];
+    const granted = scopesForRole(user.role as UserRole);
     if (granted.includes('*')) return true;
 
     const allowed = required.every((s) => granted.includes(s));

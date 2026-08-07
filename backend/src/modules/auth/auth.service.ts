@@ -5,7 +5,7 @@
  * 作者：吴川
  */
 import {
-  BadRequestException, ForbiddenException, Injectable, Logger, UnauthorizedException,
+  BadRequestException, ForbiddenException, Injectable, UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -22,6 +22,7 @@ import { SupplierAccount } from './supplier-account.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
+import { scopesForAccount } from '../../shared/rbac/scope-map';
 import { RedisService } from '../../shared/config/redis.config';
 import { MailService } from '../../shared/mail/mail.service';
 import { buildVerificationCodeEmail } from '../../shared/mail/templates/verification-code.template';
@@ -29,29 +30,17 @@ import { buildVerificationCodeEmail } from '../../shared/mail/templates/verifica
 export interface JwtPayload {
   sub: string;
   accountType: AccountType;
-  orgId: string;
+  /**
+   * 当前登录主体的身份 ID：供应商账号为 supplier.id，公司用户为 company_user.id。
+   * 注意：这不是「机构 / 组织」ID —— 多机构改造时机构 ID 会以独立的 branchId 字段引入，切勿复用本字段。
+   */
+  principalId: string;
   scope: string[];
   tokenVersion: number;
   role?: UserRole;
   email?: string;
   supplierId?: string;
 }
-
-const SCOPE_MAP: Record<UserRole, string[]> = {
-  super_admin: ['*'],
-  purchase_manager: [
-    'tender:view', 'tender:create', 'tender:edit', 'tender:publish', 'tender:close',
-    'supplier:view', 'supplier:create', 'supplier:edit',
-    'quote:view_all', 'export:full', 'export:masked',
-    'admin:unlock', 'eval:freeze', 'user:view',
-  ],
-  purchase_staff: [
-    'tender:view', 'tender:create', 'tender:edit', 'supplier:view', 'supplier:create',
-    'quote:view_all', 'export:masked',
-  ],
-  evaluator: ['tender:view', 'quote:view_all', 'eval:freeze', 'export:masked'],
-  supplier: ['tender:view', 'quote:submit', 'quote:rebid', 'quote:view_own', 'tender:view_invited'],
-};
 
 const REGISTER_EMAIL_CODE_PREFIX = 'auth:supplier-register:email-code';
 const REGISTER_EMAIL_REQUEST_PREFIX = 'auth:supplier-register:email-code-request';
@@ -62,8 +51,6 @@ const PASSWORD_RESET_COOLDOWN_PREFIX = 'auth:password-reset:cooldown';
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
-
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(CompanyUser) private readonly companyUserRepo: Repository<CompanyUser>,
@@ -107,25 +94,7 @@ export class AuthService {
     });
     await this.audit.log(userAuditCtx, AuditEntityType.USER, user.id, AuditAction.LOGIN);
 
-    const profile = await this.buildProfile(user);
-    const payload: JwtPayload = {
-      sub: user.id,
-      accountType: user.accountType,
-      orgId: profile.orgId,
-      scope: profile.scopes,
-      tokenVersion: user.tokenVersion,
-      role: user.role,
-      email: user.email,
-      supplierId: profile.user.supplierId,
-    };
-    const token = this.jwt.sign(payload);
-    return {
-      accessToken: token,
-      accountType: user.accountType,
-      redirect: profile.redirect,
-      scopes: profile.scopes,
-      user: profile.user,
-    };
+    return this.issueSession(user);
   }
 
   async verifyOtp(userId: string, otp: string, ctx: AuditContext) {
@@ -142,37 +111,21 @@ export class AuthService {
     await this.userRepo.update(user.id, { otpCode: undefined, otpExpiresAt: undefined, otpFailCount: 0 });
     await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.LOGIN);
 
-    const profile = await this.buildProfile(user);
-    const payload: JwtPayload = {
-      sub: user.id,
-      accountType: user.accountType,
-      orgId: profile.orgId,
-      scope: profile.scopes,
-      tokenVersion: user.tokenVersion,
-      role: user.role,
-      email: user.email,
-      supplierId: profile.user.supplierId,
-    };
-    const token = this.jwt.sign(payload);
-    return {
-      accessToken: token,
-      accountType: user.accountType,
-      redirect: profile.redirect,
-      scopes: profile.scopes,
-      user: profile.user,
-    };
+    return this.issueSession(user);
   }
 
+  /**
+   * 登出即失效：自增 token_version 让该用户已签发的 JWT 立即作废。
+   * 用 SQL 自增而非读改写，避免并发登出时版本号被覆盖。
+   */
   async logout(user: User, ctx: AuditContext) {
+    await this.userRepo.update(user.id, { tokenVersion: () => 'token_version + 1' });
     await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.LOGOUT);
     return { loggedOut: true };
   }
 
   getCapabilities(user: Pick<User, 'role' | 'accountType'>) {
-    if (user.accountType === AccountType.COMPANY_USER) {
-      return SCOPE_MAP[user.role] ?? [];
-    }
-    return ['tender:view', 'tender:view_invited', 'quote:view_own', 'quote:submit', 'quote:rebid'];
+    return scopesForAccount(user);
   }
 
   async sendSupplierRegisterEmailCode(email: string) {
@@ -542,7 +495,7 @@ export class AuthService {
       const { relation, supplier } = await this.getSupplierRelation(user);
       if (!supplier) {
         return {
-          orgId: 'unbound-supplier-account',
+          principalId: 'unbound-supplier-account',
           redirect: '/supplier/profile',
           scopes: [],
           user: {
@@ -557,7 +510,7 @@ export class AuthService {
         };
       }
       return {
-        orgId: supplier.id,
+        principalId: supplier.id,
         redirect: '/hall',
         scopes: this.getCapabilities(user),
         user: {
@@ -576,7 +529,7 @@ export class AuthService {
 
     const companyUser = await this.companyUserRepo.findOne({ where: { authUserId: user.id } });
     return {
-      orgId: companyUser?.id ?? 'internal-company',
+      principalId: companyUser?.id ?? 'internal-company',
       redirect: '/hall',
       scopes: this.getCapabilities(user),
       user: {
@@ -639,7 +592,7 @@ export class AuthService {
     const payload: JwtPayload = {
       sub: user.id,
       accountType: user.accountType,
-      orgId: profile.orgId,
+      principalId: profile.principalId,
       scope: profile.scopes,
       tokenVersion: user.tokenVersion,
       role: user.role,
@@ -657,80 +610,62 @@ export class AuthService {
   }
 
   async requestPasswordReset(email: string, ctx: AuditContext) {
-    try {
-      this.logger.log(`[requestPasswordReset] Starting for email: ${email}`);
-      const normalizedEmail = this.normalizeEmail(email);
-      this.logger.log(`[requestPasswordReset] Normalized email: ${normalizedEmail}`);
+    const normalizedEmail = this.normalizeEmail(email);
 
-      const user = await this.userRepo.findOne({
-        where: [{ email: normalizedEmail }, { loginName: normalizedEmail }],
-      });
-      if (!user) throw new BadRequestException('error.auth.email_not_found');
-      this.logger.log(`[requestPasswordReset] Found user: ${user.id}`);
+    const user = await this.userRepo.findOne({
+      where: [{ email: normalizedEmail }, { loginName: normalizedEmail }],
+    });
+    if (!user) throw new BadRequestException('error.auth.email_not_found');
 
-      const cooldownSeconds = this.config.get<number>('PASSWORD_RESET_COOLDOWN_SECONDS', 60);
-      const cooldownKey = `${PASSWORD_RESET_COOLDOWN_PREFIX}:${normalizedEmail}`;
-      const allowed = await this.redis.setnx(cooldownKey, '1', cooldownSeconds);
-      if (!allowed) throw new BadRequestException('error.auth.password_reset_too_frequent');
-      this.logger.log(`[requestPasswordReset] Cooldown check passed`);
+    const cooldownSeconds = this.config.get<number>('PASSWORD_RESET_COOLDOWN_SECONDS', 60);
+    const cooldownKey = `${PASSWORD_RESET_COOLDOWN_PREFIX}:${normalizedEmail}`;
+    const allowed = await this.redis.setnx(cooldownKey, '1', cooldownSeconds);
+    if (!allowed) throw new BadRequestException('error.auth.password_reset_too_frequent');
 
-      const ttlSeconds = this.config.get<number>('PASSWORD_RESET_EXPIRES_SECONDS', 3600);
-      const token = randomBytes(32).toString('hex');
-      const tokenHash = createHash('sha256').update(token).digest('hex');
+    const ttlSeconds = this.config.get<number>('PASSWORD_RESET_EXPIRES_SECONDS', 3600);
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
 
-      await this.redis.set(
-        `${PASSWORD_RESET_TOKEN_PREFIX}:${tokenHash}`,
-        JSON.stringify({ userId: user.id, email: normalizedEmail }),
-        ttlSeconds,
-      );
-      this.logger.log(`[requestPasswordReset] Stored token in Redis`);
+    // 只存哈希，明文 token 仅出现在邮件里，避免 Redis 被读取后可直接改密。
+    await this.redis.set(
+      `${PASSWORD_RESET_TOKEN_PREFIX}:${tokenHash}`,
+      JSON.stringify({ userId: user.id, email: normalizedEmail }),
+      ttlSeconds,
+    );
 
-      const resetUrl = this.config.get<string>('PASSWORD_RESET_URL', 'http://localhost:5180/reset-password');
-      const resetLink = `${resetUrl}?token=${token}`;
-      this.logger.log(`[requestPasswordReset] Reset link: ${resetLink.substring(0, 50)}...`);
+    const resetUrl = this.config.get<string>('PASSWORD_RESET_URL', 'http://localhost:5180/reset-password');
+    const resetLink = `${resetUrl}?token=${token}`;
 
-      this.logger.log(`[requestPasswordReset] About to send email to ${normalizedEmail}`);
-      await this.mail.send({
-        to: normalizedEmail,
-        subject: '[BidFlow] 重置密码',
-        text: `点击下面的链接重置你的密码（有效期1小时）:\n\n${resetLink}\n\n如果你没有请求重置密码，请忽略此邮件。`,
-        html: `<p>点击下面的链接重置你的密码（有效期1小时）:</p><p><a href="${resetLink}">${resetLink}</a></p><p>如果你没有请求重置密码，请忽略此邮件。</p>`,
-      });
-      this.logger.log(`[requestPasswordReset] Email sent successfully`);
+    await this.mail.send({
+      to: normalizedEmail,
+      subject: '[BidFlow] 重置密码',
+      text: `点击下面的链接重置你的密码（有效期1小时）:\n\n${resetLink}\n\n如果你没有请求重置密码，请忽略此邮件。`,
+      html: `<p>点击下面的链接重置你的密码（有效期1小时）:</p><p><a href="${resetLink}">${resetLink}</a></p><p>如果你没有请求重置密码，请忽略此邮件。</p>`,
+    });
 
-      this.logger.log(`[requestPasswordReset] About to log audit entry`);
-      await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.PASSWORD_RESET_REQUESTED, undefined, { email: normalizedEmail });
-      this.logger.log(`[requestPasswordReset] Audit log completed`);
+    await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.PASSWORD_RESET_REQUESTED, undefined, { email: normalizedEmail });
 
-      return { message: 'password_reset_email_sent' };
-    } catch (error: any) {
-      this.logger.error(`[requestPasswordReset] Error:`, error);
-      throw error;
-    }
+    return { message: 'password_reset_email_sent' };
   }
 
   async confirmPasswordReset(token: string, newPassword: string, ctx: AuditContext) {
-    try {
-      const tokenHash = createHash('sha256').update(token).digest('hex');
-      const stored = await this.redis.get(`${PASSWORD_RESET_TOKEN_PREFIX}:${tokenHash}`);
-      if (!stored) throw new BadRequestException('error.auth.password_reset_token_invalid');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const stored = await this.redis.get(`${PASSWORD_RESET_TOKEN_PREFIX}:${tokenHash}`);
+    if (!stored) throw new BadRequestException('error.auth.password_reset_token_invalid');
 
-      const { userId } = JSON.parse(stored);
-      const user = await this.userRepo.findOne({ where: { id: userId } });
-      if (!user) throw new BadRequestException('error.auth.user_not_found');
+    const { userId } = JSON.parse(stored);
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new BadRequestException('error.auth.user_not_found');
 
-      const hashedPassword = await argon2.hash(newPassword);
-      user.passwordHash = hashedPassword;
-      user.tokenVersion += 1;
-      await this.userRepo.save(user);
+    // 改密与 token_version 自增放在一次 update：只写这两列，避免 save(entity) 整行回写覆盖并发修改。
+    await this.userRepo.update(user.id, {
+      passwordHash: await argon2.hash(newPassword),
+      tokenVersion: () => 'token_version + 1',
+    });
 
-      await this.redis.del(`${PASSWORD_RESET_TOKEN_PREFIX}:${tokenHash}`);
-      await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.PASSWORD_RESET_CONFIRMED, undefined, { email: user.email });
+    await this.redis.del(`${PASSWORD_RESET_TOKEN_PREFIX}:${tokenHash}`);
+    await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.PASSWORD_RESET_CONFIRMED, undefined, { email: user.email });
 
-      return { message: 'password_reset_success' };
-    } catch (error: any) {
-      console.error('[Auth] confirmPasswordReset error:', error.message || error);
-      throw error;
-    }
+    return { message: 'password_reset_success' };
   }
 }
