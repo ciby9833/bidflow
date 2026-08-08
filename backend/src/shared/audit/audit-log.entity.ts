@@ -54,6 +54,10 @@ export class AuditLog {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
+  /** 机构归属。审计日志按机构留存，支撑总部的跨机构审计视图。 */
+  @Column({ name: 'branch_id', type: 'uuid', nullable: true })
+  branchId: string;
+
   @Column({ name: 'entity_type', type: 'varchar', length: 50 })
   entityType: AuditEntityType;
 

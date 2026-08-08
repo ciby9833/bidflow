@@ -14,7 +14,9 @@
     "suppliers:fix-tender-visibility": "node scripts/fix-supplier-tender-visibility.js",
     "tenders:invite-approved": "node scripts/backfill-selected-tender-invitations.js",
     "lint": "eslint src --ext .ts",
-    "test": "jest"
+    "test": "jest",
+    "verify:tenant": "node scripts/verify-tenant-isolation.js",
+    "check:tenant": "node scripts/check-tenant-guard.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.10",

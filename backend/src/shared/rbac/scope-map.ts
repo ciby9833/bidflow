@@ -6,6 +6,19 @@
  */
 import { AccountType, UserRole } from '../../modules/auth/user.entity';
 
+/**
+ * 总部能力集。
+ * 刻意不含任何 tender:create / quote:* 等业务写入能力 —— 总部不产生业务数据，
+ * 只做跨机构只读汇总与组织维护。业务写入必须由具体国家机构的成员执行。
+ */
+export const HQ_SCOPES = [
+  'org:view_all', // 跨机构只读
+  'org:manage', // 创建/停用机构、维护机构配置
+  'org:member_manage', // 分配各机构成员与角色
+  'tender:view', 'supplier:view', 'quote:view_all', // 汇总查看
+  'export:masked',
+];
+
 export const SCOPE_MAP: Record<UserRole, string[]> = {
   super_admin: ['*'],
   purchase_manager: [

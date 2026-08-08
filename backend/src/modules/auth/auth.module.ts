@@ -17,6 +17,9 @@ import { User } from './user.entity';
 import { CompanyUser } from './company-user.entity';
 import { SupplierAccount } from './supplier-account.entity';
 import { Supplier } from '../supplier/supplier.entity';
+import { Branch } from '../organization/branch.entity';
+import { BranchMember } from '../organization/branch-member.entity';
+import { BranchContextService } from '../organization/branch-context.service';
 import { AuditLog } from '../../shared/audit/audit-log.entity';
 import { AuditService } from '../../shared/audit/audit.service';
 import { RedisService } from '../../shared/config/redis.config';
@@ -24,7 +27,7 @@ import { MailModule } from '../../shared/mail/mail.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, CompanyUser, SupplierAccount, Supplier, AuditLog]),
+    TypeOrmModule.forFeature([User, CompanyUser, SupplierAccount, Supplier, AuditLog, Branch, BranchMember]),
     MailModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
@@ -37,7 +40,7 @@ import { MailModule } from '../../shared/mail/mail.module';
     }),
   ],
   controllers: [AuthController, CompanyUserController],
-  providers: [AuthService, JwtStrategy, AuditService, RedisService],
-  exports: [AuthService, JwtModule, PassportModule],
+  providers: [AuthService, JwtStrategy, AuditService, RedisService, BranchContextService],
+  exports: [AuthService, JwtModule, PassportModule, BranchContextService],
 })
 export class AuthModule {}

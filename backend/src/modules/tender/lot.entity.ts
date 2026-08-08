@@ -16,6 +16,10 @@ export class Lot {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  /** 机构归属。租户隔离的依据，由 TenantRepository 在写入时强制填充。 */
+  @Column({ name: 'branch_id', type: 'uuid', nullable: true })
+  branchId: string;
+
   @Column({ name: 'lot_no', type: 'varchar', length: 30, unique: true })
   lotNo: string; // L-202604-0042
 

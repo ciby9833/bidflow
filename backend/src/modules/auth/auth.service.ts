@@ -20,6 +20,8 @@ import {
 import { CompanyUser } from './company-user.entity';
 import { SupplierAccount } from './supplier-account.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
+import { BranchMemberRole } from '../organization/branch-member.entity';
+import { BranchContextService } from '../organization/branch-context.service';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 import { scopesForAccount } from '../../shared/rbac/scope-map';
@@ -40,6 +42,15 @@ export interface JwtPayload {
   role?: UserRole;
   email?: string;
   supplierId?: string;
+
+  // ── 多机构字段（Phase 3 起写入，尚无消费方）─────────────────────────────
+  // 均为可选：存量 Token 不含这些字段仍可正常校验，发布期间不会把在线用户踢下线。
+  /** 当前激活机构。切换机构须重新签发 Token —— 绝不接受客户端通过 Header/Query 指定机构。 */
+  activeBranchId?: string;
+  /** 机构内角色，与全局 users.role 解耦 */
+  branchRole?: BranchMemberRole;
+  /** 是否总部成员。总部的可访问机构范围不入 Token，每次请求在服务端解析。 */
+  isHq?: boolean;
 }
 
 const REGISTER_EMAIL_CODE_PREFIX = 'auth:supplier-register:email-code';
@@ -62,6 +73,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly redis: RedisService,
     private readonly mail: MailService,
+    private readonly branchContext: BranchContextService,
   ) {}
 
   async login(loginName: string, password: string, ctx: AuditContext) {
@@ -589,6 +601,12 @@ export class AuthService {
 
   private async issueSession(user: User) {
     const profile = await this.buildProfile(user);
+
+    // Phase 3 双轨：解析机构上下文并写入 Token，但现阶段无任何消费方，
+    // 线上鉴权仍完全依赖 users.role 与 profile.scopes，行为与改造前一致。
+    // 供应商账号不进 branch_members，其机构归属由供应商机构档案决定（Phase 2），此处必然为空。
+    const branch = await this.branchContext.resolve(user.id);
+
     const payload: JwtPayload = {
       sub: user.id,
       accountType: user.accountType,
@@ -598,6 +616,9 @@ export class AuthService {
       role: user.role,
       email: user.email,
       supplierId: profile.user.supplierId,
+      activeBranchId: branch.activeBranchId,
+      branchRole: branch.activeRole,
+      isHq: branch.isHq,
     };
     const token = this.jwt.sign(payload);
     return {
@@ -606,6 +627,9 @@ export class AuthService {
       redirect: profile.redirect,
       scopes: profile.scopes,
       user: profile.user,
+      // 供前端机构切换器使用；单机构用户长度为 1，前端不展示切换入口。
+      branches: branch.memberships,
+      activeBranchId: branch.activeBranchId,
     };
   }
 

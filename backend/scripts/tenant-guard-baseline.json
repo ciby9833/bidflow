@@ -1,0 +1,31 @@
+{
+  "count": 26,
+  "entries": [
+    "modules/bid-record/bid-record.service.ts:65 Quote",
+    "modules/bid-record/bid-record.service.ts:66 LineQuote",
+    "modules/bid-record/bid-record.service.ts:67 LotLine",
+    "modules/bid-record/bid-record.service.ts:68 Invitation",
+    "modules/hall/hall.service.ts:15 Tender",
+    "modules/quote/quote.service.ts:60 Quote",
+    "modules/quote/quote.service.ts:61 LineQuote",
+    "modules/quote/quote.service.ts:62 LotQuoteAttachment",
+    "modules/quote/quote.service.ts:63 RankingSnapshot",
+    "modules/quote/quote.service.ts:64 Tender",
+    "modules/quote/quote.service.ts:65 Lot",
+    "modules/quote/quote.service.ts:66 LotLine",
+    "modules/quote/quote.service.ts:67 Invitation",
+    "modules/tender/tender.service.ts:163 Tender",
+    "modules/tender/tender.service.ts:164 Lot",
+    "modules/tender/tender.service.ts:165 LotLine",
+    "modules/tender/tender.service.ts:166 Invitation",
+    "modules/tender/tender.service.ts:167 TenderNotificationLog",
+    "modules/tender/tender.service.ts:168 Quote",
+    "modules/tender/tender.service.ts:169 LineQuote",
+    "shared/audit/audit.service.ts:22 AuditLog",
+    "shared/export/export.service.ts:61 Quote",
+    "shared/export/export.service.ts:62 LineQuote",
+    "shared/export/export.service.ts:63 Tender",
+    "shared/export/export.service.ts:64 Lot",
+    "shared/export/export.service.ts:65 LotLine"
+  ]
+}

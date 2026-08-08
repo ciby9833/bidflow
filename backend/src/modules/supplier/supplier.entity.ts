@@ -38,6 +38,13 @@ export class Supplier {
   @Column({ name: 'business_id', type: 'varchar', length: 30, unique: true })
   businessId: string; // S-ID-00017
 
+  /**
+   * 集团归属（可空）。同集团的不同法人（如 Bosch 中国 / PT Bosch Indonesia）共用一个 groupId，
+   * 用于跨法人串标检测。supplier_groups 表暂未建立，本列先行预留以避免事后人工回填。
+   */
+  @Column({ name: 'group_id', type: 'uuid', nullable: true })
+  groupId?: string;
+
   @Column({ name: 'legal_name', type: 'varchar', length: 200, nullable: true })
   legalName?: string;
 

@@ -29,6 +29,8 @@ import { User } from './modules/auth/user.entity';
 import { CompanyUser } from './modules/auth/company-user.entity';
 import { SupplierAccount } from './modules/auth/supplier-account.entity';
 import { Supplier } from './modules/supplier/supplier.entity';
+import { Branch } from './modules/organization/branch.entity';
+import { BranchMember } from './modules/organization/branch-member.entity';
 import { SupplierDocument } from './modules/supplier/supplier-document.entity';
 import { SupplierReviewLog } from './modules/supplier/supplier-review-log.entity';
 import { SupplierInvitation } from './modules/supplier/supplier-invitation.entity';
@@ -57,9 +59,14 @@ import { RankingSnapshot } from './modules/quote/ranking-snapshot.entity';
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres',
         url: cfg.getOrThrow('DB_URL'),
-        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, AuditLog],
+        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, AuditLog, Branch, BranchMember],
         migrations: ['dist/migrations/*{.ts,.js}'],
-        synchronize: cfg.get('NODE_ENV') === 'development',
+        // 必须保持 false：schema 唯一事实来源是 src/migrations。
+        // 开启后 TypeORM 会按实体定义「纠正」数据库，把迁移建的部分索引、外键、
+        // 以及实体中未声明的列（如多机构改造的 branch_id）静默删除，
+        // 且迁移记录仍显示已执行，导致开发环境与生产 schema 不一致且难以察觉。
+        // 拉取代码后请执行：npm run build && npm run migration:run
+        synchronize: false,
         logging: cfg.get('NODE_ENV') === 'development',
       }),
     }),
