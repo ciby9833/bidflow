@@ -30,6 +30,7 @@ import { CompanyUser } from './modules/auth/company-user.entity';
 import { SupplierAccount } from './modules/auth/supplier-account.entity';
 import { Supplier } from './modules/supplier/supplier.entity';
 import { Branch } from './modules/organization/branch.entity';
+import { SupplierBranchProfile } from './modules/supplier/supplier-branch-profile.entity';
 import { BranchMember } from './modules/organization/branch-member.entity';
 import { SupplierDocument } from './modules/supplier/supplier-document.entity';
 import { SupplierReviewLog } from './modules/supplier/supplier-review-log.entity';
@@ -59,7 +60,7 @@ import { RankingSnapshot } from './modules/quote/ranking-snapshot.entity';
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres',
         url: cfg.getOrThrow('DB_URL'),
-        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, AuditLog, Branch, BranchMember],
+        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, AuditLog, Branch, BranchMember, SupplierBranchProfile],
         migrations: ['dist/migrations/*{.ts,.js}'],
         // 必须保持 false：schema 唯一事实来源是 src/migrations。
         // 开启后 TypeORM 会按实体定义「纠正」数据库，把迁移建的部分索引、外键、

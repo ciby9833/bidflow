@@ -47,7 +47,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // 机构范围每次请求在服务端解析，不取 Token 内的快照：
     // 新增机构后总部立即可见，成员被移除后立即失效，无需等待 Token 过期。
     // Token 里的 activeBranchId 仅作为「期望激活哪个机构」的输入，解析时会校验其是否在成员范围内。
-    const branch = await this.branchContext.resolve(user.id, payload.activeBranchId);
+    // 供应商账号的机构归属来自供应商机构档案，公司用户来自 branch_members。
+    const branch = await this.branchContext.resolve(user.id, payload.activeBranchId, user.supplierId);
 
     // Phase 3 双轨：branch 仅挂载不消费，鉴权仍走 users.role，线上行为不变。
     return Object.assign(user, { branch });

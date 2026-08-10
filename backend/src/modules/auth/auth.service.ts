@@ -605,7 +605,11 @@ export class AuthService {
     // Phase 3 双轨：解析机构上下文并写入 Token，但现阶段无任何消费方，
     // 线上鉴权仍完全依赖 users.role 与 profile.scopes，行为与改造前一致。
     // 供应商账号不进 branch_members，其机构归属由供应商机构档案决定（Phase 2），此处必然为空。
-    const branch = await this.branchContext.resolve(user.id);
+    const branch = await this.branchContext.resolve(
+      user.id,
+      undefined,
+      profile.user.supplierId,
+    );
 
     const payload: JwtPayload = {
       sub: user.id,

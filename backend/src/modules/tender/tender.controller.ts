@@ -15,10 +15,22 @@ import { TenderStatus, TenderType } from './tender.entity';
 import { ApiResponse } from '../../shared/dto/response.dto';
 import { RbacGuard, RequireScopes } from '../../shared/rbac/rbac.guard';
 import { User } from '../auth/user.entity';
+import { AuthenticatedUser } from '../auth/jwt.strategy';
+import { BranchScope, emptyBranchScope } from '../../shared/tenant/branch-scope';
 
 function ctx(req: Request) {
   const u = req.user as User;
   return { userId: u.id, userRole: u.role, ipAddress: req.ip ?? '0.0.0.0', userAgent: req.headers['user-agent'] };
+}
+
+/**
+ * 取当前请求的机构作用域。
+ * 由 jwt.strategy.ts 在校验 Token 时解析并挂载，已核验过成员资格 ——
+ * 绝不接受客户端通过 Header / Query / Body 指定机构。
+ * 无机构归属时返回空作用域，查询结果为空而非全部（fail-closed）。
+ */
+function scopeOf(req: Request): BranchScope {
+  return (req.user as AuthenticatedUser).branch?.scope ?? emptyBranchScope();
 }
 
 @Controller('api/tenders')
@@ -29,7 +41,7 @@ export class TenderController {
   @Post()
   @RequireScopes('tender:create')
   async create(@Body() body: any, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.create(body, ctx(req)));
+    return ApiResponse.ok(await this.svc.create(scopeOf(req), body, ctx(req)));
   }
 
   @Get()
@@ -44,7 +56,7 @@ export class TenderController {
     limit?: string;
   }, @Req() req: Request) {
     const user = req.user as User;
-    const result = await this.svc.findAll({
+    const result = await this.svc.findAll(scopeOf(req), {
       status: q.status,
       type: q.type,
       baseCurrency: q.baseCurrency,
@@ -72,6 +84,7 @@ export class TenderController {
   @Get(':id/participant-options')
   @RequireScopes('tender:edit')
   async participantOptions(
+    @Req() req: Request,
     @Param('id') id: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
@@ -80,68 +93,68 @@ export class TenderController {
     @Query('previousOnly') previousOnly?: string,
     @Query('candidateMode') candidateMode?: string,
   ) {
-    return ApiResponse.ok(await this.svc.getParticipantOptions(id, search ?? '', Number(page) || 1, Number(limit) || 10, sort ?? 'name', previousOnly === 'true', candidateMode ?? 'all'));
+    return ApiResponse.ok(await this.svc.getParticipantOptions(scopeOf(req), id, search ?? '', Number(page) || 1, Number(limit) || 10, sort ?? 'name', previousOnly === 'true', candidateMode ?? 'all'));
   }
 
   @Get(':id/participants')
   @RequireScopes('tender:view')
-  async participants(@Param('id') id: string) {
-    return ApiResponse.ok(await this.svc.getParticipants(id));
+  async participants(@Param('id') id: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.getParticipants(scopeOf(req), id));
   }
 
   @Get(':id/quote-review')
   @RequireScopes('quote:view_all')
-  async quoteReview(@Param('id') id: string) {
-    return ApiResponse.ok(await this.svc.getQuoteReview(id));
+  async quoteReview(@Param('id') id: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.getQuoteReview(scopeOf(req), id));
   }
 
   @Get(':id/notification-summary')
   @RequireScopes('tender:view')
-  async notificationSummary(@Param('id') id: string) {
-    return ApiResponse.ok(await this.svc.getNotificationSummary(id));
+  async notificationSummary(@Param('id') id: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.getNotificationSummary(scopeOf(req), id));
   }
 
   @Get('lots/:lotId')
   async getLot(@Param('lotId') lotId: string, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.findLotById(lotId, { role: user.role, supplierId: user.supplierId }));
+    return ApiResponse.ok(await this.svc.findLotById(scopeOf(req), lotId, { role: user.role, supplierId: user.supplierId }));
   }
 
   @Get(':id')
   @RequireScopes('tender:view')
   async findOne(@Param('id') id: string, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.findById(id, { role: user.role, supplierId: user.supplierId }));
+    return ApiResponse.ok(await this.svc.findById(scopeOf(req), id, { role: user.role, supplierId: user.supplierId }));
   }
 
   @Patch(':id')
   @RequireScopes('tender:edit')
   async update(@Param('id') id: string, @Body() body: any, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.updateDraft(id, body, ctx(req)));
+    return ApiResponse.ok(await this.svc.updateDraft(scopeOf(req), id, body, ctx(req)));
   }
 
   @Delete(':id')
   @RequireScopes('tender:edit')
   async remove(@Param('id') id: string, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.remove(id, ctx(req)));
+    return ApiResponse.ok(await this.svc.remove(scopeOf(req), id, ctx(req)));
   }
 
   @Post(':id/publish')
   @RequireScopes('tender:publish')
   async publish(@Param('id') id: string, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.publish(id, ctx(req)));
+    return ApiResponse.ok(await this.svc.publish(scopeOf(req), id, ctx(req)));
   }
 
   @Post(':id/notifications/resend')
   @RequireScopes('tender:publish')
   async resendNotifications(@Param('id') id: string, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.resendSupplierNotifications(id, ctx(req)));
+    return ApiResponse.ok(await this.svc.resendSupplierNotifications(scopeOf(req), id, ctx(req)));
   }
 
   @Post(':id/rounds/next')
   @RequireScopes('tender:edit')
   async nextRound(@Param('id') id: string, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.advanceQuoteRound(id, ctx(req)));
+    return ApiResponse.ok(await this.svc.advanceQuoteRound(scopeOf(req), id, ctx(req)));
   }
 
   @Post(':id/withdraw')
@@ -151,19 +164,19 @@ export class TenderController {
     @Body() body: { sendWithdrawalNotice?: boolean },
     @Req() req: Request,
   ) {
-    return ApiResponse.ok(await this.svc.withdraw(id, ctx(req), { sendWithdrawalNotice: Boolean(body?.sendWithdrawalNotice) }));
+    return ApiResponse.ok(await this.svc.withdraw(scopeOf(req), id, ctx(req), { sendWithdrawalNotice: Boolean(body?.sendWithdrawalNotice) }));
   }
 
   @Post(':id/open')
   @RequireScopes('tender:publish')
   async open(@Param('id') id: string, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.open(id, ctx(req)));
+    return ApiResponse.ok(await this.svc.open(scopeOf(req), id, ctx(req)));
   }
 
   @Post(':id/close')
   @RequireScopes('tender:close')
   async close(@Param('id') id: string, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.close(id, ctx(req)));
+    return ApiResponse.ok(await this.svc.close(scopeOf(req), id, ctx(req)));
   }
 
   @Post(':id/invitations')
@@ -173,7 +186,7 @@ export class TenderController {
     @Body() body: { supplierIds: string[]; visibleAt?: string },
     @Req() req: Request,
   ) {
-    return ApiResponse.ok(await this.svc.invite(id, body.supplierIds, body.visibleAt, ctx(req)));
+    return ApiResponse.ok(await this.svc.invite(scopeOf(req), id, body.supplierIds, body.visibleAt, ctx(req)));
   }
 }
 
@@ -194,7 +207,7 @@ export class SupplierTenderController {
     limit?: string;
   }, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(...await this.buildResponse(q, user));
+    return ApiResponse.ok(...await this.buildResponse(q, user, scopeOf(req)));
   }
 
   private async buildResponse(q: {
@@ -205,8 +218,8 @@ export class SupplierTenderController {
     participationScope?: 'invited' | 'public';
     page?: string;
     limit?: string;
-  }, user: User): Promise<[any[], { total: number; page: number }]> {
-    const result = await this.svc.findSupplierVisible({
+  }, user: User, scope: BranchScope): Promise<[any[], { total: number; page: number }]> {
+    const result = await this.svc.findSupplierVisible(scope, {
       status: q.status,
       type: q.type,
       baseCurrency: q.baseCurrency,

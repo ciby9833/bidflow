@@ -96,6 +96,9 @@
     },
     "export": {
       "full_requires_manager": "仅采购经理可执行完整导出"
+    },
+    "branch": {
+      "write_not_allowed": "总部不能创建业务数据，请切换到具体的国家机构后操作"
     }
   },
   "quote": {

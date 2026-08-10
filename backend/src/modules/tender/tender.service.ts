@@ -22,6 +22,10 @@ import { Quote } from '../quote/quote.entity';
 import { LineQuote } from '../quote/line-quote.entity';
 import { LotQuoteAttachment } from '../quote/lot-quote-attachment.entity';
 import { RankingSnapshot } from '../quote/ranking-snapshot.entity';
+import {
+  InjectTenantRepository, TenantRepository,
+} from '../../shared/tenant/tenant-repository';
+import { BranchScope, requireWritableBranch } from '../../shared/tenant/branch-scope';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 import { User, UserRole } from '../auth/user.entity';
@@ -145,12 +149,18 @@ function formatLotNo(seq: number): string {
   return `L-${ym}-${String(seq).padStart(4, '0')}`;
 }
 
-async function nextLotNo(em: EntityManager): Promise<string> {
+/**
+ * 生成机构内的下一个标包号。
+ * 取当前最大序号 +1 而非按行数计数 —— 历史删除会造成计数与序号脱节，进而撞唯一键。
+ * 序号按机构独立，各国机构拥有互不干扰的编号空间。
+ */
+async function nextLotNo(em: EntityManager, branchId: string): Promise<string> {
   const ym = new Date().toISOString().slice(0, 7).replace('-', '');
   const result = await em
     .createQueryBuilder(Lot, 'lot')
     .select("MAX(CAST(RIGHT(lot.lotNo, 4) AS INT))", 'max')
     .where('lot.lotNo LIKE :prefix', { prefix: `L-${ym}-%` })
+    .andWhere('lot.branchId = :branchId', { branchId })
     .getRawOne<{ max: string | null }>();
   return formatLotNo(Number(result?.max ?? 0) + 1);
 }
@@ -160,6 +170,11 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   private lifecycleTimer?: NodeJS.Timeout;
 
   constructor(
+    // 机构隔离改造中：读取路径已切至 tenders（TenantRepository），
+    // tenderRepo 仅供尚未迁移的写入与生命周期方法使用，迁完后移除。
+    @InjectTenantRepository(Tender) private readonly tenders: TenantRepository<Tender>,
+    @InjectTenantRepository(Lot) private readonly lots: TenantRepository<Lot>,
+    // tenant-guard: allow 迁移中，读取路径已改用 TenantRepository
     @InjectRepository(Tender) private readonly tenderRepo: Repository<Tender>,
     @InjectRepository(Lot) private readonly lotRepo: Repository<Lot>,
     @InjectRepository(LotLine) private readonly lineRepo: Repository<LotLine>,
@@ -189,7 +204,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     if (this.lifecycleTimer) clearInterval(this.lifecycleTimer);
   }
 
-  async create(data: {
+  async create(scope: BranchScope, data: {
     title: string;
     type: TenderType;
     baseCurrency?: string;
@@ -209,12 +224,15 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     lots?: TenderLotInput[];
   } & ParticipationInput, ctx: AuditContext) {
     this.validateTenderSchedule(data.bidStartAt, data.bidDeadline);
+    // 写入机构在事务外先行解析：总部或无归属用户会在此直接失败，避免开了事务再回滚。
+    const branchId = requireWritableBranch(scope);
     return this.ds.transaction(async (em) => {
-      const nextSeq = await this.computeNextTenderSeq(em);
+      const nextSeq = await this.computeNextTenderSeq(em, branchId);
       const tenderNo = nextTenderNo(nextSeq);
       const template = TEMPLATES[data.type];
 
       const tender = em.create(Tender, {
+        branchId,
         tenderNo,
         title: data.title,
         type: data.type,
@@ -241,8 +259,9 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
 
       const lots = data.lots ?? [{ title: `${data.title} - Lot 1` }];
       for (let i = 0; i < lots.length; i++) {
-        const lotNo = await nextLotNo(em);
+        const lotNo = await nextLotNo(em, branchId);
         const lot = em.create(Lot, {
+          branchId,
           lotNo,
           tenderId: savedTender.id,
           title: lots[i].title,
@@ -258,10 +277,10 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
           schemaVersion: 1,
         });
         const savedLot = await em.save(lot);
-        await this.saveLotLines(em, savedTender.id, savedLot, lots[i]);
+        await this.saveLotLines(em, branchId, savedTender.id, savedLot, lots[i]);
       }
 
-      await this.replaceParticipants(em, savedTender.id, 1, data.participationMode ?? ParticipationMode.ALL, data.participantSupplierIds ?? [], 'manual');
+      await this.replaceParticipants(em, branchId, savedTender.id, 1, data.participationMode ?? ParticipationMode.ALL, data.participantSupplierIds ?? [], 'manual');
 
       await this.audit.log(ctx, AuditEntityType.TENDER, savedTender.id, AuditAction.TENDER_CREATE, undefined, { tenderNo, type: data.type });
       return em.findOne(Tender, { where: { id: savedTender.id }, relations: ['lots', 'lots.lines'] });
@@ -269,6 +288,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   }
 
   async findAll(
+    scope: BranchScope,
     filters: {
       status?: TenderStatus;
       type?: TenderType;
@@ -282,9 +302,9 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   ) {
     await this.refreshLifecycleStatuses();
     if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
-      return this.findSupplierVisible(filters, viewer.supplierId);
+      return this.findSupplierVisible(scope, filters, viewer.supplierId);
     }
-    const qb = this.tenderRepo.createQueryBuilder('t');
+    const qb = this.tenders.createQueryBuilder(scope, 't');
     if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
     if (filters.type) qb.andWhere('t.type = :type', { type: filters.type });
     if (filters.baseCurrency) qb.andWhere('t.base_currency = :baseCurrency', { baseCurrency: filters.baseCurrency });
@@ -309,6 +329,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   }
 
   async findSupplierVisible(
+    scope: BranchScope,
     filters: {
       status?: TenderStatus;
       type?: TenderType;
@@ -324,8 +345,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     await this.ensureSupplierApproved(supplierId);
 
     const allowedStatuses = [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED];
-    const qb = this.tenderRepo.createQueryBuilder('t')
-      .where('t.status IN (:...allowedStatuses)', { allowedStatuses });
+    const qb = this.tenders.createQueryBuilder(scope, 't')
+      .andWhere('t.status IN (:...allowedStatuses)', { allowedStatuses });
     this.applySupplierAccessScope(qb, 't', supplierId, 'scope');
 
     if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
@@ -347,16 +368,16 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return { items: await this.withUserSummary(items), total, page, limit };
   }
 
-  async findById(id: string, viewer?: { role?: UserRole | string; supplierId?: string }) {
+  async findById(scope: BranchScope, id: string, viewer?: { role?: UserRole | string; supplierId?: string }) {
     await this.refreshLifecycleStatuses();
     if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
       await this.ensureSupplierApproved(viewer.supplierId);
     }
-    const qb = this.tenderRepo.createQueryBuilder('t')
+    const qb = this.tenders.createQueryBuilder(scope, 't')
       .leftJoinAndSelect('t.lots', 'lots')
       .leftJoinAndSelect('lots.lines', 'lines', 'lines.is_active = true AND lines.round_no = t.current_quote_round')
       .leftJoinAndSelect('t.invitations', 'invitations')
-      .where('t.id = :id', { id });
+      .andWhere('t.id = :id', { id });
 
     if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
       qb.andWhere('t.status IN (:...statuses)', {
@@ -370,15 +391,15 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return t;
   }
 
-  async findLotById(lotId: string, viewer?: { role?: UserRole | string; supplierId?: string }) {
+  async findLotById(scope: BranchScope, lotId: string, viewer?: { role?: UserRole | string; supplierId?: string }) {
     await this.refreshLifecycleStatuses();
     if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
       await this.ensureSupplierApproved(viewer.supplierId);
     }
-    const qb = this.lotRepo.createQueryBuilder('lot')
+    const qb = this.lots.createQueryBuilder(scope, 'lot')
       .leftJoinAndSelect('lot.tender', 'tender')
       .leftJoinAndSelect('lot.lines', 'lines', 'lines.is_active = true AND lines.round_no = tender.current_quote_round')
-      .where('lot.id = :lotId', { lotId });
+      .andWhere('lot.id = :lotId', { lotId });
 
     if (viewer?.role === UserRole.SUPPLIER && viewer.supplierId) {
       qb.andWhere('tender.status IN (:...statuses)', {
@@ -392,14 +413,14 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return lot;
   }
 
-  async publish(id: string, ctx: AuditContext) {
-    const t = await this.findById(id);
+  async publish(scope: BranchScope, id: string, ctx: AuditContext) {
+    const t = await this.findById(scope, id);
     if (t.status !== TenderStatus.DRAFT) throw new BadRequestException('error.tender.invalid_status_transition');
     this.validateTenderSchedule(t.bidStartAt?.toISOString(), t.bidDeadline?.toISOString());
     const nextStatus = this.shouldOpenNow(t) ? TenderStatus.OPEN : TenderStatus.PUBLISHED;
     await this.tenderRepo.update(id, { status: nextStatus, updatedBy: ctx.userId } as any);
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_CREATE, { status: t.status }, { status: nextStatus });
-    const published = await this.findById(id);
+    const published = await this.findById(scope, id);
     // 发布后按草稿中的显式开关邮件通知当前参与范围内的供应商（尽力而为，失败不影响发布）
     if (published.notifySuppliers) {
       void this.sendAndRecordSupplierNotifications(published, TenderNotificationType.INVITATION, TenderNotificationTrigger.PUBLISH, ctx)
@@ -408,8 +429,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return published;
   }
 
-  async getNotificationSummary(id: string) {
-    const tender = await this.findById(id);
+  async getNotificationSummary(scope: BranchScope, id: string) {
+    const tender = await this.findById(scope, id);
     const roundNo = tender.currentQuoteRound ?? 1;
     const latestInvitation = await this.notificationLogRepo.findOne({
       where: { tenderId: id, roundNo, type: TenderNotificationType.INVITATION },
@@ -436,8 +457,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async resendSupplierNotifications(id: string, ctx: AuditContext) {
-    const tender = await this.findById(id);
+  async resendSupplierNotifications(scope: BranchScope, id: string, ctx: AuditContext) {
+    const tender = await this.findById(scope, id);
     if (![TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED].includes(tender.status)) {
       throw new BadRequestException('error.tender.invalid_status_transition');
     }
@@ -465,6 +486,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   ): Promise<SupplierNotificationResult> {
     const result = await this.sendSupplierNotifications(tender, type);
     await this.notificationLogRepo.save(this.notificationLogRepo.create({
+      branchId: tender.branchId,
       tenderId: tender.id,
       roundNo: tender.currentQuoteRound ?? 1,
       type,
@@ -586,24 +608,24 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return `tender:${tenderId}:withdraw`;
   }
 
-  async open(id: string, ctx: AuditContext) {
-    const t = await this.findById(id);
+  async open(scope: BranchScope, id: string, ctx: AuditContext) {
+    const t = await this.findById(scope, id);
     if (t.status !== TenderStatus.PUBLISHED) throw new BadRequestException('error.tender.invalid_status_transition');
     if (t.bidDeadline && t.bidDeadline <= new Date()) throw new BadRequestException('error.tender.deadline_passed');
     await this.tenderRepo.update(id, { status: TenderStatus.OPEN, bidStartAt: new Date(), updatedBy: ctx.userId } as any);
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_OPEN, { status: t.status, bidStartAt: t.bidStartAt }, { status: TenderStatus.OPEN, bidStartAt: new Date().toISOString() });
-    return this.findById(id);
+    return this.findById(scope, id);
   }
 
-  async close(id: string, ctx: AuditContext) {
-    const t = await this.findById(id);
+  async close(scope: BranchScope, id: string, ctx: AuditContext) {
+    const t = await this.findById(scope, id);
     if (![TenderStatus.PUBLISHED, TenderStatus.OPEN].includes(t.status)) throw new BadRequestException('error.tender.invalid_status_transition');
     await this.tenderRepo.update(id, { status: TenderStatus.CLOSED, updatedBy: ctx.userId } as any);
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_CLOSE, { status: t.status }, { status: TenderStatus.CLOSED });
-    return this.findById(id);
+    return this.findById(scope, id);
   }
 
-  async withdraw(id: string, ctx: AuditContext, options?: { sendWithdrawalNotice?: boolean }) {
+  async withdraw(scope: BranchScope, id: string, ctx: AuditContext, options?: { sendWithdrawalNotice?: boolean }) {
     const withdrawLockKey = this.withdrawLockKey(id);
     const withdrawLocked = await this.redis.setnx(withdrawLockKey, ctx.userId, TENDER_WITHDRAW_LOCK_TTL_SECONDS);
     if (!withdrawLocked) throw new ConflictException('error.tender.withdraw_in_progress');
@@ -611,13 +633,13 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     let notificationLocked = false;
     const notificationLockKey = this.notificationLockKey(id);
     try {
-      const t = await this.findById(id);
+      const t = await this.findById(scope, id);
       if (![TenderStatus.PUBLISHED, TenderStatus.OPEN].includes(t.status)) throw new BadRequestException('error.tender.invalid_status_transition');
       const shouldSendWithdrawalNotice = Boolean(options?.sendWithdrawalNotice);
       let withdrawalNotice: SupplierNotificationResult | null = null;
 
       if (shouldSendWithdrawalNotice) {
-        const summary = await this.getNotificationSummary(id);
+        const summary = await this.getNotificationSummary(scope, id);
         if (summary.hasInvitationNotice) {
           notificationLocked = await this.redis.setnx(notificationLockKey, ctx.userId, NOTIFICATION_RESEND_LOCK_TTL_SECONDS);
           if (!notificationLocked) throw new ConflictException('error.tender.notification_resend_in_progress');
@@ -629,7 +651,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       if (notificationLocked) {
         withdrawalNotice = await this.sendAndRecordSupplierNotifications(t, TenderNotificationType.WITHDRAWAL, TenderNotificationTrigger.WITHDRAW, ctx);
       }
-      const tender = await this.findById(id);
+      const tender = await this.findById(scope, id);
       return { tender, withdrawalNotice };
     } finally {
       if (notificationLocked) await this.redis.del(notificationLockKey);
@@ -637,10 +659,10 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async remove(id: string, ctx: AuditContext) {
+  async remove(scope: BranchScope, id: string, ctx: AuditContext) {
     if (ctx.userRole !== UserRole.SUPER_ADMIN) throw new ForbiddenException('error.auth.forbidden');
 
-    const before = await this.findById(id);
+    const before = await this.findById(scope, id);
     if (![TenderStatus.DRAFT, TenderStatus.CLOSED].includes(before.status)) {
       throw new BadRequestException('error.tender.invalid_status_transition');
     }
@@ -664,7 +686,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return { deleted: true, id };
   }
 
-  async updateDraft(id: string, data: {
+  async updateDraft(scope: BranchScope, id: string, data: {
     title?: string;
     type?: TenderType;
     baseCurrency?: string;
@@ -683,7 +705,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     attachments?: TenderAttachmentInput[];
     lots?: TenderLotInput[];
   } & ParticipationInput, ctx: AuditContext) {
-    const before = await this.findById(id);
+    const branchId = requireWritableBranch(scope);
+    const before = await this.findById(scope, id);
     if (before.status !== TenderStatus.DRAFT) throw new BadRequestException('error.tender.only_draft_can_edit');
     this.validateTenderSchedule(
       data.bidStartAt === undefined ? before.bidStartAt?.toISOString() : data.bidStartAt ?? undefined,
@@ -715,7 +738,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       });
 
       if (data.lots?.length) {
-        await this.syncLots(em, id, data.lots, {
+        await this.syncLots(em, branchId, id, data.lots, {
           baseCurrency: data.baseCurrency ?? before.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
           template,
           hasAnyQuotes,
@@ -723,12 +746,12 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         });
       }
       if (data.participationMode) {
-        await this.replaceParticipants(em, id, before.currentQuoteRound ?? 1, data.participationMode, data.participantSupplierIds ?? [], data.participantSource ?? 'manual');
+        await this.replaceParticipants(em, branchId, id, before.currentQuoteRound ?? 1, data.participationMode, data.participantSupplierIds ?? [], data.participantSource ?? 'manual');
       }
     });
 
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_UPDATE, before as any, { status: TenderStatus.DRAFT, title: data.title });
-    return this.findById(id);
+    return this.findById(scope, id);
   }
 
   private async ensureSupplierApproved(supplierId: string) {
@@ -782,8 +805,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       .andWhere(`(${tenderAlias}.participationMode = :allMode OR ${scopeAlias}.id IS NOT NULL)`, { allMode: ParticipationMode.ALL });
   }
 
-  async invite(tenderId: string, supplierIds: string[], visibleAt: string | undefined, ctx: AuditContext, roundNo?: number, source = 'manual') {
-    const t = await this.findById(tenderId);
+  async invite(scope: BranchScope, tenderId: string, supplierIds: string[], visibleAt: string | undefined, ctx: AuditContext, roundNo?: number, source = 'manual') {
+    const t = await this.findById(scope, tenderId);
     if (![TenderStatus.DRAFT, TenderStatus.PUBLISHED].includes(t.status)) {
       throw new BadRequestException('error.tender.cannot_invite');
     }
@@ -795,6 +818,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       if (existing) { results.push(existing); continue; }
 
       const inv = this.invRepo.create({
+        // 邀请归属跟随招标所在机构
+        branchId: t.branchId,
         tenderId,
         supplierId: sid,
         roundNo: targetRound,
@@ -840,8 +865,9 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return { sheetName, columns, rows: dataRows, total: dataRows.length };
   }
 
-  async advanceQuoteRound(id: string, ctx: AuditContext) {
-    const before = await this.findById(id);
+  async advanceQuoteRound(scope: BranchScope, id: string, ctx: AuditContext) {
+    const branchId = requireWritableBranch(scope);
+    const before = await this.findById(scope, id);
     if (![TenderStatus.DRAFT, TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED].includes(before.status)) {
       throw new BadRequestException('error.tender.invalid_status_transition');
     }
@@ -859,12 +885,13 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         updatedBy: ctx.userId,
       } as any);
       if (previousSupplierIds.length) {
-        await this.replaceParticipants(em, id, nextRound, ParticipationMode.SELECTED, previousSupplierIds, 'previous_round');
+        await this.replaceParticipants(em, branchId, id, nextRound, ParticipationMode.SELECTED, previousSupplierIds, 'previous_round');
       }
       // 克隆上一轮线路到新一轮：新一轮拿到独立的线路副本，编辑结构不再影响上一轮快照。
       const prevLines = await em.find(LotLine, { where: { tenderId: id, roundNo: previousRound, isActive: true } });
       for (const line of prevLines) {
         await em.save(em.create(LotLine, {
+        branchId,
           tenderId: line.tenderId,
           lotId: line.lotId,
           lineNo: line.lineNo,
@@ -881,11 +908,11 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       currentQuoteRound: before.currentQuoteRound,
       status: before.status,
     }, { currentQuoteRound: nextRound, status: TenderStatus.DRAFT });
-    return this.findById(id);
+    return this.findById(scope, id);
   }
 
-  async getParticipantOptions(id: string, search = '', page = 1, limit = 10, sort = 'name', previousOnly = false, candidateMode = 'all') {
-    const tender = await this.findById(id);
+  async getParticipantOptions(scope: BranchScope, id: string, search = '', page = 1, limit = 10, sort = 'name', previousOnly = false, candidateMode = 'all') {
+    const tender = await this.findById(scope, id);
     const currentRound = tender.currentQuoteRound ?? 1;
     const previousRound = Math.max(1, currentRound - 1);
     const [selectedScopes, previousInvitedIds, previousQuotedIds, quoteStats] = await Promise.all([
@@ -955,8 +982,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async getParticipants(id: string) {
-    const tender = await this.findById(id);
+  async getParticipants(scope: BranchScope, id: string) {
+    const tender = await this.findById(scope, id);
     const roundNo = tender.currentQuoteRound ?? 1;
     if ((tender.participationMode ?? ParticipationMode.ALL) === ParticipationMode.ALL) {
       return {
@@ -983,7 +1010,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async replaceParticipants(em: EntityManager, tenderId: string, roundNo: number, mode: ParticipationMode | string, supplierIds: string[], source: string) {
+  private async replaceParticipants(em: EntityManager, branchId: string, tenderId: string, roundNo: number, mode: ParticipationMode | string, supplierIds: string[], source: string) {
     await em.delete(Invitation, { tenderId, roundNo });
     if (mode !== ParticipationMode.SELECTED) return;
     const uniqueSupplierIds = Array.from(new Set(supplierIds.filter(Boolean)));
@@ -997,6 +1024,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     });
     if (suppliers.length !== uniqueSupplierIds.length) throw new BadRequestException('error.tender.invalid_participants');
     await em.save(suppliers.map((supplier) => em.create(Invitation, {
+        branchId,
       tenderId,
       supplierId: supplier.id,
       roundNo,
@@ -1059,8 +1087,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return String(a.legalName || a.shortName || a.businessId || '').localeCompare(String(b.legalName || b.shortName || b.businessId || ''));
   }
 
-  async getQuoteReview(id: string) {
-    const tender = await this.findById(id);
+  async getQuoteReview(scope: BranchScope, id: string) {
+    const tender = await this.findById(scope, id);
     const roundNo = tender.currentQuoteRound ?? 1;
     const lots = [...(tender.lots ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     const lotIds = lots.map((lot) => lot.id);
@@ -1259,6 +1287,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
    */
   private async syncLots(
     em: EntityManager,
+    branchId: string,
     tenderId: string,
     lots: TenderLotInput[],
     opts: { baseCurrency: string; template: { specJson: object; uiSchema: object }; hasAnyQuotes: boolean; currentRound: number },
@@ -1283,7 +1312,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         lot = await em.save(existing);
       } else {
         lot = await em.save(em.create(Lot, {
-          lotNo: await nextLotNo(em),
+        branchId,
+          lotNo: await nextLotNo(em, branchId),
           tenderId,
           title: input.title,
           description: input.description,
@@ -1299,7 +1329,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         }));
       }
       keptLotIds.add(lot.id);
-      await this.syncLotLines(em, tenderId, lot, input, opts.currentRound);
+      await this.syncLotLines(em, branchId, tenderId, lot, input, opts.currentRound);
     }
 
     // 被移除的标包：无任何报价才物理删除；有报价则保留以保护历史。
@@ -1320,7 +1350,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
    * 增量同步某标包【当前轮】的线路：已有 ID 更新、无 ID 新增、被移除的软删除。
    * 只操作 round_no = currentRound 的线路，上一轮线路（不同 round_no）原封不动，保证轮次快照独立。
    */
-  private async syncLotLines(em: EntityManager, tenderId: string, lot: Lot, input: TenderLotInput, currentRound: number) {
+  private async syncLotLines(em: EntityManager, branchId: string, tenderId: string, lot: Lot, input: TenderLotInput, currentRound: number) {
     const columns = this.normalizeLineColumns(input.lineColumns);
     if (columns.length) {
       lot.uiSchema = { ...(lot.uiSchema ?? {}), lineColumns: columns };
@@ -1347,6 +1377,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       } else {
         maxRowNo += 1;
         await em.save(em.create(LotLine, {
+        branchId,
           tenderId,
           lotId: lot.id,
           lineNo: `LN-${String(maxRowNo).padStart(4, '0')}`,
@@ -1369,7 +1400,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async saveLotLines(em: EntityManager, tenderId: string, lot: Lot, input: TenderLotInput) {
+  private async saveLotLines(em: EntityManager, branchId: string, tenderId: string, lot: Lot, input: TenderLotInput) {
     const lines = input.lines ?? [];
     if (!lines.length) return;
 
@@ -1385,6 +1416,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     for (let i = 0; i < lines.length; i++) {
       const dataJson = lines[i].dataJson ?? lines[i].data ?? {};
       await em.save(em.create(LotLine, {
+        branchId,
         tenderId,
         lotId: lot.id,
         lineNo: `LN-${String(i + 1).padStart(4, '0')}`,
@@ -1449,10 +1481,15 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
    * 计算下一个招标号序号：取当前最大后缀 + 1。
    * 与 count()+1 不同——后者遇历史删除留下的空洞会撞库；此处按后缀推进，安全。
    */
-  private async computeNextTenderSeq(em: EntityManager): Promise<number> {
+  /**
+   * 生成机构内的下一个招标序号。
+   * 按机构隔离：唯一键为 (branch_id, tender_no)，各机构编号互不影响。
+   */
+  private async computeNextTenderSeq(em: EntityManager, branchId: string): Promise<number> {
     const rows = await em.query(
       `SELECT COALESCE(MAX(CAST(SPLIT_PART(tender_no, '-', 3) AS INTEGER)), 0) AS max_seq
-       FROM tenders`,
+       FROM tenders WHERE branch_id = $1`,
+      [branchId],
     );
     return Number(rows?.[0]?.max_seq ?? 0) + 1;
   }

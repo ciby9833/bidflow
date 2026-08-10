@@ -20,6 +20,7 @@ import { User } from '../auth/user.entity';
 import { SupplierAccount } from '../auth/supplier-account.entity';
 import { SupplierTenderController, TenderController } from './tender.controller';
 import { TenderService } from './tender.service';
+import { provideTenantRepository } from '../../shared/tenant/tenant-repository';
 import { AuditLog } from '../../shared/audit/audit-log.entity';
 import { AuditService } from '../../shared/audit/audit.service';
 import { MailModule } from '../../shared/mail/mail.module';
@@ -31,7 +32,11 @@ import { RedisService } from '../../shared/config/redis.config';
     MailModule,
   ],
   controllers: [TenderController, SupplierTenderController],
-  providers: [TenderService, AuditService, RedisService],
+  providers: [
+    TenderService, AuditService, RedisService,
+    provideTenantRepository(Tender),
+    provideTenantRepository(Lot),
+  ],
   exports: [TenderService],
 })
 export class TenderModule {}

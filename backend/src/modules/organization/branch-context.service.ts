@@ -16,6 +16,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Branch, BranchStatus, BranchType } from './branch.entity';
 import { BranchMember, BranchMemberRole, BranchMemberStatus } from './branch-member.entity';
+import {
+  BranchScope, branchScopeFor, emptyBranchScope, hqBranchScope,
+} from '../../shared/tenant/branch-scope';
 
 /** 用户在单个机构内的成员身份 */
 export interface BranchMembershipView {
@@ -37,10 +40,10 @@ export interface BranchContext {
   /** 是否为总部成员 */
   isHq: boolean;
   /**
-   * 数据可见范围。查询统一使用 `branch_id IN (:...branchScope)`。
-   * 总部为全部启用中的国家机构，普通用户为其单个激活机构，无归属时为空数组。
+   * 数据作用域，业务查询的唯一凭据，直接传给 TenantRepository。
+   * 总部可读全部启用中的国家机构但不可写；普通用户读写限于其激活机构；无归属时读写皆空。
    */
-  branchScope: string[];
+  scope: BranchScope;
 }
 
 @Injectable()
@@ -74,31 +77,69 @@ export class BranchContextService {
   }
 
   /**
-   * 解析请求级机构上下文。
-   * @param preferredBranchId 期望激活的机构（来自 Token 或切换请求）。不在成员范围内时忽略，回落到默认机构。
+   * 读取供应商账号的机构归属。
+   * 供应商不是组织成员，其机构来自「在哪些机构有准入档案」，因此走 supplier_branch_profiles。
+   * 跨境供应商可在多个机构有档案，此时与多机构员工一样需要选择激活机构。
    */
-  async resolve(authUserId: string, preferredBranchId?: string): Promise<BranchContext> {
-    const memberships = await this.listMemberships(authUserId);
-    const isHq = memberships.some((m) => m.branchType === BranchType.HQ);
+  async listSupplierBranches(supplierId: string): Promise<BranchMembershipView[]> {
+    return this.memberRepo.manager
+      .createQueryBuilder()
+      .select([
+        'p.branch_id AS "branchId"',
+        'b.code AS "branchCode"',
+        'b.name AS "branchName"',
+        'b.type AS "branchType"',
+      ])
+      .from('supplier_branch_profiles', 'p')
+      .innerJoin(Branch, 'b', 'b.id = p.branch_id')
+      .where('p.supplier_id = :supplierId', { supplierId })
+      .andWhere(`p.status = 'active'`)
+      .andWhere('b.status = :branchStatus', { branchStatus: BranchStatus.ACTIVE })
+      .orderBy('b.code', 'ASC')
+      .getRawMany<Omit<BranchMembershipView, 'role'>>()
+      // 供应商在机构内没有组织角色，其能力集由 accountType 决定（见 scope-map.ts）
+      .then((rows) => rows.map((r) => ({ ...r, role: BranchMemberRole.EVALUATOR })));
+  }
+
+  /**
+   * 解析请求级机构上下文。
+   * @param preferredBranchId 期望激活的机构（来自 Token 或切换请求）。不在归属范围内时忽略，回落到默认机构。
+   * @param supplierId 供应商账号的供应商 ID。传入时机构归属改从供应商机构档案解析。
+   */
+  async resolve(
+    authUserId: string,
+    preferredBranchId?: string,
+    supplierId?: string,
+  ): Promise<BranchContext> {
+    const memberships = supplierId
+      ? await this.listSupplierBranches(supplierId)
+      : await this.listMemberships(authUserId);
 
     if (!memberships.length) {
-      // fail-closed：无任何机构归属时不给予任何数据可见范围
-      return { memberships, isHq: false, branchScope: [] };
+      // fail-closed：无任何机构归属时读写皆空，绝不退化成可见全部
+      return { memberships, isHq: false, scope: emptyBranchScope() };
     }
 
     // 只接受成员范围内的机构，防止携带任意 branchId 越权
     const active = memberships.find((m) => m.branchId === preferredBranchId) ?? memberships[0];
 
-    const branchScope = isHq
-      ? await this.listActiveBranchIds()
-      : [active.branchId];
+    // 关键：以「当前激活的是哪个机构」判定，而非「是否拥有总部成员资格」。
+    // 同一人可能既是总部管理员又是某国机构成员（如系统负责人），
+    // 若按后者判定，他在国家机构下也会被当成总部而无法写入业务数据。
+    const actingAsHq = active.branchType === BranchType.HQ;
+
+    // 总部视角：可跨机构读、不可写；国家机构视角：读写限于该机构。
+    // 两者返回同一种结构，调用方因此只有一条代码路径，不需要写 `if (isHq)` 分支。
+    const scope = actingAsHq
+      ? hqBranchScope(await this.listActiveBranchIds())
+      : branchScopeFor(active.branchId);
 
     return {
       memberships,
       activeBranchId: active.branchId,
       activeRole: active.role,
-      isHq,
-      branchScope,
+      isHq: actingAsHq,
+      scope,
     };
   }
 

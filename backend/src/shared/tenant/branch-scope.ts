@@ -9,6 +9,7 @@
  * 2. 总部 writable 恒为 undefined —— 总部只做跨机构汇总，不产生业务数据，写入必须由国家机构成员执行。
  * 3. fail-closed：无机构归属时 readable 为空数组，查询短路返回空集，绝不退化成"查全部"。
  */
+import { ForbiddenException } from '@nestjs/common';
 
 export interface BranchScope {
   /** 可读机构 ID 列表。空数组表示无任何可见数据。 */
@@ -38,12 +39,14 @@ export function canRead(scope: BranchScope): boolean {
 }
 
 /**
- * 取写入机构，缺失时抛错。
- * 总部尝试写业务数据、或无归属用户尝试写入时命中此处。
+ * 取写入机构，缺失时拒绝。
+ * 命中场景：总部成员尝试写业务数据（总部只做跨机构汇总），或无机构归属的账号尝试写入。
+ * 抛 ForbiddenException 而非普通 Error —— 否则会被兜底为 500 error.internal，
+ * 前端无法区分"权限不足"与"服务异常"。
  */
 export function requireWritableBranch(scope: BranchScope): string {
   if (!scope.writable) {
-    throw new Error('error.branch.write_not_allowed');
+    throw new ForbiddenException('error.branch.write_not_allowed');
   }
   return scope.writable;
 }

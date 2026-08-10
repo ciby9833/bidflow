@@ -66,8 +66,12 @@
       "import_requires_header_and_rows": "Import file must contain a header row and at least one data row.",
       "import_missing_header": "Import file is missing a valid header."
     },
-    "lot": { "not_found": "Lot not found." },
-    "line": { "not_found": "Line/item not found." },
+    "lot": {
+      "not_found": "Lot not found."
+    },
+    "line": {
+      "not_found": "Line/item not found."
+    },
     "quote": {
       "tender_not_open": "The tender is not open for bidding.",
       "deadline_passed": "Bid deadline has passed.",
@@ -87,6 +91,9 @@
     },
     "export": {
       "full_requires_manager": "Only purchase managers can perform a full export."
+    },
+    "branch": {
+      "write_not_allowed": "Headquarters cannot create business data. Please switch to a country branch."
     }
   },
   "quote": {

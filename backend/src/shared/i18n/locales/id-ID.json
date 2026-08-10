@@ -66,8 +66,12 @@
       "import_requires_header_and_rows": "Berkas impor harus berisi header dan minimal satu baris data.",
       "import_missing_header": "Berkas impor tidak memiliki header yang valid."
     },
-    "lot": { "not_found": "Lot tidak ditemukan." },
-    "line": { "not_found": "Baris/item tidak ditemukan." },
+    "lot": {
+      "not_found": "Lot tidak ditemukan."
+    },
+    "line": {
+      "not_found": "Baris/item tidak ditemukan."
+    },
     "quote": {
       "tender_not_open": "Tender tidak dibuka untuk penawaran.",
       "deadline_passed": "Tenggat penawaran telah lewat.",
@@ -87,6 +91,9 @@
     },
     "export": {
       "full_requires_manager": "Hanya manajer pengadaan yang dapat melakukan ekspor lengkap."
+    },
+    "branch": {
+      "write_not_allowed": "Kantor pusat tidak dapat membuat data bisnis. Silakan beralih ke cabang negara."
     }
   },
   "quote": {
