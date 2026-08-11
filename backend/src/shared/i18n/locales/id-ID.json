@@ -13,7 +13,8 @@
       "email_code_too_frequent": "Kode verifikasi baru saja dikirim. Coba lagi nanti.",
       "email_code_too_many_attempts": "Terlalu banyak percobaan kode yang salah. Minta kode baru.",
       "google_not_configured": "Login Google belum dikonfigurasi.",
-      "google_email_unverified": "Email Google belum diverifikasi."
+      "google_email_unverified": "Email Google belum diverifikasi.",
+      "branch_selection_required": "Silakan pilih cabang untuk melanjutkan"
     },
     "company_user": {
       "not_found": "Karyawan tidak ditemukan.",
@@ -44,7 +45,10 @@
       "only_suspended_can_resume": "Hanya pemasok yang ditangguhkan yang dapat dipulihkan.",
       "only_pending_review_can_approve": "Hanya pemasok menunggu yang dapat disetujui.",
       "only_pending_review_can_reject": "Hanya pemasok menunggu yang dapat ditolak.",
-      "only_pending_or_approved_can_request_supplement": "Hanya pemasok menunggu atau disetujui yang dapat diminta tambahan dokumen."
+      "only_pending_or_approved_can_request_supplement": "Hanya pemasok menunggu atau disetujui yang dapat diminta tambahan dokumen.",
+      "self_registration_branch_ambiguous": "Terdapat beberapa cabang negara; cabang untuk pemasok yang mendaftar sendiri tidak dapat ditentukan. Konfigurasikan titik masuk cabang untuk portal publik terlebih dahulu.",
+      "registration_branch_required": "Silakan pilih cabang negara untuk mendaftar",
+      "lookup_key_required": "Masukkan ID bisnis atau NPWP"
     },
     "tender": {
       "not_found": "Tender tidak ditemukan.",
@@ -64,7 +68,8 @@
       "import_file_required": "Mohon unggah berkas impor.",
       "import_empty_workbook": "Berkas impor kosong.",
       "import_requires_header_and_rows": "Berkas impor harus berisi header dan minimal satu baris data.",
-      "import_missing_header": "Berkas impor tidak memiliki header yang valid."
+      "import_missing_header": "Berkas impor tidak memiliki header yang valid.",
+      "hall_branches_required": "Pilih cabang mana yang dapat melihat tender ini"
     },
     "lot": {
       "not_found": "Lot tidak ditemukan."
@@ -93,7 +98,22 @@
       "full_requires_manager": "Hanya manajer pengadaan yang dapat melakukan ekspor lengkap."
     },
     "branch": {
-      "write_not_allowed": "Kantor pusat tidak dapat membuat data bisnis. Silakan beralih ke cabang negara."
+      "write_not_allowed": "Kantor pusat tidak dapat membuat data bisnis. Silakan beralih ke cabang negara.",
+      "not_found": "Cabang tidak ditemukan atau nonaktif",
+      "code_required": "Kode cabang wajib diisi",
+      "code_exists": "Kode cabang sudah ada",
+      "hq_only": "Tindakan ini hanya untuk kantor pusat",
+      "hq_cannot_be_disabled": "Kantor pusat tidak dapat dinonaktifkan",
+      "member_exists": "Pengguna sudah menjadi anggota cabang ini",
+      "member_not_found": "Anggota tidak ditemukan",
+      "last_hq_admin": "Tidak dapat menghapus administrator kantor pusat terakhir",
+      "hq_role_outside_hq": "Peran kantor pusat hanya untuk kantor pusat",
+      "branch_role_in_hq": "Anggota kantor pusat harus memakai peran kantor pusat",
+      "supplier_cannot_be_member": "Akun pemasok tidak bisa menjadi anggota cabang",
+      "no_active_branch": "Tidak ada cabang aktif",
+      "hq_membership_requires_admin": "Keanggotaan kantor pusat harus diberikan dari konsol organisasi",
+      "not_accessible": "Anda tidak memiliki akses ke cabang ini",
+      "target_required": "Silakan pilih cabang tujuan"
     }
   },
   "quote": {

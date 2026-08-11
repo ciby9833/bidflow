@@ -59,6 +59,12 @@
 
         <el-card v-else>
           <el-form :model="form" label-position="top">
+            <el-form-item v-if="needsBranchChoice" :label="t('supplierProfile.registerBranch')" required>
+              <el-select v-model="form.branchId" class="branch-select" :placeholder="t('supplierProfile.registerBranchPlaceholder')">
+                <el-option v-for="b in registrableBranches" :key="b.id" :label="countryLabel(b)" :value="b.id" />
+              </el-select>
+              <div class="branch-hint">{{ t('supplierProfile.registerBranchHint') }}</div>
+            </el-form-item>
             <el-form-item :label="t('supplier.legal_name')" required><el-input v-model="form.legalName" /></el-form-item>
             <el-form-item :label="t('supplier.short_name')" required><el-input v-model="form.shortName" /></el-form-item>
             <el-row :gutter="12">
@@ -183,11 +189,44 @@ import dayjs from 'dayjs';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { CopyDocument, Delete } from '@element-plus/icons-vue';
 import { api } from '../../composables/useApi';
+import { preselectBranch } from '../../composables/useBranchPreselect';
 import { useAuthStore } from '../../stores/auth';
 import SupplierMembersPanel from './SupplierMembersPanel.vue';
 
 const loading = ref(false);
 const submitting = ref(false);
+
+/** 可注册的国家机构。供应商必须显式选择归属机构 —— 系统无法从单一域名推断来自哪国门户。 */
+const registrableBranches = ref<{ id: string; code: string; name: string }[]>([]);
+/** 尚未绑定供应商主体时才需要选机构；已绑定的账号归属已定，不再展示 */
+const needsBranchChoice = computed(() => !auth.user?.supplierId);
+
+/**
+ * 供应商侧展示国家而非机构名。
+ * "Indonesia Branch" 是采购方的内部组织称谓，对供应商没有意义 ——
+ * 他关心的是"我要向哪个国家注册"。国别代码用 Intl 转成本地化的国家名。
+ */
+function countryLabel(b: { name: string; code: string; countryCode?: string }) {
+  if (!b.countryCode) return b.name;
+  try {
+    const dn = new Intl.DisplayNames([locale.value], { type: 'region' });
+    return dn.of(b.countryCode) ?? b.name;
+  } catch {
+    return b.name;
+  }
+}
+
+async function loadRegistrableBranches() {
+  if (!needsBranchChoice.value) return;
+  try {
+    const res = await api.get('/api/hall/registrable-branches');
+    registrableBranches.value = res.data.data;
+    // 按所在地区预选（时区 → 语言地区码），仍允许用户改
+    form.branchId = preselectBranch(registrableBranches.value) || form.branchId;
+  } catch {
+    // 机构列表拉取失败不阻塞页面，提交时后端会再次校验
+  }
+}
 const logs = ref<any[]>([]);
 const invitations = ref<any[]>([]);
 const inviteTotal = ref(0);
@@ -196,7 +235,7 @@ const inviteQuery = reactive({ page: 1, limit: 5 });
 const logQuery = reactive({ page: 1, limit: 5 });
 const sideTab = ref('members');
 const auth = useAuthStore();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const fileInputs = ref<Record<number, HTMLInputElement>>({});
 const uploadingIndex = ref<number | null>(null);
 const joinToken = ref('');
@@ -226,6 +265,7 @@ const docTemplates: Record<string, Array<{ docType: string; docLabel: string }>>
 // 后续开放多国家时，恢复国家选择控件，并按国家扩展 docTemplates 即可。
 const FIXED_SUPPLIER_COUNTRY_CODE = 'ID';
 const form = reactive({
+  branchId: '',
   legalName: '',
   shortName: '',
   contactName: '',
@@ -493,6 +533,8 @@ async function submit() {
       contactPhone: form.contactPhone,
       countryCode: FIXED_SUPPLIER_COUNTRY_CODE,
       taxId: form.taxId,
+      // 仅首次提交（尚未绑定供应商主体）时有意义，后端对已绑定的账号忽略此字段
+      branchId: form.branchId || undefined,
       documents: validDocuments.map((doc) => ({ ...doc, docLabel: docLabel(doc) })),
     });
     await auth.loadMe();
@@ -511,7 +553,7 @@ watch(
   },
 );
 
-onMounted(load);
+onMounted(() => { void load(); void loadRegistrableBranches(); });
 onActivated(load);
 </script>
 
@@ -617,4 +659,6 @@ onActivated(load);
     min-height: 44px;
   }
 }
+.branch-select { width: 100%; }
+.branch-hint { margin-top: 4px; font-size: 12px; color: #909399; }
 </style>

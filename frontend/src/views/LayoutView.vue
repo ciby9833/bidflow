@@ -30,6 +30,15 @@
         <el-menu-item v-if="auth.hasScope('user:view')" index="/users">
           <el-icon><UserFilled /></el-icon><span>{{ t('route.users') }}</span>
         </el-menu-item>
+        <!-- 组织管理仅在以总部身份操作时可见；切换到国家机构后自动隐藏 -->
+
+        <el-menu-item v-if="auth.isHq" index="/organization/branches">
+
+          <el-icon><OfficeBuilding /></el-icon>
+
+          <span>{{ t('nav.organization') }}</span>
+
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -37,6 +46,7 @@
       <el-header class="header">
         <div class="page-title">{{ currentTitle }}</div>
         <div class="spacer" />
+        <BranchSwitcher v-if="auth.isLoggedIn" />
         <el-dropdown class="language-switcher" trigger="click" @command="onLocaleCommand">
           <el-button text>{{ currentLocaleLabel }} <el-icon><ArrowDown /></el-icon></el-button>
           <template #dropdown>
@@ -102,6 +112,7 @@ import {
   ArrowDown, Document, DocumentChecked, OfficeBuilding, Tickets, User, UserFilled,
 } from '@element-plus/icons-vue';
 import { useAuthStore } from '../stores/auth';
+import BranchSwitcher from '../components/BranchSwitcher.vue';
 import { setAppLocale, type SupportedLocale } from '../i18n';
 
 const { t, locale } = useI18n();

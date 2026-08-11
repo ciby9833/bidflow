@@ -17,6 +17,7 @@ import { Invitation } from '../tender/invitation.entity';
 import { Supplier } from '../supplier/supplier.entity';
 import { QuoteController } from './quote.controller';
 import { QuoteService } from './quote.service';
+import { provideTenantRepository } from '../../shared/tenant/tenant-repository';
 import { AuditLog } from '../../shared/audit/audit-log.entity';
 import { AuditService } from '../../shared/audit/audit.service';
 import { RedisService } from '../../shared/config/redis.config';
@@ -24,7 +25,11 @@ import { RedisService } from '../../shared/config/redis.config';
 @Module({
   imports: [TypeOrmModule.forFeature([Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, Tender, Lot, LotLine, Invitation, Supplier, AuditLog])],
   controllers: [QuoteController],
-  providers: [QuoteService, AuditService, RedisService],
+  providers: [QuoteService, AuditService, RedisService,
+    provideTenantRepository(Tender),
+    provideTenantRepository(Lot),
+    provideTenantRepository(LotLine),
+  ],
   exports: [QuoteService],
 })
 export class QuoteModule {}

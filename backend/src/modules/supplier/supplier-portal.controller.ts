@@ -9,6 +9,8 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
+import { AuthenticatedUser } from '../auth/jwt.strategy';
+import { BranchScope, emptyBranchScope } from '../../shared/tenant/branch-scope';
 import { ApiResponse } from '../../shared/dto/response.dto';
 import { User } from '../auth/user.entity';
 import { SupplierService } from './supplier.service';
@@ -16,6 +18,11 @@ import { SupplierService } from './supplier.service';
 function supplierCtx(req: Request) {
   const u = req.user as User;
   return { userId: u.id, userRole: u.role, ipAddress: req.ip ?? '0.0.0.0', userAgent: req.headers['user-agent'] };
+}
+
+/** 取当前请求的机构作用域。由 jwt.strategy.ts 校验成员资格后挂载，不接受客户端指定。 */
+function scopeOf(req: Request): BranchScope {
+  return (req.user as AuthenticatedUser).branch?.scope ?? emptyBranchScope();
 }
 
 @Controller('api/supplier')
@@ -26,13 +33,13 @@ export class SupplierPortalController {
   @Get('profile')
   async myProfile(@Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.getSupplierPortalProfileForAccount(user.id));
+    return ApiResponse.ok(await this.svc.getSupplierPortalProfileForAccount(scopeOf(req), user.id));
   }
 
   @Post('profile/submit')
   async submitProfile(@Body() body: any, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.submitProfileForAccount(user.id, body, supplierCtx(req)));
+    return ApiResponse.ok(await this.svc.submitProfileForAccount(scopeOf(req), user.id, body, supplierCtx(req)));
   }
 
   @Post('company/create')
@@ -58,7 +65,7 @@ export class SupplierPortalController {
     const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
     if (!supplierId) return ApiResponse.ok({ needsSupplierBinding: true });
     await this.svc.ensureCanManageSupplierMembers(supplierId, user.id);
-    return ApiResponse.ok(await this.svc.createInvitation(supplierId, body, supplierCtx(req)));
+    return ApiResponse.ok(await this.svc.createInvitation(scopeOf(req), supplierId, body, supplierCtx(req)));
   }
 
   @Get('members/invitations')
@@ -66,7 +73,7 @@ export class SupplierPortalController {
     const user = req.user as User;
     const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
     if (!supplierId) return ApiResponse.ok({ items: [], total: 0, page: Number(page) || 1, limit: Number(limit) || 10 });
-    return ApiResponse.ok(await this.svc.listInvitations(supplierId, Number(page), Number(limit)));
+    return ApiResponse.ok(await this.svc.listInvitations(scopeOf(req), supplierId, Number(page), Number(limit)));
   }
 
   @Get('members')
@@ -74,7 +81,7 @@ export class SupplierPortalController {
     const user = req.user as User;
     const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
     if (!supplierId) return ApiResponse.ok({ items: [], total: 0, page: Number(page) || 1, limit: Number(limit) || 10 });
-    return ApiResponse.ok(await this.svc.listMembers(supplierId, Number(page), Number(limit)));
+    return ApiResponse.ok(await this.svc.listMembers(scopeOf(req), supplierId, Number(page), Number(limit)));
   }
 
   @Patch('members/:id')
@@ -87,7 +94,7 @@ export class SupplierPortalController {
     const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
     if (!supplierId) return ApiResponse.ok({ needsSupplierBinding: true });
     await this.svc.ensureCanManageSupplierMembers(supplierId, user.id);
-    return ApiResponse.ok(await this.svc.updateMember(supplierId, id, body, supplierCtx(req)));
+    return ApiResponse.ok(await this.svc.updateMember(scopeOf(req), supplierId, id, body, supplierCtx(req)));
   }
 
   @Post('members/:id/reset-password')
@@ -96,7 +103,7 @@ export class SupplierPortalController {
     const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
     if (!supplierId) return ApiResponse.ok({ needsSupplierBinding: true });
     await this.svc.ensureCanManageSupplierMembers(supplierId, user.id);
-    return ApiResponse.ok(await this.svc.resetMemberPassword(supplierId, id, body.password, supplierCtx(req)));
+    return ApiResponse.ok(await this.svc.resetMemberPassword(scopeOf(req), supplierId, id, body.password, supplierCtx(req)));
   }
 
   @Get('review-logs')
@@ -104,7 +111,7 @@ export class SupplierPortalController {
     const user = req.user as User;
     const supplierId = user.supplierId ?? await this.svc.findSupplierIdForAccount(user.id);
     if (!supplierId) return ApiResponse.ok({ items: [], total: 0, page: Number(page) || 1, limit: Number(limit) || 10 });
-    return ApiResponse.ok(await this.svc.listReviewLogs(supplierId, Number(page), Number(limit)));
+    return ApiResponse.ok(await this.svc.listReviewLogs(scopeOf(req), supplierId, Number(page), Number(limit)));
   }
 
   @Post('members/invitations/:id/revoke')

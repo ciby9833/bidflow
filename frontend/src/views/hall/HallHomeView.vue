@@ -53,6 +53,22 @@
           <p>{{ t('hall.public_tenders_desc') }}</p>
         </div>
         <div class="panel-actions">
+          <!-- 机构筛选：只有一个机构有公开内容时不展示，避免出现无意义的单选筛选器 -->
+          <el-select
+            v-if="hallBranches.length > 1"
+            v-model="branchFilter"
+            clearable
+            class="branch-filter"
+            :placeholder="t('hall.all_countries')"
+            @change="load"
+          >
+            <el-option
+              v-for="b in hallBranches"
+              :key="b.code"
+              :label="`${b.name} (${b.tenderCount})`"
+              :value="b.code"
+            />
+          </el-select>
           <el-tag effect="plain" size="large">{{ t('hall.project_count', { count: portalSummary.publicTenderCount }) }}</el-tag>
           <el-tag effect="plain" size="large">{{ t('hall.lot_count', { count: portalSummary.publicLotCount }) }}</el-tag>
         </div>
@@ -66,6 +82,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="tenderNo" :label="t('hall.project_no')" width="160" />
+        <el-table-column v-if="hallBranches.length > 1" :label="t('hall.country')" width="130">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain">{{ branchNameOf(row) }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('common.status')" width="120">
           <template #default="{ row }">
             <el-tag :type="statusTag(row.status)" size="small">{{ t(`tender.status.${row.status}`, row.status) }}</el-tag>
@@ -183,14 +204,25 @@ function openTender(row: any) {
   router.push(`/hall/tenders/${row.id}`);
 }
 
+/** 大厅的国家筛选。登录后由后端按当前机构收窄可见范围，这里是在可见范围内进一步筛选。 */
+const branchFilter = ref('');
+const hallBranches = ref<{ code: string; name: string; tenderCount: number }[]>([]);
+
+/** 机构名直接取自列表数据 —— 后端已随每条招标返回其所属机构 */
+function branchNameOf(row: any) {
+  return row?.branch?.name ?? '-';
+}
+
 async function load() {
   loading.value = true;
   try {
-    const [profileRes, summaryRes, tenderRes] = await Promise.all([
+    const [profileRes, summaryRes, tenderRes, branchRes] = await Promise.all([
       api.get('/api/hall/company-profile'),
       api.get('/api/hall/portal-summary'),
-      api.get('/api/hall/tenders'),
+      api.get('/api/hall/tenders', { params: branchFilter.value ? { branch: branchFilter.value } : {} }),
+      api.get('/api/hall/branches'),
     ]);
+    hallBranches.value = branchRes.data.data ?? [];
     profile.value = profileRes.data.data ?? {};
     portalSummary.value = { ...portalSummary.value, ...(summaryRes.data.data ?? {}) };
     tenders.value = tenderRes.data.data ?? [];
@@ -274,4 +306,5 @@ onMounted(load);
 @media (min-width: 761px) and (max-width: 1180px) {
   .portal-overview { grid-template-columns: 1fr; }
 }
+.branch-filter { width: 180px; }
 </style>

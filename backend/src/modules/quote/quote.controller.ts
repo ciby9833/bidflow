@@ -10,12 +10,21 @@ import { Request } from 'express';
 import { QuoteService } from './quote.service';
 import { SnapshotTrigger } from './ranking-snapshot.entity';
 import { ApiResponse } from '../../shared/dto/response.dto';
+import { AuthenticatedUser } from '../auth/jwt.strategy';
+import { BranchScope, emptyBranchScope } from '../../shared/tenant/branch-scope';
 import { RbacGuard, RequireScopes } from '../../shared/rbac/rbac.guard';
 import { User } from '../auth/user.entity';
 
 function ctx(req: Request) {
   const u = req.user as User;
   return { userId: u.id, userRole: u.role, ipAddress: req.ip ?? '0.0.0.0', userAgent: req.headers['user-agent'] };
+}
+
+/**
+ * 取当前请求的机构作用域。由 jwt.strategy.ts 校验成员资格后挂载，不接受客户端指定。
+ */
+function scopeOf(req: Request): BranchScope {
+  return (req.user as AuthenticatedUser).branch?.scope ?? emptyBranchScope();
 }
 
 @Controller('api/quotes')
@@ -27,7 +36,7 @@ export class QuoteController {
   @RequireScopes('quote:submit')
   async submit(@Body() body: any, @Req() req: Request) {
     const user = req.user as User;
-    const result = await this.svc.submit({
+    const result = await this.svc.submit(scopeOf(req), {
       lotId: body.lotId,
       supplierId: user.supplierId!,
       totalPrice: body.totalPrice,
@@ -43,7 +52,7 @@ export class QuoteController {
   @RequireScopes('quote:submit')
   async submitLine(@Param('lineId') lineId: string, @Body() body: any, @Req() req: Request) {
     const user = req.user as User;
-    const result = await this.svc.submitLineQuote({
+    const result = await this.svc.submitLineQuote(scopeOf(req), {
       lineId,
       supplierId: user.supplierId!,
       totalPrice: body.totalPrice,
@@ -59,47 +68,47 @@ export class QuoteController {
   @RequireScopes('quote:view_own')
   async myRank(@Param('lotId') lotId: string, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.getMyRankForSupplier(lotId, user.supplierId!));
+    return ApiResponse.ok(await this.svc.getMyRankForSupplier(scopeOf(req), lotId, user.supplierId!));
   }
 
   @Get('lines/:lineId/my-rank')
   @RequireScopes('quote:view_own')
   async myLineRank(@Param('lineId') lineId: string, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.getLineRankForSupplier(lineId, user.supplierId!));
+    return ApiResponse.ok(await this.svc.getLineRankForSupplier(scopeOf(req), lineId, user.supplierId!));
   }
 
   @Get('lines/:lineId/mine')
   @RequireScopes('quote:view_own')
   async myLineQuote(@Param('lineId') lineId: string, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.getMyLineQuoteState(lineId, user.supplierId!));
+    return ApiResponse.ok(await this.svc.getMyLineQuoteState(scopeOf(req), lineId, user.supplierId!));
   }
 
   @Get('lines/:lineId/mine/history')
   @RequireScopes('quote:view_own')
   async myLineQuoteHistory(@Param('lineId') lineId: string, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.getLineQuoteHistory(lineId, user.supplierId!));
+    return ApiResponse.ok(await this.svc.getLineQuoteHistory(scopeOf(req), lineId, user.supplierId!));
   }
 
   @Get('lines/:lineId/ranking')
   @RequireScopes('quote:view_all')
-  async lineRanking(@Param('lineId') lineId: string) {
-    return ApiResponse.ok(await this.svc.getLineQuotes(lineId));
+  async lineRanking(@Param('lineId') lineId: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.getLineQuotes(scopeOf(req), lineId));
   }
 
   @Get('lines/:lineId/suppliers/:supplierId/history')
   @RequireScopes('quote:view_all')
-  async lineSupplierHistory(@Param('lineId') lineId: string, @Param('supplierId') supplierId: string) {
-    return ApiResponse.ok(await this.svc.getLineQuoteHistoryForReview(lineId, supplierId));
+  async lineSupplierHistory(@Param('lineId') lineId: string, @Param('supplierId') supplierId: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.getLineQuoteHistoryForReview(scopeOf(req), lineId, supplierId));
   }
 
   @Get('lots/:lotId/mine')
   @RequireScopes('quote:view_own')
   async myQuote(@Param('lotId') lotId: string, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.getMyQuoteState(lotId, user.supplierId!));
+    return ApiResponse.ok(await this.svc.getMyQuoteState(scopeOf(req), lotId, user.supplierId!));
   }
 
   // ── 标包级投标附件（盖章报价单等）──
@@ -107,40 +116,40 @@ export class QuoteController {
   @RequireScopes('quote:view_own')
   async myLotAttachments(@Param('lotId') lotId: string, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.getMyLotAttachments(lotId, user.supplierId!));
+    return ApiResponse.ok(await this.svc.getMyLotAttachments(scopeOf(req), lotId, user.supplierId!));
   }
 
   @Put('lots/:lotId/attachments')
   @RequireScopes('quote:submit')
   async saveLotAttachments(@Param('lotId') lotId: string, @Body() body: any, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.saveLotAttachments(lotId, user.supplierId!, body.attachments ?? []));
+    return ApiResponse.ok(await this.svc.saveLotAttachments(scopeOf(req), lotId, user.supplierId!, body.attachments ?? []));
   }
 
   @Get('lots/:lotId/attachments')
   @RequireScopes('quote:view_all')
-  async lotAttachmentsForReview(@Param('lotId') lotId: string, @Query('round') round?: string) {
+  async lotAttachmentsForReview(@Req() req: Request, @Param('lotId') lotId: string, @Query('round') round?: string) {
     const roundNo = round ? Number(round) : undefined;
-    return ApiResponse.ok(await this.svc.getLotAttachmentsForReview(lotId, roundNo));
+    return ApiResponse.ok(await this.svc.getLotAttachmentsForReview(scopeOf(req), lotId, roundNo));
   }
 
   @Get('lots/:lotId/mine/history')
   @RequireScopes('quote:view_own')
   async myQuoteHistory(@Param('lotId') lotId: string, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.getQuoteHistory(lotId, user.supplierId!));
+    return ApiResponse.ok(await this.svc.getQuoteHistory(scopeOf(req), lotId, user.supplierId!));
   }
 
   @Get('lots/:lotId/ranking')
   @RequireScopes('quote:view_all')
-  async ranking(@Param('lotId') lotId: string) {
-    return ApiResponse.ok(await this.svc.getQuotes(lotId));
+  async ranking(@Param('lotId') lotId: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.getQuotes(scopeOf(req), lotId));
   }
 
   @Post('lots/:lotId/rebuild-ranking')
   @RequireScopes('tender:close')
-  async rebuild(@Param('lotId') lotId: string) {
-    const count = await this.svc.rebuildRankingFromDb(lotId);
+  async rebuild(@Param('lotId') lotId: string, @Req() req: Request) {
+    const count = await this.svc.rebuildRankingFromDb(scopeOf(req), lotId);
     return ApiResponse.ok({ rebuilt: count });
   }
 
@@ -152,7 +161,7 @@ export class QuoteController {
     @Req() req: Request,
   ) {
     const user = req.user as User;
-    const snap = await this.svc.generateSnapshot(lotId, body.trigger, user.id);
+    const snap = await this.svc.generateSnapshot(scopeOf(req), lotId, body.trigger, user.id);
     return ApiResponse.ok(snap);
   }
 }

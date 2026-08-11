@@ -13,6 +13,13 @@
 
     <el-form v-if="step === 1" class="form-sheet" :model="form" label-position="top">
       <section class="field-card">
+        <!-- 首次注册需选择归属机构；已绑定供应商主体的账号归属已定，不再展示 -->
+        <el-form-item v-if="needsBranchChoice" :label="t('supplierProfile.registerBranch')" required>
+          <el-select v-model="form.branchId" size="large" style="width:100%" :placeholder="t('supplierProfile.registerBranchPlaceholder')">
+            <el-option v-for="b in registrableBranches" :key="b.id" :label="countryLabel(b)" :value="b.id" />
+          </el-select>
+          <div class="branch-hint">{{ t('supplierProfile.registerBranchHint') }}</div>
+        </el-form-item>
         <el-form-item :label="t('supplier.legal_name')" required>
           <el-input v-model.trim="form.legalName" size="large" />
         </el-form-item>
@@ -53,19 +60,48 @@
 
 <script setup lang="ts">
 import {
-  onMounted, reactive, ref, watch,
-} from 'vue';
+  onMounted, reactive, ref, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
 import { api } from '../../composables/useApi';
+import { preselectBranch } from '../../composables/useBranchPreselect';
 import { useAuthStore } from '../../stores/auth';
 
 const router = useRouter();
 const auth = useAuthStore();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const loading = ref(false);
 const submitting = ref(false);
+
+/** 可注册的国家机构。与桌面端同源，供应商必须显式选择归属。 */
+const registrableBranches = ref<{ id: string; code: string; name: string }[]>([]);
+const needsBranchChoice = computed(() => !auth.user?.supplierId);
+
+/**
+ * 供应商侧展示国家而非机构名。
+ * "Indonesia Branch" 是采购方的内部组织称谓，对供应商没有意义 ——
+ * 他关心的是"我要向哪个国家注册"。国别代码用 Intl 转成本地化的国家名。
+ */
+function countryLabel(b: { name: string; code: string; countryCode?: string }) {
+  if (!b.countryCode) return b.name;
+  try {
+    const dn = new Intl.DisplayNames([locale.value], { type: 'region' });
+    return dn.of(b.countryCode) ?? b.name;
+  } catch {
+    return b.name;
+  }
+}
+
+async function loadRegistrableBranches() {
+  if (!needsBranchChoice.value) return;
+  try {
+    registrableBranches.value = (await api.get('/api/hall/registrable-branches')).data.data;
+    form.branchId = preselectBranch(registrableBranches.value) || form.branchId;
+  } catch {
+    // 拉取失败不阻塞；提交时后端会校验
+  }
+}
 const uploadingIndex = ref<number | null>(null);
 const fileInputs = ref<Record<number, HTMLInputElement>>({});
 const step = ref<1 | 2>(1);
@@ -74,6 +110,7 @@ const error = ref('');
 // 后续开放多国家时，恢复国家选择控件，并按国家扩展 docTemplates 即可。
 const FIXED_SUPPLIER_COUNTRY_CODE = 'ID';
 const form = reactive({
+  branchId: '',
   legalName: '',
   shortName: '',
   contactName: '',
@@ -214,7 +251,7 @@ watch(
   },
 );
 
-onMounted(load);
+onMounted(() => { void load(); void loadRegistrableBranches(); });
 </script>
 
 <style scoped>
@@ -333,4 +370,5 @@ onMounted(load);
   text-align: left;
   word-break: break-all;
 }
+.branch-hint { margin-top: 4px; font-size: 12px; color: #909399; line-height: 1.5; }
 </style>

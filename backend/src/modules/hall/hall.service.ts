@@ -7,7 +7,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ParticipationMode, Tender, TenderStatus } from '../tender/tender.entity';
+import { HallVisibility, ParticipationMode, Tender, TenderStatus } from '../tender/tender.entity';
 
 @Injectable()
 export class HallService {
@@ -23,17 +23,32 @@ export class HallService {
     };
   }
 
-  async listPublicTenders(page = 1, limit = 20) {
+  async listPublicTenders(page = 1, limit = 20, viewerBranchId?: string, branchCode?: string) {
     await this.refreshLifecycleStatuses();
-    const qb = this.tenderRepo.createQueryBuilder('t')
+    const qb = this.publicTenderBaseQuery(viewerBranchId, branchCode)
       .leftJoinAndSelect('t.lots', 'lots')
-      .where('t.isHallVisible = :visible', { visible: true })
-      .andWhere('t.status IN (:...statuses)', { statuses: this.publicStatuses() })
       .skip((page - 1) * limit)
       .take(limit)
       .orderBy('t.createdAt', 'DESC');
     const [items, total] = await qb.getManyAndCount();
-    return { items, total, page, limit };
+
+    // 附带机构信息：多机构大厅里必须让访客看出这条标属于哪个国家，
+    // 否则点进去才发现不是自己机构的，体验是断的。
+    const branchIds = Array.from(new Set(items.map((t) => t.branchId).filter(Boolean)));
+    const branchRows = branchIds.length
+      ? await this.tenderRepo.manager.query(
+        'SELECT id, code, name FROM branches WHERE id = ANY($1::uuid[])',
+        [branchIds],
+      )
+      : [];
+    const branchMap = new Map(branchRows.map((b: any) => [b.id, { code: b.code, name: b.name }]));
+
+    return {
+      items: items.map((t) => ({ ...t, branch: branchMap.get(t.branchId) ?? null })),
+      total,
+      page,
+      limit,
+    };
   }
 
   async getPortalSummary() {
@@ -85,26 +100,100 @@ export class HallService {
     };
   }
 
-  async getPublicTender(id: string) {
+  async getPublicTender(id: string, viewerBranchId?: string) {
     await this.refreshLifecycleStatuses();
-    const tender = await this.tenderRepo.findOne({
-      where: { id, isHallVisible: true as any },
-      relations: ['lots'],
-    });
-    if (!tender || ![TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED].includes(tender.status)) {
-      throw new NotFoundException('error.tender.not_found');
-    }
-    return tender;
+    // 走与列表相同的可见性判定：能在大厅列表里看到的，点进去就应该打得开
+    const tender = await this.publicTenderBaseQuery(viewerBranchId)
+      .leftJoinAndSelect('t.lots', 'lots')
+      .andWhere('t.id = :id', { id })
+      .getOne();
+    if (!tender) throw new NotFoundException('error.tender.not_found');
+
+    const [branch] = await this.tenderRepo.manager.query(
+      'SELECT code, name FROM branches WHERE id = $1',
+      [tender.branchId],
+    );
+
+    return {
+      ...tender,
+      // 招标所属机构。前端据此判断：若与访客当前机构不同，
+      // 提示"切换到该机构后可参与"，而不是让用户面对一个点不动的按钮。
+      branch: branch ? { code: branch.code, name: branch.name } : null,
+      belongsToViewerBranch: Boolean(viewerBranchId) && tender.branchId === viewerBranchId,
+    };
   }
 
   private publicStatuses() {
     return [TenderStatus.PUBLISHED, TenderStatus.OPEN, TenderStatus.CLOSED, TenderStatus.AWARDED];
   }
 
-  private publicTenderBaseQuery() {
-    return this.tenderRepo.createQueryBuilder('t')
+  /**
+   * 公开招标的统一基础查询。大厅的所有查询都必须经过这里 ——
+   * 公开范围判定只有一处实现，避免各查询各写一套导致口径不一致。
+   *
+   * @param viewerBranchId 访客当前所在机构。未登录访客传空，此时只能看到范围为 global 的招标。
+   * @param branchCode 访客主动选择的国家筛选，与公开范围是「与」的关系：
+   *                   筛选只能收窄可见集合，不能扩大。
+   */
+  private publicTenderBaseQuery(viewerBranchId?: string, branchCode?: string) {
+    const qb = this.tenderRepo.createQueryBuilder('t')
       .where('t.isHallVisible = :visible', { visible: true })
       .andWhere('t.status IN (:...statuses)', { statuses: this.publicStatuses() });
+
+    if (viewerBranchId) {
+      qb.andWhere(
+        `(
+          t.hall_visibility = :global
+          OR t.branch_id = :viewerBranch
+          OR (t.hall_visibility = :branches AND :viewerBranch = ANY(t.hall_visible_branches))
+        )`,
+        {
+          global: HallVisibility.GLOBAL,
+          branches: HallVisibility.BRANCHES,
+          viewerBranch: viewerBranchId,
+        },
+      );
+    } else {
+      // 未登录访客没有机构上下文，只能看到明确标记为全球公开的招标
+      qb.andWhere('t.hall_visibility = :global', { global: HallVisibility.GLOBAL });
+    }
+
+    if (branchCode) {
+      qb.andWhere(
+        't.branch_id IN (SELECT id FROM branches WHERE code = :branchCode)',
+        { branchCode: branchCode.toUpperCase() },
+      );
+    }
+    return qb;
+  }
+
+  /**
+   * 供应商注册时可选择的机构。
+   * 与大厅筛选选项不同：这里列出全部启用中的国家机构，包括当前没有公开招标的 ——
+   * 新开的机构一开始没有标，但供应商必须能先注册进去，否则新机构永远招不到供应商。
+   * 只暴露代码、名称与国别，不返回机构配置。
+   */
+  async listRegistrableBranches() {
+    // 一并返回时区：前端据此按浏览器时区做地区预选，避免用户在多国机构里逐个辨认
+    const rows = await this.tenderRepo.manager.query(
+      `SELECT id, code, name, country_code AS "countryCode", settings->>'timezone' AS timezone
+       FROM branches WHERE type = 'BRANCH' AND status = 'active' ORDER BY code`,
+    );
+    return rows;
+  }
+
+  /** 大厅的国家筛选选项：有公开招标的机构。没有公开内容的机构不列出，避免筛出空列表。 */
+  async listHallBranches(viewerBranchId?: string) {
+    const rows = await this.publicTenderBaseQuery(viewerBranchId)
+      .innerJoin('branches', 'b', 'b.id = t.branch_id')
+      .select('b.code', 'code')
+      .addSelect('b.name', 'name')
+      .addSelect('COUNT(DISTINCT t.id)', 'tenderCount')
+      .groupBy('b.code')
+      .addGroupBy('b.name')
+      .orderBy('b.code', 'ASC')
+      .getRawMany<{ code: string; name: string; tenderCount: string }>();
+    return rows.map((r) => ({ ...r, tenderCount: Number(r.tenderCount) }));
   }
 
   private async refreshLifecycleStatuses() {

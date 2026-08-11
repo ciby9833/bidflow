@@ -13,7 +13,8 @@
 
     <el-card class="form-card">
       <el-form :model="form" label-position="top" @submit.prevent="submit">
-        <el-form-item :label="t('supplier.legal_name')" required>
+        <TargetBranchSelect v-model="form.branchId" />
+            <el-form-item :label="t('supplier.legal_name')" required>
           <el-input v-model="form.legalName" size="large" />
         </el-form-item>
         <el-form-item :label="t('supplier.short_name')" required>
@@ -59,6 +60,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { api } from '../../composables/useApi';
+import TargetBranchSelect from '../../components/TargetBranchSelect.vue';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -66,7 +68,8 @@ const loading = ref(false);
 const error = ref('');
 // 当前供应商主数据只开放印尼，创建页不展示国家选择；未来多国家开放时再恢复选择器。
 const FIXED_SUPPLIER_COUNTRY_CODE = 'ID';
-const form = reactive({ legalName: '', shortName: '', countryCode: FIXED_SUPPLIER_COUNTRY_CODE, region: '', contactName: '', contactEmail: '', contactPhone: '', taxId: '' });
+const form = reactive({
+  branchId: '', legalName: '', shortName: '', countryCode: FIXED_SUPPLIER_COUNTRY_CODE, region: '', contactName: '', contactEmail: '', contactPhone: '', taxId: '' });
 
 async function submit() {
   if (!form.legalName.trim() || !form.shortName.trim()) {

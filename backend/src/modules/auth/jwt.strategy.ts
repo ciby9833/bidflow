@@ -36,6 +36,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
+    // 选择机构令牌只能用于完成登录，不得访问任何业务接口。
+    // 正式令牌即便机构作用域为空也仍能命中尚未接入机构隔离的接口，因此这里必须硬拒。
+    if (payload.purpose === 'branch_selection') {
+      throw new UnauthorizedException('error.auth.branch_selection_required');
+    }
     const user = await this.userRepo.findOne({ where: { id: payload.sub } });
     if (!user || user.status === UserStatus.SUSPENDED) {
       throw new UnauthorizedException('error.auth.token_invalid');

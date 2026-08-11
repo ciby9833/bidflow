@@ -11,6 +11,7 @@ import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { ApiResponse } from '../../shared/dto/response.dto';
 import { User } from './user.entity';
+import { AuthenticatedUser } from './jwt.strategy';
 
 class LoginDto {
   @IsString()
@@ -55,6 +56,19 @@ class SupplierRegisterDto {
 class SupplierRegisterEmailCodeDto {
   @IsEmail()
   email: string;
+}
+
+class SelectBranchDto {
+  @IsString()
+  selectionToken: string;
+
+  @IsString()
+  branchId: string;
+}
+
+class SwitchBranchDto {
+  @IsString()
+  branchId: string;
 }
 
 class PasswordResetRequestDto {
@@ -148,7 +162,16 @@ export class AuthController {
   async me(@Req() req: Request) {
     const user = req.user as User;
     const profile = await this.svc.buildProfile(user);
-    return ApiResponse.ok({ user: profile.user, capabilities: profile.scopes, redirect: profile.redirect });
+    const branch = (req.user as AuthenticatedUser).branch;
+    return ApiResponse.ok({
+      user: profile.user,
+      capabilities: profile.scopes,
+      redirect: profile.redirect,
+      // 机构上下文：页面刷新后前端据此恢复切换器状态
+      branches: branch?.branches ?? [],
+      activeBranchId: branch?.activeBranchId,
+      isHq: branch?.isHq ?? false,
+    });
   }
 
   @Get('me/capabilities')
@@ -156,6 +179,31 @@ export class AuthController {
   async capabilities(@Req() req: Request) {
     const user = req.user as User;
     return ApiResponse.ok({ scopes: this.svc.getCapabilities(user), accountType: user.accountType });
+  }
+
+  /**
+   * 切换当前激活机构，返回重新签发的 Token。
+   * 机构归属在服务端校验 —— 不接受客户端通过请求头或参数直接指定机构。
+   */
+  /**
+   * 完成登录时的机构选择。刻意不加 JWT 守卫 ——
+   * 守卫会拒绝受限的选择令牌，故由 service 自行校验其签名、用途与版本。
+   */
+  @Post('branches/select')
+  async selectBranch(@Body() dto: SelectBranchDto, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.selectBranch(dto.selectionToken, dto.branchId, {
+      userId: '00000000-0000-0000-0000-000000000000',
+      userRole: 'anonymous',
+      ipAddress: req.ip ?? '0.0.0.0',
+      userAgent: req.headers['user-agent'],
+    }));
+  }
+
+  @Post('branches/switch')
+  @UseGuards(AuthGuard('jwt'))
+  async switchBranch(@Body() dto: SwitchBranchDto, @Req() req: Request) {
+    const user = req.user as User;
+    return ApiResponse.ok(await this.svc.switchBranch(user, dto.branchId, auditCtx(req)));
   }
 
   @Post('password-reset/request')

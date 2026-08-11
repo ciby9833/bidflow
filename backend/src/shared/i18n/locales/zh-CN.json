@@ -18,7 +18,8 @@
       "user_not_found": "用户不存在",
       "account_password_required": "账号和密码必填",
       "google_not_configured": "Google 登录暂未配置",
-      "google_email_unverified": "Google 邮箱未验证，暂无法注册"
+      "google_email_unverified": "Google 邮箱未验证，暂无法注册",
+      "branch_selection_required": "请先选择要进入的机构"
     },
     "company_user": {
       "not_found": "员工不存在",
@@ -49,7 +50,10 @@
       "only_suspended_can_resume": "仅停用中的供应商可恢复",
       "only_pending_review_can_approve": "仅待审核可通过",
       "only_pending_review_can_reject": "仅待审核可驳回",
-      "only_pending_or_approved_can_request_supplement": "仅待审核或已通过可补充材料"
+      "only_pending_or_approved_can_request_supplement": "仅待审核或已通过可补充材料",
+      "self_registration_branch_ambiguous": "存在多个国家机构，无法判断自助注册供应商的归属。请先为公开门户配置机构入口。",
+      "registration_branch_required": "请选择要注册的国家机构",
+      "lookup_key_required": "请输入商务编号或税号"
     },
     "tender": {
       "not_found": "招标不存在",
@@ -69,7 +73,8 @@
       "import_file_required": "请上传导入文件",
       "import_empty_workbook": "导入文件为空",
       "import_requires_header_and_rows": "导入文件至少需要表头与一行数据",
-      "import_missing_header": "导入文件缺少有效表头"
+      "import_missing_header": "导入文件缺少有效表头",
+      "hall_branches_required": "请选择要公开给哪些机构"
     },
     "lot": {
       "not_found": "标包不存在"
@@ -98,7 +103,22 @@
       "full_requires_manager": "仅采购经理可执行完整导出"
     },
     "branch": {
-      "write_not_allowed": "总部不能创建业务数据，请切换到具体的国家机构后操作"
+      "write_not_allowed": "总部不能创建业务数据，请切换到具体的国家机构后操作",
+      "not_found": "机构不存在或已停用",
+      "code_required": "机构代码不能为空",
+      "code_exists": "机构代码已存在",
+      "hq_only": "该操作仅限总部执行",
+      "hq_cannot_be_disabled": "总部不可停用",
+      "member_exists": "该用户已是本机构成员",
+      "member_not_found": "成员不存在",
+      "last_hq_admin": "不能移除最后一名总部管理员",
+      "hq_role_outside_hq": "总部角色只能分配给总部",
+      "branch_role_in_hq": "总部成员必须使用总部角色",
+      "supplier_cannot_be_member": "供应商账号不能作为机构成员",
+      "no_active_branch": "当前没有激活的机构",
+      "hq_membership_requires_admin": "总部成员资格需由总部管理后台分配",
+      "not_accessible": "无权访问该机构",
+      "target_required": "请选择目标机构"
     }
   },
   "quote": {

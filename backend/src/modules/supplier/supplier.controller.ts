@@ -5,13 +5,14 @@
  * 作者：吴川
  */
 import {
-  Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors,
-} from '@nestjs/common';
+  Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors, Delete } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { SupplierService } from './supplier.service';
 import { SupplierReviewStatus, SupplierStatus } from './supplier.entity';
+import { AuthenticatedUser } from '../auth/jwt.strategy';
+import { BranchScope, emptyBranchScope } from '../../shared/tenant/branch-scope';
 import { ApiResponse } from '../../shared/dto/response.dto';
 import { RbacGuard, RequireScopes } from '../../shared/rbac/rbac.guard';
 import { User } from '../auth/user.entity';
@@ -19,6 +20,16 @@ import { User } from '../auth/user.entity';
 function ctx(req: Request) {
   const u = req.user as User;
   return { userId: u.id, userRole: u.role, ipAddress: req.ip ?? '0.0.0.0', userAgent: req.headers['user-agent'] };
+}
+
+/** 取当前请求的机构作用域。由 jwt.strategy.ts 校验成员资格后挂载，不接受客户端指定。 */
+/** 当前请求是否以总部身份操作。总部代各机构执行管理动作时必须显式指明目标机构。 */
+function isHqOf(req: Request): boolean {
+  return (req.user as AuthenticatedUser).branch?.isHq ?? false;
+}
+
+function scopeOf(req: Request): BranchScope {
+  return (req.user as AuthenticatedUser).branch?.scope ?? emptyBranchScope();
 }
 
 @Controller('api/suppliers')
@@ -29,20 +40,20 @@ export class SupplierController {
   @Post()
   @RequireScopes('supplier:create')
   async create(@Body() body: any, @Req() req: Request) {
-    const result = await this.svc.create(body, ctx(req));
+    const result = await this.svc.create(scopeOf(req), isHqOf(req), body, ctx(req));
     return ApiResponse.ok(result);
   }
 
   @Get()
   @RequireScopes('supplier:view')
-  async list(@Query() q: {
+  async list(@Req() req: Request, @Query() q: {
     status?: SupplierStatus;
     reviewStatus?: SupplierReviewStatus;
     search?: string;
     page?: string;
     limit?: string;
   }) {
-    const result = await this.svc.findAll({
+    const result = await this.svc.findAll(scopeOf(req), {
       status: q.status,
       reviewStatus: q.reviewStatus,
       search: q.search,
@@ -54,11 +65,11 @@ export class SupplierController {
 
   @Get('export')
   @RequireScopes('supplier:view')
-  async export(
+  async export(@Req() req: Request, 
     @Query() q: { status?: SupplierStatus; reviewStatus?: SupplierReviewStatus; search?: string },
     @Res() res: Response,
   ) {
-    const buffer = await this.svc.exportSuppliers({
+    const buffer = await this.svc.exportSuppliers(scopeOf(req), {
       status: q.status,
       reviewStatus: q.reviewStatus,
       search: q.search,
@@ -97,8 +108,12 @@ export class SupplierController {
   @Post('import')
   @RequireScopes('supplier:create')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
-  async bulkCreate(@UploadedFile() file: any, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.bulkCreateSuppliers(file?.buffer, ctx(req)));
+  async bulkCreate(
+    @UploadedFile() file: any,
+    @Req() req: Request,
+    @Body('branchId') branchId?: string,
+  ) {
+    return ApiResponse.ok(await this.svc.bulkCreateSuppliers(scopeOf(req), isHqOf(req), branchId, file?.buffer, ctx(req)));
   }
 
   @Get('accounts/import-template')
@@ -119,20 +134,20 @@ export class SupplierController {
 
   @Get(':id')
   @RequireScopes('supplier:view')
-  async findOne(@Param('id') id: string) {
-    return ApiResponse.ok(await this.svc.findById(id));
+  async findOne(@Req() req: Request, @Param('id') id: string) {
+    return ApiResponse.ok(await this.svc.findById(scopeOf(req), id));
   }
 
   @Get(':id/review-detail')
   @RequireScopes('supplier:view')
-  async reviewDetail(@Param('id') id: string) {
-    return ApiResponse.ok(await this.svc.findReviewDetail(id));
+  async reviewDetail(@Req() req: Request, @Param('id') id: string) {
+    return ApiResponse.ok(await this.svc.findReviewDetail(scopeOf(req), id));
   }
 
   @Get(':id/members')
   @RequireScopes('supplier:view')
-  async listMembers(@Param('id') id: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return ApiResponse.ok(await this.svc.listMembers(id, Number(page), Number(limit)));
+  async listMembers(@Req() req: Request, @Param('id') id: string, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return ApiResponse.ok(await this.svc.listMembers(scopeOf(req), id, Number(page), Number(limit)));
   }
 
   @Patch(':id/members/:memberId')
@@ -143,7 +158,7 @@ export class SupplierController {
     @Body() body: { relationRole?: 'owner' | 'admin' | 'operator'; status?: 'active' | 'suspended'; isPrimary?: boolean; displayName?: string },
     @Req() req: Request,
   ) {
-    return ApiResponse.ok(await this.svc.updateMember(id, memberId, body, ctx(req)));
+    return ApiResponse.ok(await this.svc.updateMember(scopeOf(req), id, memberId, body, ctx(req)));
   }
 
   @Post(':id/members/:memberId/reset-password')
@@ -154,43 +169,43 @@ export class SupplierController {
     @Body() body: { password: string },
     @Req() req: Request,
   ) {
-    return ApiResponse.ok(await this.svc.resetMemberPassword(id, memberId, body.password, ctx(req)));
+    return ApiResponse.ok(await this.svc.resetMemberPassword(scopeOf(req), id, memberId, body.password, ctx(req)));
   }
 
   @Patch(':id')
   @RequireScopes('supplier:edit')
   async update(@Param('id') id: string, @Body() body: any, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.update(id, body, ctx(req)));
+    return ApiResponse.ok(await this.svc.update(scopeOf(req), id, body, ctx(req)));
   }
 
   @Post(':id/suspend')
   @RequireScopes('supplier:edit')
   async suspend(@Param('id') id: string, @Body() body: { reason: string }, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.suspend(id, body.reason, ctx(req)));
+    return ApiResponse.ok(await this.svc.suspend(scopeOf(req), id, body.reason, ctx(req)));
   }
 
   @Post(':id/resume')
   @RequireScopes('supplier:edit')
   async resume(@Param('id') id: string, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.resume(id, ctx(req)));
+    return ApiResponse.ok(await this.svc.resume(scopeOf(req), id, ctx(req)));
   }
 
   @Post(':id/approve')
   @RequireScopes('supplier:edit')
   async approve(@Param('id') id: string, @Body() body: { comment?: string }, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.approve(id, ctx(req), body.comment));
+    return ApiResponse.ok(await this.svc.approve(scopeOf(req), id, ctx(req), body.comment));
   }
 
   @Post(':id/reject')
   @RequireScopes('supplier:edit')
   async reject(@Param('id') id: string, @Body() body: { comment?: string }, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.reject(id, body.comment, ctx(req)));
+    return ApiResponse.ok(await this.svc.reject(scopeOf(req), id, body.comment, ctx(req)));
   }
 
   @Post(':id/request-supplement')
   @RequireScopes('supplier:edit')
   async requestSupplement(@Param('id') id: string, @Body() body: { comment?: string }, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.requestSupplement(id, body.comment, ctx(req)));
+    return ApiResponse.ok(await this.svc.requestSupplement(scopeOf(req), id, body.comment, ctx(req)));
   }
 
   @Post(':id/invitations')
@@ -200,13 +215,13 @@ export class SupplierController {
     @Body() body: { email?: string; relationRole?: 'admin' | 'operator' },
     @Req() req: Request,
   ) {
-    return ApiResponse.ok(await this.svc.createInvitation(id, body, ctx(req)));
+    return ApiResponse.ok(await this.svc.createInvitation(scopeOf(req), id, body, ctx(req)));
   }
 
   @Get(':id/invitations')
   @RequireScopes('supplier:view')
-  async listInvitations(@Param('id') id: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return ApiResponse.ok(await this.svc.listInvitations(id, Number(page), Number(limit)));
+  async listInvitations(@Req() req: Request, @Param('id') id: string, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return ApiResponse.ok(await this.svc.listInvitations(scopeOf(req), id, Number(page), Number(limit)));
   }
 
   @Post(':id/invitations/:invitationId/revoke')
@@ -214,4 +229,33 @@ export class SupplierController {
   async revokeInvitation(@Param('id') id: string, @Param('invitationId') invitationId: string, @Req() req: Request) {
     return ApiResponse.ok(await this.svc.revokeInvitation(id, invitationId, ctx(req)));
   }
+  /** 按商务编号或税号精确查找全局供应商，用于跨机构授权 */
+  @Get('lookup/global')
+  @RequireScopes('supplier:create')
+  async lookupGlobal(
+    @Req() req: Request,
+    @Query('businessId') businessId?: string,
+    @Query('taxId') taxId?: string,
+  ) {
+    return ApiResponse.ok(await this.svc.lookupGlobalSupplier(scopeOf(req), { businessId, taxId }));
+  }
+
+  @Get(':id/branch-access')
+  @RequireScopes('supplier:view')
+  async branchAccess(@Param('id') id: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.listBranchAccess(scopeOf(req), id));
+  }
+
+  @Post(':id/branch-access')
+  @RequireScopes('supplier:edit')
+  async grantAccess(@Param('id') id: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.grantBranchAccess(scopeOf(req), id, ctx(req)));
+  }
+
+  @Delete(':id/branch-access')
+  @RequireScopes('supplier:edit')
+  async revokeAccess(@Param('id') id: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.revokeBranchAccess(scopeOf(req), id, ctx(req)));
+  }
+
 }

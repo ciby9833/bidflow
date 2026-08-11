@@ -13,7 +13,8 @@
       "email_code_too_frequent": "Verification code was sent too recently. Please try again later.",
       "email_code_too_many_attempts": "Too many incorrect verification attempts. Please request a new code.",
       "google_not_configured": "Google sign-in is not configured.",
-      "google_email_unverified": "Google email is not verified."
+      "google_email_unverified": "Google email is not verified.",
+      "branch_selection_required": "Please select a branch to continue"
     },
     "company_user": {
       "not_found": "Employee not found.",
@@ -44,7 +45,10 @@
       "only_suspended_can_resume": "Only suspended suppliers can be resumed.",
       "only_pending_review_can_approve": "Only pending suppliers can be approved.",
       "only_pending_review_can_reject": "Only pending suppliers can be rejected.",
-      "only_pending_or_approved_can_request_supplement": "Only pending or approved suppliers can be asked for supplements."
+      "only_pending_or_approved_can_request_supplement": "Only pending or approved suppliers can be asked for supplements.",
+      "self_registration_branch_ambiguous": "Multiple country branches exist; cannot determine the branch for self-registered suppliers. Configure a branch entry point for the public portal first.",
+      "registration_branch_required": "Please select the country branch to register with",
+      "lookup_key_required": "Enter a business ID or tax ID"
     },
     "tender": {
       "not_found": "Tender not found.",
@@ -64,7 +68,8 @@
       "import_file_required": "Please upload an import file.",
       "import_empty_workbook": "The workbook is empty.",
       "import_requires_header_and_rows": "Import file must contain a header row and at least one data row.",
-      "import_missing_header": "Import file is missing a valid header."
+      "import_missing_header": "Import file is missing a valid header.",
+      "hall_branches_required": "Please select which branches can see this tender"
     },
     "lot": {
       "not_found": "Lot not found."
@@ -93,7 +98,22 @@
       "full_requires_manager": "Only purchase managers can perform a full export."
     },
     "branch": {
-      "write_not_allowed": "Headquarters cannot create business data. Please switch to a country branch."
+      "write_not_allowed": "Headquarters cannot create business data. Please switch to a country branch.",
+      "not_found": "Branch not found or inactive",
+      "code_required": "Branch code is required",
+      "code_exists": "Branch code already exists",
+      "hq_only": "This action is restricted to headquarters",
+      "hq_cannot_be_disabled": "Headquarters cannot be disabled",
+      "member_exists": "User is already a member of this branch",
+      "member_not_found": "Member not found",
+      "last_hq_admin": "Cannot remove the last headquarters administrator",
+      "hq_role_outside_hq": "Headquarters roles can only be assigned at headquarters",
+      "branch_role_in_hq": "Headquarters members must use a headquarters role",
+      "supplier_cannot_be_member": "Supplier accounts cannot be branch members",
+      "no_active_branch": "No active branch",
+      "hq_membership_requires_admin": "Headquarters membership must be granted from the organization console",
+      "not_accessible": "You do not have access to this branch",
+      "target_required": "Please select a target branch"
     }
   },
   "quote": {

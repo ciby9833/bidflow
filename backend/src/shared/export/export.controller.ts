@@ -10,6 +10,13 @@ import { Request, Response } from 'express';
 import { ExportService, ExportMode, ExportView } from './export.service';
 import { RbacGuard, RequireScopes } from '../rbac/rbac.guard';
 import { User } from '../../modules/auth/user.entity';
+import { AuthenticatedUser } from '../../modules/auth/jwt.strategy';
+import { BranchScope, emptyBranchScope } from '../tenant/branch-scope';
+
+/** 取当前请求的机构作用域。由 jwt.strategy.ts 校验成员资格后挂载，不接受客户端指定。 */
+function scopeOf(req: Request): BranchScope {
+  return (req.user as AuthenticatedUser).branch?.scope ?? emptyBranchScope();
+}
 
 @Controller('api/export')
 @UseGuards(AuthGuard('jwt'), RbacGuard)
@@ -36,7 +43,7 @@ export class ExportController {
     }
 
     const ctx = { userId: user.id, userRole: user.role, ipAddress: req.ip ?? '0.0.0.0', userAgent: req.headers['user-agent'] };
-    const buffer = await this.svc.exportTenderQuotes(tenderId, exportMode, ctx, {
+    const buffer = await this.svc.exportTenderQuotes(scopeOf(req), tenderId, exportMode, ctx, {
       view: exportView,
       round: exportRound,
       fields: fields?.split(',').map((item) => item.trim()).filter(Boolean),

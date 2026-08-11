@@ -9,7 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Quote } from './quote.entity';
 import { LineQuote } from './line-quote.entity';
@@ -20,6 +20,10 @@ import { Lot } from '../tender/lot.entity';
 import { LotLine } from '../tender/lot-line.entity';
 import { Invitation } from '../tender/invitation.entity';
 import { RedisService } from '../../shared/config/redis.config';
+import {
+  InjectTenantRepository, TenantRepository,
+} from '../../shared/tenant/tenant-repository';
+import { BranchScope } from '../../shared/tenant/branch-scope';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
@@ -33,6 +37,27 @@ function quoteNo(seq: number): string {
 function lineQuoteNo(seq: number): string {
   const ym = new Date().toISOString().slice(0, 7).replace('-', '');
   return `QL-${ym}-${String(seq).padStart(6, '0')}`;
+}
+
+/**
+ * 取机构内该编号前缀的下一个序号。
+ * 用最大序号 +1 而非按行数计数：历史删除会让计数落后于实际序号，随后生成的编号会与既有记录撞唯一键
+ * （招标编号曾因同样写法在生产触发 duplicate key）。序号按机构独立，各国机构互不干扰。
+ */
+async function nextQuoteSeq(
+  em: EntityManager,
+  entity: typeof Quote | typeof LineQuote,
+  prefix: string,
+  branchId: string,
+): Promise<number> {
+  const ym = new Date().toISOString().slice(0, 7).replace('-', '');
+  const row = await em
+    .createQueryBuilder(entity, 'q')
+    .select('MAX(CAST(RIGHT(q.quoteNo, 6) AS INT))', 'max')
+    .where('q.quoteNo LIKE :p', { p: `${prefix}-${ym}-%` })
+    .andWhere('q.branchId = :branchId', { branchId })
+    .getRawOne<{ max: string | null }>();
+  return Number(row?.max ?? 0) + 1;
 }
 
 function rebidCountFromQuoteCount(quoteCount: number): number {
@@ -57,6 +82,10 @@ const KEYS = {
 @Injectable()
 export class QuoteService {
   constructor(
+    @InjectTenantRepository(Tender) private readonly tenders: TenantRepository<Tender>,
+    @InjectTenantRepository(Lot) private readonly lots: TenantRepository<Lot>,
+    @InjectTenantRepository(LotLine) private readonly lines: TenantRepository<LotLine>,
+    // tenant-guard: allow 锚点已在入口校验机构归属，下游查询由锚点派生
     @InjectRepository(Quote) private readonly quoteRepo: Repository<Quote>,
     @InjectRepository(LineQuote) private readonly lineQuoteRepo: Repository<LineQuote>,
     @InjectRepository(LotQuoteAttachment) private readonly lotAttachmentRepo: Repository<LotQuoteAttachment>,
@@ -75,16 +104,43 @@ export class QuoteService {
   // ── 标包级投标附件（盖章报价单等，按 招标+标包+供应商+轮次 一份，最多 5 个）──
   private static readonly MAX_QUOTE_ATTACHMENTS = 5;
 
-  private async resolveLotContext(lotId: string): Promise<{ tenderId: string; roundNo: number }> {
-    const lot = await this.lotRepo.findOne({ where: { id: lotId } });
+  // ── 机构锚点 ──────────────────────────────────────────────────────────────
+  // 报价域的所有操作都锚定在 lot 或 line 上，后续查询的 tenderId / lotId 均由锚点派生。
+  // 因此只需在入口校验锚点归属，下游查询自然落在同一机构内，
+  // 无需给每一处 findOne 单独附加机构条件 —— 那样既冗余又容易遗漏。
+
+  /** 取标包并校验机构归属。跨机构的 lotId 一律按"不存在"处理，不泄漏其存在性。 */
+  private async requireLot(scope: BranchScope, lotId: string): Promise<Lot> {
+    const lot = await this.lots.findById(scope, lotId);
     if (!lot) throw new NotFoundException('error.lot.not_found');
-    const tender = await this.tenderRepo.findOne({ where: { id: lot.tenderId } });
+    return lot;
+  }
+
+  /** 取品目并校验机构归属。 */
+  private async requireLine(scope: BranchScope, lineId: string): Promise<LotLine> {
+    const line = await this.lines.findById(scope, lineId);
+    if (!line) throw new NotFoundException('error.line.not_found');
+    return line;
+  }
+
+  /** 取招标并校验机构归属。 */
+  private async requireTender(scope: BranchScope, tenderId: string): Promise<Tender> {
+    const tender = await this.tenders.findById(scope, tenderId);
     if (!tender) throw new NotFoundException('error.tender.not_found');
-    return { tenderId: lot.tenderId, roundNo: tender.currentQuoteRound ?? 1 };
+    return tender;
+  }
+
+  private async resolveLotContext(
+    scope: BranchScope,
+    lotId: string,
+  ): Promise<{ tenderId: string; roundNo: number; branchId: string }> {
+    const lot = await this.requireLot(scope, lotId);
+    const tender = await this.requireTender(scope, lot.tenderId);
+    return { tenderId: lot.tenderId, roundNo: tender.currentQuoteRound ?? 1, branchId: lot.branchId };
   }
 
   /** 供应商保存某标包当前轮的投标附件（整份覆盖）。 */
-  async saveLotAttachments(lotId: string, supplierId: string, attachments: QuoteAttachmentItem[]) {
+  async saveLotAttachments(scope: BranchScope, lotId: string, supplierId: string, attachments: QuoteAttachmentItem[]) {
     const list = (attachments ?? []).slice(0, QuoteService.MAX_QUOTE_ATTACHMENTS).map((a) => ({
       key: String(a.key),
       name: String(a.name ?? '附件'),
@@ -95,27 +151,27 @@ export class QuoteService {
     if ((attachments?.length ?? 0) > QuoteService.MAX_QUOTE_ATTACHMENTS) {
       throw new BadRequestException('error.upload.file_too_many');
     }
-    const { tenderId, roundNo } = await this.resolveLotContext(lotId);
+    const { tenderId, roundNo, branchId } = await this.resolveLotContext(scope, lotId);
     const existing = await this.lotAttachmentRepo.findOne({ where: { tenderId, lotId, supplierId, roundNo } });
     if (existing) {
       existing.attachments = list;
       await this.lotAttachmentRepo.save(existing);
       return existing;
     }
-    const created = this.lotAttachmentRepo.create({ tenderId, lotId, supplierId, roundNo, attachments: list });
+    const created = this.lotAttachmentRepo.create({ branchId, tenderId, lotId, supplierId, roundNo, attachments: list });
     return this.lotAttachmentRepo.save(created);
   }
 
   /** 供应商读取自己在某标包当前轮的投标附件。 */
-  async getMyLotAttachments(lotId: string, supplierId: string) {
-    const { tenderId, roundNo } = await this.resolveLotContext(lotId);
+  async getMyLotAttachments(scope: BranchScope, lotId: string, supplierId: string) {
+    const { tenderId, roundNo } = await this.resolveLotContext(scope, lotId);
     const row = await this.lotAttachmentRepo.findOne({ where: { tenderId, lotId, supplierId, roundNo } });
     return { roundNo, attachments: row?.attachments ?? [] };
   }
 
   /** 评审方读取某标包指定轮次（缺省为当前轮）所有供应商的投标附件，附带供应商名称。 */
-  async getLotAttachmentsForReview(lotId: string, roundNo?: number) {
-    const ctx = await this.resolveLotContext(lotId);
+  async getLotAttachmentsForReview(scope: BranchScope, lotId: string, roundNo?: number) {
+    const ctx = await this.resolveLotContext(scope, lotId);
     const targetRound = roundNo && Number.isFinite(roundNo) ? Number(roundNo) : ctx.roundNo;
     const rows = await this.lotAttachmentRepo.find({ where: { tenderId: ctx.tenderId, lotId, roundNo: targetRound } });
     const supplierIds = Array.from(new Set(rows.map((r) => r.supplierId).filter(Boolean)));
@@ -130,7 +186,7 @@ export class QuoteService {
   }
 
   // ── §4.2 Write Path ─────────────────────────────────────────────────────
-  async submit(data: {
+  async submit(scope: BranchScope, data: {
     lotId: string;
     supplierId: string;
     totalPrice: number;
@@ -143,8 +199,7 @@ export class QuoteService {
     const { lotId, supplierId } = data;
     await this.ensureSupplierApproved(supplierId);
 
-    const lot = await this.lotRepo.findOne({ where: { id: lotId } });
-    if (!lot) throw new NotFoundException('error.lot.not_found');
+    const lot = await this.requireLot(scope, lotId);
     const tenderId = lot.tenderId;
 
     // ① Idempotency check (if rebid supplies a key)
@@ -156,8 +211,7 @@ export class QuoteService {
     }
 
     // ② Deadline check
-    const tender = await this.tenderRepo.findOne({ where: { id: tenderId } });
-    if (!tender) throw new NotFoundException('error.tender.not_found');
+    const tender = await this.requireTender(scope, tenderId);
     await this.ensureCanParticipate(tender, supplierId);
     const now = new Date();
     if (tender.status === TenderStatus.PUBLISHED && (!tender.bidStartAt || tender.bidStartAt <= now) && (!tender.bidDeadline || tender.bidDeadline > now)) {
@@ -232,9 +286,10 @@ export class QuoteService {
           }
         }
 
-        const count = await em.count(Quote);
+        const nextSeq = await nextQuoteSeq(em, Quote, 'Q', lot.branchId);
         const q = em.create(Quote, {
-          quoteNo: quoteNo(count + 1),
+          branchId: lot.branchId,
+          quoteNo: quoteNo(nextSeq),
           tenderId,
           lotId,
           supplierId,
@@ -287,7 +342,7 @@ export class QuoteService {
     }
   }
 
-  async submitLineQuote(data: {
+  async submitLineQuote(scope: BranchScope, data: {
     lineId: string;
     supplierId: string;
     totalPrice: number;
@@ -299,11 +354,9 @@ export class QuoteService {
     const { lineId, supplierId } = data;
     await this.ensureSupplierApproved(supplierId);
 
-    const line = await this.lineRepo.findOne({ where: { id: lineId } });
-    if (!line) throw new NotFoundException('error.line.not_found');
-    const tender = await this.tenderRepo.findOne({ where: { id: line.tenderId } });
-    if (!tender) throw new NotFoundException('error.tender.not_found');
-    const lot = await this.lotRepo.findOne({ where: { id: line.lotId } });
+    const line = await this.requireLine(scope, lineId);
+    const tender = await this.requireTender(scope, line.tenderId);
+    const lot = await this.lots.findById(scope, line.lotId);
     if (!lot) throw new NotFoundException('error.lot.not_found');
     const roundNo = tender.currentQuoteRound ?? 1;
     await this.ensureCanParticipate(tender, supplierId);
@@ -393,9 +446,10 @@ export class QuoteService {
           if (updateResult.affected === 0) throw new ConflictException('error.quote.version_conflict');
         }
 
-        const count = await em.count(LineQuote);
+        const nextSeq = await nextQuoteSeq(em, LineQuote, 'QL', line.branchId);
         const quote = em.create(LineQuote, {
-          quoteNo: lineQuoteNo(count + 1),
+          branchId: line.branchId,
+          quoteNo: lineQuoteNo(nextSeq),
           tenderId: line.tenderId,
           lotId: line.lotId,
           lineId,
@@ -439,11 +493,9 @@ export class QuoteService {
     }
   }
 
-  async getLineQuotes(lineId: string, supplierId?: string, roundNo?: number) {
-    const line = await this.lineRepo.findOne({ where: { id: lineId } });
-    if (!line) throw new NotFoundException('error.line.not_found');
-    const tender = await this.tenderRepo.findOne({ where: { id: line.tenderId } });
-    if (!tender) throw new NotFoundException('error.tender.not_found');
+  async getLineQuotes(scope: BranchScope, lineId: string, supplierId?: string, roundNo?: number) {
+    const line = await this.requireLine(scope, lineId);
+    const tender = await this.requireTender(scope, line.tenderId);
     const targetRound = roundNo ?? tender.currentQuoteRound ?? 1;
 
     const where: any = { lineId, roundNo: targetRound, isLatest: true };
@@ -455,11 +507,9 @@ export class QuoteService {
     return this.withSupplierSummary(quotes);
   }
 
-  async getLineQuoteHistory(lineId: string, supplierId: string, roundNo?: number) {
-    const line = await this.lineRepo.findOne({ where: { id: lineId } });
-    if (!line) throw new NotFoundException('error.line.not_found');
-    const tender = await this.tenderRepo.findOne({ where: { id: line.tenderId } });
-    if (!tender) throw new NotFoundException('error.tender.not_found');
+  async getLineQuoteHistory(scope: BranchScope, lineId: string, supplierId: string, roundNo?: number) {
+    const line = await this.requireLine(scope, lineId);
+    const tender = await this.requireTender(scope, line.tenderId);
     const targetRound = roundNo ?? tender.currentQuoteRound ?? 1;
     const quotes = await this.lineQuoteRepo.find({
       where: { lineId, supplierId, roundNo: targetRound },
@@ -468,11 +518,9 @@ export class QuoteService {
     return this.withSupplierSummary(quotes);
   }
 
-  async getLineQuoteHistoryForReview(lineId: string, supplierId: string, roundNo?: number) {
-    const line = await this.lineRepo.findOne({ where: { id: lineId } });
-    if (!line) throw new NotFoundException('error.line.not_found');
-    const tender = await this.tenderRepo.findOne({ where: { id: line.tenderId } });
-    if (!tender) throw new NotFoundException('error.tender.not_found');
+  async getLineQuoteHistoryForReview(scope: BranchScope, lineId: string, supplierId: string, roundNo?: number) {
+    const line = await this.requireLine(scope, lineId);
+    const tender = await this.requireTender(scope, line.tenderId);
     const targetRound = roundNo ?? tender.currentQuoteRound ?? 1;
     const quotes = await this.lineQuoteRepo.find({
       where: { lineId, supplierId, roundNo: targetRound },
@@ -481,14 +529,12 @@ export class QuoteService {
     return this.withSupplierSummary(quotes);
   }
 
-  async getLineRankForSupplier(lineId: string, supplierId: string, roundNo?: number) {
+  async getLineRankForSupplier(scope: BranchScope, lineId: string, supplierId: string, roundNo?: number) {
     await this.ensureSupplierApproved(supplierId);
-    const line = await this.lineRepo.findOne({ where: { id: lineId } });
-    if (!line) throw new NotFoundException('error.line.not_found');
-    const tender = await this.tenderRepo.findOne({ where: { id: line.tenderId } });
-    if (!tender) throw new NotFoundException('error.tender.not_found');
+    const line = await this.requireLine(scope, lineId);
+    const tender = await this.requireTender(scope, line.tenderId);
     const targetRound = roundNo ?? tender.currentQuoteRound ?? 1;
-    const quotes = await this.getLineQuotes(lineId, undefined, targetRound);
+    const quotes = await this.getLineQuotes(scope, lineId, undefined, targetRound);
     const index = quotes.findIndex((quote) => quote.supplierId === supplierId);
     if (index < 0) return { hasQuote: false, rankingMode: tender.rankingMode, roundNo: targetRound };
     return {
@@ -579,7 +625,10 @@ export class QuoteService {
   }
 
   // ── §4.3 Read Path ──────────────────────────────────────────────────────
-  async getMyRank(lotId: string, supplierId: string, rankingMode: string, topN?: number) {
+  async getMyRank(scope: BranchScope, lotId: string, supplierId: string, rankingMode: string, topN?: number) {
+    // 排名存放在 Redis，其 key 只含 lotId 而无机构信息，
+    // 因此必须先用数据库校验标包归属，否则跨机构可凭 lotId 直接读到排名。
+    await this.requireLot(scope, lotId);
     const rankKey = KEYS.rank(lotId);
     const myRank = await this.redis.zrank(rankKey, supplierId);
     const total = await this.redis.zcard(rankKey);
@@ -608,23 +657,19 @@ export class QuoteService {
     }
   }
 
-  async getMyRankForSupplier(lotId: string, supplierId: string) {
+  async getMyRankForSupplier(scope: BranchScope, lotId: string, supplierId: string) {
     await this.ensureSupplierApproved(supplierId);
-    const lot = await this.lotRepo.findOne({ where: { id: lotId } });
-    if (!lot) throw new NotFoundException('error.lot.not_found');
+    const lot = await this.requireLot(scope, lotId);
 
-    const tender = await this.tenderRepo.findOne({ where: { id: lot.tenderId } });
-    if (!tender) throw new NotFoundException('error.tender.not_found');
+    const tender = await this.requireTender(scope, lot.tenderId);
 
-    return this.getMyRank(lotId, supplierId, tender.rankingMode, tender.rankingTopN);
+    return this.getMyRank(scope, lotId, supplierId, tender.rankingMode, tender.rankingTopN);
   }
 
-  async getMyQuoteState(lotId: string, supplierId: string) {
+  async getMyQuoteState(scope: BranchScope, lotId: string, supplierId: string) {
     await this.ensureSupplierApproved(supplierId);
-    const lot = await this.lotRepo.findOne({ where: { id: lotId } });
-    if (!lot) throw new NotFoundException('error.lot.not_found');
-    const tender = await this.tenderRepo.findOne({ where: { id: lot.tenderId } });
-    if (!tender) throw new NotFoundException('error.tender.not_found');
+    const lot = await this.requireLot(scope, lotId);
+    const tender = await this.requireTender(scope, lot.tenderId);
     const quotes = await this.quoteRepo.find({
       where: { lotId, supplierId },
       order: { version: 'DESC', submittedAt: 'DESC' },
@@ -644,12 +689,10 @@ export class QuoteService {
     };
   }
 
-  async getMyLineQuoteState(lineId: string, supplierId: string) {
+  async getMyLineQuoteState(scope: BranchScope, lineId: string, supplierId: string) {
     await this.ensureSupplierApproved(supplierId);
-    const line = await this.lineRepo.findOne({ where: { id: lineId } });
-    if (!line) throw new NotFoundException('error.line.not_found');
-    const tender = await this.tenderRepo.findOne({ where: { id: line.tenderId } });
-    if (!tender) throw new NotFoundException('error.tender.not_found');
+    const line = await this.requireLine(scope, lineId);
+    const tender = await this.requireTender(scope, line.tenderId);
     const roundNo = tender.currentQuoteRound ?? 1;
     const quotes = await this.lineQuoteRepo.find({
       where: { lineId, roundNo, supplierId },
@@ -673,7 +716,8 @@ export class QuoteService {
     };
   }
 
-  async rebuildRankingFromDb(lotId: string) {
+  async rebuildRankingFromDb(scope: BranchScope, lotId: string) {
+    await this.requireLot(scope, lotId);
     const quotes = await this.quoteRepo.find({
       where: { lotId, isLatest: true, isValid: true },
       order: { totalPrice: 'ASC' },
@@ -686,9 +730,8 @@ export class QuoteService {
   }
 
   // ── Snapshot generation (key moments only) ──────────────────────────────
-  async generateSnapshot(lotId: string, trigger: SnapshotTrigger, triggeredBy?: string) {
-    const lot = await this.lotRepo.findOne({ where: { id: lotId } });
-    if (!lot) throw new NotFoundException('error.lot.not_found');
+  async generateSnapshot(scope: BranchScope, lotId: string, trigger: SnapshotTrigger, triggeredBy?: string) {
+    const lot = await this.requireLot(scope, lotId);
 
     const quotes = await this.quoteRepo.find({
       where: { lotId, isLatest: true, isValid: true },
@@ -705,11 +748,12 @@ export class QuoteService {
     }));
 
     return this.snapshotRepo.save(
-      this.snapshotRepo.create({ tenderId: lot.tenderId, lotId, snapshotData, triggerReason: trigger, triggeredBy }),
+      this.snapshotRepo.create({ branchId: lot.branchId, tenderId: lot.tenderId, lotId, snapshotData, triggerReason: trigger, triggeredBy }),
     );
   }
 
-  async getQuotes(lotId: string, supplierId?: string) {
+  async getQuotes(scope: BranchScope, lotId: string, supplierId?: string) {
+    await this.requireLot(scope, lotId);
     if (supplierId) await this.ensureSupplierApproved(supplierId);
     const where: any = { lotId, isLatest: true };
     if (supplierId) where.supplierId = supplierId;
@@ -717,7 +761,8 @@ export class QuoteService {
     return this.withSupplierSummary(quotes);
   }
 
-  async getQuoteHistory(lotId: string, supplierId: string) {
+  async getQuoteHistory(scope: BranchScope, lotId: string, supplierId: string) {
+    await this.requireLot(scope, lotId);
     await this.ensureSupplierApproved(supplierId);
     const quotes = await this.quoteRepo.find({
       where: { lotId, supplierId },

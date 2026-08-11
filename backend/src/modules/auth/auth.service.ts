@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes, randomInt } from 'crypto';
@@ -20,8 +20,12 @@ import {
 import { CompanyUser } from './company-user.entity';
 import { SupplierAccount } from './supplier-account.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
-import { BranchMemberRole } from '../organization/branch-member.entity';
+import { Branch, BranchStatus, BranchType } from '../organization/branch.entity';
+import {
+  BranchMember, BranchMemberRole, BranchMemberStatus,
+} from '../organization/branch-member.entity';
 import { BranchContextService } from '../organization/branch-context.service';
+import { BranchScope } from '../../shared/tenant/branch-scope';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 import { scopesForAccount } from '../../shared/rbac/scope-map';
@@ -51,7 +55,18 @@ export interface JwtPayload {
   branchRole?: BranchMemberRole;
   /** 是否总部成员。总部的可访问机构范围不入 Token，每次请求在服务端解析。 */
   isHq?: boolean;
+
+  /**
+   * 令牌用途。branch_selection 表示这是一枚只能用于"选择机构"的受限令牌：
+   * 多机构用户登录后尚未确定进入哪个机构，此时不能发放正式令牌 ——
+   * 正式令牌即便机构作用域为空，也仍能访问那些尚未接入机构隔离的接口。
+   * jwt.strategy.ts 对该用途的令牌一律拒绝，选择机构的接口自行校验它。
+   */
+  purpose?: 'branch_selection';
 }
+
+/** 选择机构令牌的有效期。仅用于完成登录，无需长时有效。 */
+const BRANCH_SELECTION_TOKEN_TTL = '10m';
 
 const REGISTER_EMAIL_CODE_PREFIX = 'auth:supplier-register:email-code';
 const REGISTER_EMAIL_REQUEST_PREFIX = 'auth:supplier-register:email-code-request';
@@ -204,13 +219,46 @@ export class AuthService {
     return this.userRepo.save(user);
   }
 
-  async listCompanyUsers() {
-    const users = await this.userRepo.find({
-      where: { accountType: AccountType.COMPANY_USER },
-      order: { createdAt: 'DESC' },
-    });
+  /**
+   * 列出公司内部账号。
+   *
+   * 必须按机构过滤：账号本身虽是全局的，但「谁在这个机构工作」属于该机构的组织信息，
+   * 印尼的管理员不应看到越南的员工名单。
+   * 通过 branch_members 内联实现 —— 与供应商一样，隔离依据是成员关系而非用户表上的列。
+   */
+  async listCompanyUsers(scope: BranchScope) {
+    if (!scope.readable.length) return [];
+
+    const rows = await this.userRepo
+      .createQueryBuilder('u')
+      .innerJoin(BranchMember, 'm', 'm.auth_user_id = u.id AND m.status = :active', { active: BranchMemberStatus.ACTIVE })
+      .where('u.account_type = :type', { type: AccountType.COMPANY_USER })
+      .andWhere('m.branch_id IN (:...scope)', { scope: [...scope.readable] })
+      .select('u.id', 'id')
+      .distinct(true)
+      .getRawMany<{ id: string }>();
+
+    const users = rows.length
+      ? await this.userRepo.find({ where: { id: In(rows.map((r) => r.id)) }, order: { createdAt: 'DESC' } })
+      : [];
     const profiles = await this.companyUserRepo.find();
     const profileMap = new Map(profiles.map((profile) => [profile.authUserId, profile]));
+
+    // 附带机构信息：总部可跨机构查看，必须让它看出每个账号属于哪个机构
+    const memberRows = users.length
+      ? await this.userRepo.manager.query(
+        // 限定在当前作用域内：同一人可能同时是总部与某国机构成员，
+        // 若不限定，印尼的列表会把他显示成"越南"，与查看者的视角不符。
+        `SELECT m.auth_user_id AS "userId", b.code, b.name, m.role
+         FROM branch_members m JOIN branches b ON b.id = m.branch_id
+         WHERE m.auth_user_id = ANY($1::uuid[]) AND m.status = 'active'
+           AND m.branch_id = ANY($2::uuid[])`,
+        [users.map((u) => u.id), [...scope.readable]],
+      )
+      : [];
+    const branchMap = new Map<string, { code: string; name: string; role: string }>(
+      memberRows.map((r: any) => [r.userId, { code: r.code, name: r.name, role: r.role }]),
+    );
 
     return users.map((user) => {
       const profile = profileMap.get(user.id);
@@ -227,17 +275,26 @@ export class AuthService {
         fullName: profile?.fullName ?? user.displayName,
         companyName: profile?.companyName,
         companyUserId: profile?.id,
+        branch: branchMap.get(user.id) ?? null,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       };
     });
   }
 
+  /**
+   * 创建公司内部账号。
+   *
+   * branchId 必填：公司用户的数据可见范围完全由机构成员关系决定，
+   * 不分配机构的账号登录后看不到任何数据（fail-closed），属于创建即失效的坏账号。
+   * 因此机构归属与账号在同一事务内建立，不允许出现"先建人、以后再分配"的中间态。
+   */
   async createCompanyUser(data: {
     email: string;
     password: string;
     role: UserRole;
     fullName: string;
+    branchId: string;
     employeeId?: string;
     companyName?: string;
   }, ctx: AuditContext) {
@@ -281,7 +338,26 @@ export class AuthService {
         createdBy: ctx.userId,
       });
       const savedCompanyUser = await em.save(companyUser);
-      return { user: savedUser, companyUser: savedCompanyUser };
+
+      // 机构归属与账号同事务建立；机构不存在或已停用时整体回滚，不留下无归属账号
+      const branch = await em.findOne(Branch, {
+        where: { id: data.branchId, status: BranchStatus.ACTIVE },
+      });
+      if (!branch) throw new BadRequestException('error.branch.not_found');
+
+      // 角色必须与机构类型匹配：总部只能持总部角色，国家机构不得使用总部角色。
+      // 与 organization.service.ts 的 assertRoleFitsBranch 同一约束，此处是建号入口的把关。
+      const isHqBranch = branch.type === BranchType.HQ;
+      const role = isHqBranch ? BranchMemberRole.HQ_ADMIN : (data.role as unknown as BranchMemberRole);
+      await em.save(em.create(BranchMember, {
+        branchId: branch.id,
+        authUserId: savedUser.id,
+        role,
+        status: BranchMemberStatus.ACTIVE,
+        createdBy: ctx.userId,
+      }));
+
+      return { user: savedUser, companyUser: savedCompanyUser, branch };
     });
 
     await this.audit.log(
@@ -599,17 +675,59 @@ export class AuthService {
     await this.redis.del(`${REGISTER_EMAIL_FAIL_PREFIX}:${email}`);
   }
 
-  private async issueSession(user: User) {
+  /**
+   * 决定登录后进入哪个机构。
+   * - 单机构：直接进入
+   * - 多机构且上次选择仍有效：沿用上次选择
+   * - 多机构且上次选择无效（从未选过 / 机构停用 / 已被移出）：回到选择页，不替用户挑一个
+   */
+  private resolveEntryBranch(branches: { branchId: string }[], lastBranchId?: string) {
+    if (branches.length <= 1) return { branchId: branches[0]?.branchId, needsSelection: false };
+    const remembered = branches.find((b) => b.branchId === lastBranchId);
+    if (remembered) return { branchId: remembered.branchId, needsSelection: false };
+    return { branchId: undefined, needsSelection: true };
+  }
+
+  /** 签发只能用于选择机构的受限令牌 */
+  private issueBranchSelectionToken(user: User) {
+    return this.jwt.sign(
+      { sub: user.id, tokenVersion: user.tokenVersion, purpose: 'branch_selection' } as JwtPayload,
+      { expiresIn: BRANCH_SELECTION_TOKEN_TTL },
+    );
+  }
+
+  private async issueSession(user: User, preferredBranchId?: string) {
     const profile = await this.buildProfile(user);
 
-    // Phase 3 双轨：解析机构上下文并写入 Token，但现阶段无任何消费方，
-    // 线上鉴权仍完全依赖 users.role 与 profile.scopes，行为与改造前一致。
-    // 供应商账号不进 branch_members，其机构归属由供应商机构档案决定（Phase 2），此处必然为空。
-    const branch = await this.branchContext.resolve(
+    // 先按"可访问哪些机构"解析一次，用于判断是否需要用户选择
+    const available = await this.branchContext.resolve(
       user.id,
-      undefined,
+      preferredBranchId,
       profile.user.supplierId,
     );
+
+    // 未显式指定目标机构时，按"单机构直进 / 记住上次 / 否则让用户选"决定入口。
+    // 公司用户与供应商账号走同一套规则：跨境供应商同样可能在多个机构有准入档案。
+    const entry = preferredBranchId
+      ? { branchId: preferredBranchId, needsSelection: false }
+      : this.resolveEntryBranch(available.branches, user.lastBranchId);
+
+    if (entry.needsSelection) {
+      return {
+        requiresBranchSelection: true as const,
+        selectionToken: this.issueBranchSelectionToken(user),
+        branches: available.branches,
+      };
+    }
+
+    const branch = entry.branchId === available.activeBranchId
+      ? available
+      : await this.branchContext.resolve(user.id, entry.branchId, profile.user.supplierId);
+
+    // 记住本次入口，下次登录直接进入
+    if (branch.activeBranchId && branch.activeBranchId !== user.lastBranchId) {
+      await this.userRepo.update(user.id, { lastBranchId: branch.activeBranchId });
+    }
 
     const payload: JwtPayload = {
       sub: user.id,
@@ -632,9 +750,69 @@ export class AuthService {
       scopes: profile.scopes,
       user: profile.user,
       // 供前端机构切换器使用；单机构用户长度为 1，前端不展示切换入口。
-      branches: branch.memberships,
+      branches: branch.branches,
       activeBranchId: branch.activeBranchId,
     };
+  }
+
+  /**
+   * 切换当前激活机构，重新签发 Token。
+   *
+   * 机构只能来自签名的 Token —— 若允许客户端通过请求头或参数指定机构，
+   * 改一个值就能读到别国数据。因此切换必须走这里：校验归属后重新签发。
+   * 归属校验在 BranchContextService.resolve 内完成，不在归属范围内的 branchId 会被忽略而非报错，
+   * 但这里显式校验以给出明确反馈，避免用户以为切换成功却仍停留在原机构。
+   */
+  /**
+   * 用登录时下发的受限令牌完成机构选择，换取正式会话。
+   * 该接口不走 JWT 守卫 —— 守卫会拒绝受限令牌，因此在此自行校验其签名与用途。
+   */
+  async selectBranch(selectionToken: string, branchId: string, ctx: AuditContext) {
+    let payload: JwtPayload;
+    try {
+      payload = this.jwt.verify<JwtPayload>(selectionToken);
+    } catch {
+      throw new UnauthorizedException('error.auth.token_invalid');
+    }
+    if (payload.purpose !== 'branch_selection') throw new UnauthorizedException('error.auth.token_invalid');
+
+    const user = await this.userRepo.findOne({ where: { id: payload.sub } });
+    if (!user || user.status === UserStatus.SUSPENDED) throw new UnauthorizedException('error.auth.token_invalid');
+    // 受限令牌同样受版本控制：期间若发生登出或撤权，该令牌一并失效
+    if (user.tokenVersion !== payload.tokenVersion) throw new UnauthorizedException('error.auth.token_invalid');
+
+    const profile = await this.buildProfile(user);
+    const context = await this.branchContext.resolve(user.id, branchId, profile.user.supplierId);
+    if (!context.branches.some((b) => b.branchId === branchId)) {
+      throw new ForbiddenException('error.branch.not_accessible');
+    }
+
+    await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.LOGIN, undefined, {
+      selectedBranch: context.branches.find((b) => b.branchId === branchId)?.branchCode,
+    });
+    return this.issueSession(user, branchId);
+  }
+
+  async switchBranch(user: User, branchId: string, ctx: AuditContext) {
+    const profile = await this.buildProfile(user);
+    const context = await this.branchContext.resolve(user.id, branchId, profile.user.supplierId);
+    const target = context.branches.find((b) => b.branchId === branchId);
+    if (!target) throw new ForbiddenException('error.branch.not_accessible');
+
+    // 终止原机构会话：自增 token_version 让此前签发的全部 Token 立即失效。
+    // 不做这一步的话，切换只是"多拿了一个新 Token"，旧 Token 仍能读原机构数据 ——
+    // 同一账号会同时持有多个机构的有效会话，与"登录后机构唯一"的语义相悖，
+    // 旧 Token 一旦泄漏或残留在其他标签页/设备上，就是一条绕过机构隔离的通路。
+    await this.userRepo.update(user.id, { tokenVersion: () => 'token_version + 1' });
+    // 重新读取以拿到自增后的版本号，否则新 Token 会带着旧版本号，签发即失效
+    const refreshed = await this.userRepo.findOneOrFail({ where: { id: user.id } });
+
+    await this.audit.log(ctx, AuditEntityType.USER, user.id, AuditAction.LOGIN, undefined, {
+      switchedToBranch: target.branchCode,
+      previousSessionRevoked: true,
+    });
+    // issueSession 内部会把本次机构写入 last_branch_id，下次登录直接进入这里
+    return this.issueSession(refreshed, branchId);
   }
 
   async requestPasswordReset(email: string, ctx: AuditContext) {

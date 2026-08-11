@@ -36,6 +36,18 @@
           <div class="kv"><span>{{ t('common.contact_email') }}</span><strong>{{ detail.supplier.contactEmail || '—' }}</strong></div>
           <div class="kv"><span>{{ t('common.contact_phone') }}</span><strong>{{ detail.supplier.contactPhone || '—' }}</strong></div>
           <div class="kv"><span>{{ t('common.tax_id') }}</span><strong>{{ detail.supplier.taxId || '—' }}</strong></div>
+          <!--
+            国别可在审核时更正：供应商注册时选的是"我要向哪个国家注册"，
+            与公司实际注册地未必一致（如中国厂商向越南机构注册）。审核人核对资质后据实修正。
+          -->
+          <div class="kv">
+            <span>{{ t('supplier.country') }}</span>
+            <span class="country-edit">
+              <el-select v-model="countryDraft" size="small" filterable class="country-select" @change="saveCountry">
+                <el-option v-for="c in countryOptions" :key="c.code" :label="c.label" :value="c.code" />
+              </el-select>
+            </span>
+          </div>
           <el-divider />
           <h3>{{ t('supplierReviewDetail.submittedDocs') }}</h3>
           <div v-if="!detail.documents?.length" class="empty">{{ t('supplierReviewDetail.noDocs') }}</div>
@@ -112,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import dayjs from 'dayjs';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -125,9 +137,33 @@ import SupplierMembersPanel from './SupplierMembersPanel.vue';
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const loading = ref(false);
 const detail = ref<any>(null);
+
+/** 常见国别选项。以现有数据中出现过的国别为主，避免堆砌两百个国家干扰选择。 */
+const countryOptions = computed(() => {
+  const codes = ['ID', 'VN', 'CN', 'MY', 'TH', 'SG', 'PH', 'IN', 'JP', 'KR'];
+  const current = detail.value?.supplier?.countryCode;
+  if (current && !codes.includes(current)) codes.unshift(current);
+  let dn: Intl.DisplayNames | null = null;
+  try { dn = new Intl.DisplayNames([locale.value], { type: 'region' }); } catch { dn = null; }
+  return codes.map((code) => ({ code, label: dn?.of(code) ? `${dn.of(code)} (${code})` : code }));
+});
+
+const countryDraft = ref('');
+watch(() => detail.value?.supplier?.countryCode, (v) => { countryDraft.value = v ?? ''; }, { immediate: true });
+
+async function saveCountry(code: string) {
+  try {
+    await api.patch(`/api/suppliers/${detail.value.supplier.id}`, { countryCode: code });
+    ElMessage.success(t('supplierReviewDetail.countryUpdated'));
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error?.message ?? t('common.operation_failed'));
+    countryDraft.value = detail.value?.supplier?.countryCode ?? '';
+  }
+}
 const sideTab = ref('members');
 const invitations = ref<any[]>([]);
 const inviteTotal = ref(0);
@@ -350,4 +386,6 @@ onMounted(load);
     align-items: flex-start;
   }
 }
+.country-edit { display: inline-flex; }
+.country-select { width: 200px; }
 </style>

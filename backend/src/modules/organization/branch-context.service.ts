@@ -20,19 +20,25 @@ import {
   BranchScope, branchScopeFor, emptyBranchScope, hqBranchScope,
 } from '../../shared/tenant/branch-scope';
 
-/** 用户在单个机构内的成员身份 */
-export interface BranchMembershipView {
+/**
+ * 用户可访问的单个机构。
+ *
+ * role 可空：公司用户在机构内持有明确的组织角色；供应商账号则是「机构下的业务主体」，
+ * 在组织结构中不占位、没有角色，其能力集由 accountType 决定（见 scope-map.ts）。
+ * 早期为满足类型给供应商填了一个占位角色，会让「供应商是评审员」这类错误语义进入系统，已废弃。
+ */
+export interface BranchAccessView {
   branchId: string;
   branchCode: string;
   branchName: string;
   branchType: BranchType;
-  role: BranchMemberRole;
+  role?: BranchMemberRole;
 }
 
 /** 请求级机构上下文 */
 export interface BranchContext {
-  /** 该用户全部有效成员身份，用于前端机构切换器 */
-  memberships: BranchMembershipView[];
+  /** 该用户可访问的全部机构，用于前端机构切换器 */
+  branches: BranchAccessView[];
   /** 当前激活机构。总部成员在未选择具体机构时为空。 */
   activeBranchId?: string;
   /** 当前激活机构内的角色 */
@@ -54,7 +60,7 @@ export class BranchContextService {
   ) {}
 
   /** 读取用户全部有效成员身份（机构与成员关系都必须为 active） */
-  async listMemberships(authUserId: string): Promise<BranchMembershipView[]> {
+  async listMemberships(authUserId: string): Promise<BranchAccessView[]> {
     const rows = await this.memberRepo
       .createQueryBuilder('m')
       .innerJoin(Branch, 'b', 'b.id = m.branch_id')
@@ -71,7 +77,7 @@ export class BranchContextService {
       // 国家机构优先于总部：总部不能执行业务操作，默认激活国家机构更符合日常使用
       .orderBy(`CASE WHEN b.type = '${BranchType.BRANCH}' THEN 0 ELSE 1 END`, 'ASC')
       .addOrderBy('b.code', 'ASC')
-      .getRawMany<BranchMembershipView>();
+      .getRawMany<BranchAccessView>();
 
     return rows;
   }
@@ -81,7 +87,7 @@ export class BranchContextService {
    * 供应商不是组织成员，其机构来自「在哪些机构有准入档案」，因此走 supplier_branch_profiles。
    * 跨境供应商可在多个机构有档案，此时与多机构员工一样需要选择激活机构。
    */
-  async listSupplierBranches(supplierId: string): Promise<BranchMembershipView[]> {
+  async listSupplierBranches(supplierId: string): Promise<BranchAccessView[]> {
     return this.memberRepo.manager
       .createQueryBuilder()
       .select([
@@ -96,9 +102,8 @@ export class BranchContextService {
       .andWhere(`p.status = 'active'`)
       .andWhere('b.status = :branchStatus', { branchStatus: BranchStatus.ACTIVE })
       .orderBy('b.code', 'ASC')
-      .getRawMany<Omit<BranchMembershipView, 'role'>>()
-      // 供应商在机构内没有组织角色，其能力集由 accountType 决定（见 scope-map.ts）
-      .then((rows) => rows.map((r) => ({ ...r, role: BranchMemberRole.EVALUATOR })));
+      // 不补角色：供应商在组织结构中不占位，role 保持 undefined
+      .getRawMany<BranchAccessView>();
   }
 
   /**
@@ -111,17 +116,17 @@ export class BranchContextService {
     preferredBranchId?: string,
     supplierId?: string,
   ): Promise<BranchContext> {
-    const memberships = supplierId
+    const branches = supplierId
       ? await this.listSupplierBranches(supplierId)
       : await this.listMemberships(authUserId);
 
-    if (!memberships.length) {
+    if (!branches.length) {
       // fail-closed：无任何机构归属时读写皆空，绝不退化成可见全部
-      return { memberships, isHq: false, scope: emptyBranchScope() };
+      return { branches, isHq: false, scope: emptyBranchScope() };
     }
 
     // 只接受成员范围内的机构，防止携带任意 branchId 越权
-    const active = memberships.find((m) => m.branchId === preferredBranchId) ?? memberships[0];
+    const active = branches.find((m) => m.branchId === preferredBranchId) ?? branches[0];
 
     // 关键：以「当前激活的是哪个机构」判定，而非「是否拥有总部成员资格」。
     // 同一人可能既是总部管理员又是某国机构成员（如系统负责人），
@@ -135,7 +140,7 @@ export class BranchContextService {
       : branchScopeFor(active.branchId);
 
     return {
-      memberships,
+      branches,
       activeBranchId: active.branchId,
       activeRole: active.role,
       isHq: actingAsHq,

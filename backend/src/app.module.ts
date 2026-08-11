@@ -18,7 +18,9 @@ import { QuoteModule } from './modules/quote/quote.module';
 import { BidRecordModule } from './modules/bid-record/bid-record.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { HallModule } from './modules/hall/hall.module';
+import { OrganizationModule } from './modules/organization/organization.module';
 import { RedisService } from './shared/config/redis.config';
+import { provideTenantRepository } from './shared/tenant/tenant-repository';
 import { AuditService } from './shared/audit/audit.service';
 import { ExportService } from './shared/export/export.service';
 import { ExportController } from './shared/export/export.controller';
@@ -79,9 +81,13 @@ import { RankingSnapshot } from './modules/quote/ranking-snapshot.entity';
     BidRecordModule,
     NotificationModule,
     HallModule,
+    OrganizationModule,
   ],
   controllers: [ExportController, UploadController],
-  providers: [RedisService, AuditService, ExportService, UploadService],
+  providers: [
+    RedisService, AuditService, ExportService, UploadService,
+    provideTenantRepository(Tender),
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

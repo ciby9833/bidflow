@@ -69,6 +69,7 @@
 
     <el-dialog v-model="dialogVisible" :title="editingUser ? t('route.userEdit') : t('route.userCreate')" width="520px" class="adaptive-dialog">
       <el-form label-width="96px">
+        <TargetBranchSelect v-if="!editingUser" v-model="form.branchId" />
         <el-form-item :label="t('userList.name')" required>
           <el-input v-model="form.fullName" :placeholder="t('userList.namePlaceholder')" />
         </el-form-item>
@@ -110,6 +111,7 @@ import { useI18n } from 'vue-i18n';
 import dayjs from 'dayjs';
 import { ElMessage } from 'element-plus';
 import { api } from '../../composables/useApi';
+import TargetBranchSelect from '../../components/TargetBranchSelect.vue';
 import { useAuthStore } from '../../stores/auth';
 
 const { t } = useI18n();
@@ -128,6 +130,7 @@ const roleOptions = computed(() => [
 ]);
 
 const form = reactive({
+  branchId: '',
   email: '',
   password: '',
   role: 'purchase_staff',
@@ -154,6 +157,7 @@ function fmt(value: string) {
 }
 
 function resetForm() {
+  form.branchId = '';
   form.email = '';
   form.password = '';
   form.role = 'purchase_staff';

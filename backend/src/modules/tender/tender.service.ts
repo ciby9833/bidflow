@@ -13,7 +13,7 @@ import {
   DataSource, EntityManager, In, ObjectLiteral, Repository, SelectQueryBuilder,
 } from 'typeorm';
 import * as XLSX from 'xlsx';
-import { ParticipationMode, Tender, TenderStatus, TenderType } from './tender.entity';
+import { HallVisibility, ParticipationMode, Tender, TenderStatus, TenderType } from './tender.entity';
 import { Lot } from './lot.entity';
 import { LotLine } from './lot-line.entity';
 import { Invitation, InvitationStatus } from './invitation.entity';
@@ -204,6 +204,38 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     if (this.lifecycleTimer) clearInterval(this.lifecycleTimer);
   }
 
+
+  /**
+   * 规范化大厅公开范围。
+   *
+   * - 未开启大厅可见时，范围一律回落为 branch：一个不在大厅展示的招标谈不上公开范围，
+   *   留着 global 会在后续重新开启可见性时意外对外泄漏。
+   * - branches 模式下校验目标机构真实存在且启用，并剔除本机构（本机构本来就可见，列进去是冗余）。
+   * - 非 branches 模式清空附加机构列表，避免切换范围后残留旧数据造成误解。
+   */
+  private async normalizeHallVisibility(
+    em: EntityManager,
+    branchId: string,
+    isHallVisible: boolean,
+    visibility?: HallVisibility,
+    visibleBranches?: string[],
+  ): Promise<{ hallVisibility: HallVisibility; hallVisibleBranches: string[] }> {
+    if (!isHallVisible) return { hallVisibility: HallVisibility.BRANCH, hallVisibleBranches: [] };
+
+    const mode = visibility ?? HallVisibility.BRANCH;
+    if (mode !== HallVisibility.BRANCHES) return { hallVisibility: mode, hallVisibleBranches: [] };
+
+    const wanted = Array.from(new Set(visibleBranches ?? [])).filter((id) => id !== branchId);
+    if (!wanted.length) throw new BadRequestException('error.tender.hall_branches_required');
+
+    const rows = await em.query(
+      `SELECT id FROM branches WHERE id = ANY($1::uuid[]) AND type = 'BRANCH' AND status = 'active'`,
+      [wanted],
+    );
+    if (rows.length !== wanted.length) throw new BadRequestException('error.branch.not_found');
+    return { hallVisibility: HallVisibility.BRANCHES, hallVisibleBranches: wanted };
+  }
+
   async create(scope: BranchScope, data: {
     title: string;
     type: TenderType;
@@ -217,6 +249,9 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     cooldownSeconds?: number;
     description?: string;
     isHallVisible?: boolean;
+    /** 大厅公开范围。缺省为仅本机构可见 —— 是否对外扩散由发布方显式决定。 */
+    hallVisibility?: HallVisibility;
+    hallVisibleBranches?: string[];
     isPublicRankingVisible?: boolean;
     notifySuppliers?: boolean;
     hallSummary?: string;
@@ -246,6 +281,9 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         cooldownSeconds: data.cooldownSeconds ?? 60,
         description: data.description,
         isHallVisible: data.isHallVisible ?? false,
+        ...(await this.normalizeHallVisibility(
+          em, branchId, data.isHallVisible ?? false, data.hallVisibility, data.hallVisibleBranches,
+        )),
         isPublicRankingVisible: data.isPublicRankingVisible ?? false,
         notifySuppliers: data.notifySuppliers ?? false,
         participationMode: this.normalizeParticipationMode(data.participationMode),
@@ -699,6 +737,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     cooldownSeconds?: number;
     description?: string;
     isHallVisible?: boolean;
+    hallVisibility?: HallVisibility;
+    hallVisibleBranches?: string[];
     hallSummary?: string;
     isPublicRankingVisible?: boolean;
     notifySuppliers?: boolean;
@@ -729,6 +769,12 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         cooldownSeconds: data.cooldownSeconds ?? before.cooldownSeconds,
         description: data.description ?? before.description,
         isHallVisible: data.isHallVisible ?? before.isHallVisible,
+        ...(await this.normalizeHallVisibility(
+          em, branchId,
+          data.isHallVisible ?? before.isHallVisible,
+          data.hallVisibility ?? before.hallVisibility,
+          data.hallVisibleBranches ?? before.hallVisibleBranches,
+        )),
         isPublicRankingVisible: data.isPublicRankingVisible ?? before.isPublicRankingVisible,
         notifySuppliers: data.notifySuppliers ?? before.notifySuppliers ?? false,
         participationMode: this.normalizeParticipationMode(data.participationMode ?? before.participationMode),

@@ -4,7 +4,7 @@
  * 交互：读取 quote/tender/lot/supplier 实体；由 export.controller.ts 调用；写入 audit.service.ts 审计；通过 I18nService.t() 取词条。
  * 作者：吴川
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import * as ExcelJS from 'exceljs';
@@ -14,6 +14,10 @@ import { Tender } from '../../modules/tender/tender.entity';
 import { Lot } from '../../modules/tender/lot.entity';
 import { LotLine } from '../../modules/tender/lot-line.entity';
 import { Supplier } from '../../modules/supplier/supplier.entity';
+import {
+  InjectTenantRepository, TenantRepository,
+} from '../tenant/tenant-repository';
+import { BranchScope } from '../tenant/branch-scope';
 import { AuditService, AuditContext } from '../audit/audit.service';
 import { AuditAction, AuditEntityType } from '../audit/audit-log.entity';
 import { I18nService } from '../i18n/i18n.service';
@@ -58,6 +62,8 @@ interface ReviewColumn { id: string; field: string; header: string; kind: Column
 @Injectable()
 export class ExportService {
   constructor(
+    @InjectTenantRepository(Tender) private readonly tenders: TenantRepository<Tender>,
+    // tenant-guard: allow 导出以招标为唯一锚点，归属已在入口校验
     @InjectRepository(Quote) private readonly quoteRepo: Repository<Quote>,
     @InjectRepository(LineQuote) private readonly lineQuoteRepo: Repository<LineQuote>,
     @InjectRepository(Tender) private readonly tenderRepo: Repository<Tender>,
@@ -73,13 +79,17 @@ export class ExportService {
   private hint(key: string) { return this.i18n.t(`export.hint.${key}`); }
 
   async exportTenderQuotes(
+    scope: BranchScope,
     tenderId: string,
     mode: ExportMode,
     ctx: AuditContext,
     options: ExportOptions = {},
   ): Promise<Buffer> {
-    const tender = await this.tenderRepo.findOne({ where: { id: tenderId } });
-    if (!tender) throw new Error('error.tender.not_found');
+    // 唯一入口锚点：招标归属校验通过后，下游按 tenderId 派生的标包、品目、报价均落在同一机构内。
+    // 导出的是完整报价明细，跨机构泄漏后果远重于列表页，因此这里不做"查不到就返回空表"的降级，
+    // 而是直接按不存在处理。
+    const tender = await this.tenders.findById(scope, tenderId);
+    if (!tender) throw new NotFoundException('error.tender.not_found');
 
     const lots = await this.lotRepo.find({ where: { tenderId }, order: { sortOrder: 'ASC' } });
     const lines = await this.lineRepo.find({ where: { tenderId, isActive: true }, order: { sortOrder: 'ASC' } });

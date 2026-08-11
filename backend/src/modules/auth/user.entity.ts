@@ -79,6 +79,14 @@ export class User {
   @Column({ name: 'supplier_id', type: 'uuid', nullable: true })
   supplierId?: string;
 
+  /**
+   * 上次进入的机构。多机构用户再次登录时直接进入该机构，无需重复选择。
+   * 为空、或该机构已停用/已失去权限时，登录会回到机构选择页 ——
+   * 不自动改选其他机构，避免用户在不知情的情况下进入了另一个国家的数据。
+   */
+  @Column({ name: 'last_branch_id', type: 'uuid', nullable: true })
+  lastBranchId?: string;
+
   @Column({ name: 'otp_code', type: 'varchar', length: 10, nullable: true })
   otpCode?: string;
 

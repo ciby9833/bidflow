@@ -295,6 +295,23 @@
                 </div>
               </label>
             </div>
+            <el-form-item v-if="form.isHallVisible" :label="t('tenderCreate.hallScope')" style="margin-top:16px">
+              <el-radio-group v-model="form.hallVisibility">
+                <el-radio value="branch">{{ t('tenderCreate.hallScopeBranch') }}</el-radio>
+                <el-radio value="branches">{{ t('tenderCreate.hallScopeBranches') }}</el-radio>
+                <el-radio value="global">{{ t('tenderCreate.hallScopeGlobal') }}</el-radio>
+              </el-radio-group>
+              <div class="scope-hint">{{ t(`tenderCreate.hallScope_${form.hallVisibility}_hint`) }}</div>
+            </el-form-item>
+            <el-form-item
+              v-if="form.isHallVisible && form.hallVisibility === 'branches'"
+              :label="t('tenderCreate.hallScopeTargets')"
+              required
+            >
+              <el-select v-model="form.hallVisibleBranches" multiple class="scope-select" :placeholder="t('tenderCreate.hallScopeTargetsPlaceholder')">
+                <el-option v-for="b in otherBranches" :key="b.id" :label="`${b.name} (${b.code})`" :value="b.id" />
+              </el-select>
+            </el-form-item>
             <el-form-item v-if="form.isHallVisible" :label="t('tenderCreate.hallSummary')" style="margin-top:16px">
               <el-input v-model="form.hallSummary" :placeholder="t('tenderCreate.hallSummaryPlaceholder')" />
             </el-form-item>
@@ -506,6 +523,7 @@ import {
   Check, Close, Plus, Delete, ArrowRight, Document, UploadFilled,
 } from '@element-plus/icons-vue';
 import { api } from '../../composables/useApi';
+import { useAuthStore } from '../../stores/auth';
 
 const DEFAULT_CURRENCY = 'IDR';
 type LineColumn = { key: string; label: string; type?: string; required?: boolean };
@@ -551,6 +569,20 @@ const steps = computed(() => [
   { key: 'review', label: t('tenderCreate.attachmentsReview'), desc: t('tenderCreate.reviewStepDesc') },
 ]);
 
+const auth = useAuthStore();
+
+/** 定向公开的候选机构。排除本机构 —— 本机构本来就可见，列出来会让人以为需要勾选。 */
+const otherBranches = ref<{ id: string; code: string; name: string }[]>([]);
+
+async function loadOtherBranches() {
+  try {
+    const res = await api.get('/api/hall/registrable-branches');
+    otherBranches.value = res.data.data.filter((b: any) => b.id !== auth.activeBranchId);
+  } catch {
+    // 拉取失败不阻塞建标；提交时后端会校验目标机构
+  }
+}
+
 const form = reactive({
   title: '',
   type: 'transport',
@@ -564,6 +596,8 @@ const form = reactive({
   cooldownSeconds: 60,
   description: '',
   isHallVisible: false,
+  hallVisibility: 'branch' as 'branch' | 'branches' | 'global',
+  hallVisibleBranches: [] as string[],
   isPublicRankingVisible: false,
   notifySuppliers: false,
   participationMode: 'all' as 'all' | 'selected',
@@ -699,6 +733,8 @@ async function loadTender() {
     form.cooldownSeconds = tender.cooldownSeconds ?? 60;
     form.description = tender.description ?? '';
     form.isHallVisible = Boolean(tender.isHallVisible);
+    form.hallVisibility = tender.hallVisibility ?? 'branch';
+    form.hallVisibleBranches = tender.hallVisibleBranches ?? [];
     form.isPublicRankingVisible = Boolean(tender.isPublicRankingVisible);
     form.notifySuppliers = Boolean(tender.notifySuppliers);
     form.hallSummary = tender.hallSummary ?? '';
@@ -1084,6 +1120,7 @@ function formatSize(size?: number) {
 }
 
 onMounted(async () => {
+  void loadOtherBranches();
   await loadTender();
   if (!isEdit.value) await loadSupplierOptions(1);
 });
@@ -1718,4 +1755,6 @@ onMounted(async () => {
   }
   .review-row { grid-template-columns: 1fr; gap: 4px; }
 }
+.scope-hint { margin-top: 6px; font-size: 12px; color: #909399; line-height: 1.5; }
+.scope-select { width: 100%; }
 </style>

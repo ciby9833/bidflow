@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
 import * as ExcelJS from 'exceljs';
 import * as XLSX from 'xlsx';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from './supplier.entity';
@@ -17,6 +17,9 @@ import { I18nService } from '../../shared/i18n/i18n.service';
 import { SupplierDocument } from './supplier-document.entity';
 import { SupplierReviewLog } from './supplier-review-log.entity';
 import { SupplierInvitation } from './supplier-invitation.entity';
+import {
+  BranchScope, requireWritableBranch, resolveAdminWriteBranch,
+} from '../../shared/tenant/branch-scope';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 import * as argon2 from 'argon2';
@@ -59,8 +62,20 @@ export class SupplierService {
     private readonly i18n: I18nService,
   ) {}
 
-  async create(data: Partial<Supplier>, ctx: AuditContext) {
-    const region = data.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
+  async create(
+    scope: BranchScope,
+    isHq: boolean,
+    data: Partial<Supplier> & { branchId?: string },
+    ctx: AuditContext,
+  ) {
+    // 供应商必须落在一个明确的机构下：没有准入档案的供应商对任何人都不可见，等于创建即废弃。
+    // 机构用户固定为本机构；总部不拥有数据空间，必须显式指明目标机构。
+    const branchId = resolveAdminWriteBranch(scope, isHq, data.branchId);
+    // 国别缺省跟随目标机构，而非硬编码的系统默认值 ——
+    // 否则在越南机构下建的供应商会显示为印尼，编号也会生成成 S-ID-xxx。
+    // 仍允许显式指定：供应商公司注册地未必等于其对接的机构所在国。
+    const branchCountry = await this.branchCountryCode(branchId);
+    const region = data.countryCode ?? branchCountry ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
     const nextSeq = await this.computeNextBusinessSeq(region);
     const businessId = nextBusinessId(nextSeq, region);
 
@@ -69,24 +84,180 @@ export class SupplierService {
 
     const supplier = this.repo.create({
       ...data,
+      countryCode: region,
       businessId,
       status: data.status ?? SupplierStatus.ACTIVE,
       reviewStatus: data.reviewStatus ?? SupplierReviewStatus.NOT_SUBMITTED,
     });
     const saved = await this.repo.save(supplier);
+    await this.attachToBranch(this.repo.manager, saved.id, branchId);
 
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, saved.id, AuditAction.SUPPLIER_CREATE, undefined, { businessId: saved.businessId, legalName: saved.legalName });
     return saved;
   }
 
-  async findAll(filters: {
+
+
+  // ── 跨机构授权 ────────────────────────────────────────────────────────────
+
+  /**
+   * 按商务编号或税号精确查找全局供应商主档，用于跨机构授权。
+   *
+   * 刻意只支持精确匹配、不支持模糊搜索：机构之间本不应能浏览彼此的供应商名录，
+   * 开放模糊查询等于把全球供应商清单泄漏给每一个机构。
+   * 授权方需要先知道对方是谁（线下沟通得到编号），这与"邀请一家已知公司"的实际业务一致。
+   */
+  async lookupGlobalSupplier(scope: BranchScope, key: { businessId?: string; taxId?: string }) {
+    const value = (key.businessId ?? key.taxId ?? '').trim();
+    if (!value) throw new BadRequestException('error.supplier.lookup_key_required');
+
+    const supplier = await this.repo.findOne({
+      where: key.businessId ? { businessId: value } : { taxId: value },
+    });
+    if (!supplier) throw new NotFoundException('error.supplier.not_found');
+
+    const profiles = await this.repo.manager.query(
+      `SELECT b.id AS "branchId", b.code, b.name, p.status
+       FROM supplier_branch_profiles p JOIN branches b ON b.id = p.branch_id
+       WHERE p.supplier_id = $1 ORDER BY b.code`,
+      [supplier.id],
+    );
+
+    // 只回最小必要信息：授权决策需要确认"是不是这家公司"，不需要联系方式与银行信息
+    return {
+      id: supplier.id,
+      businessId: supplier.businessId,
+      legalName: supplier.legalName,
+      shortName: supplier.shortName,
+      countryCode: supplier.countryCode,
+      branches: profiles,
+      alreadyInScope: profiles.some(
+        (x: { branchId: string; status: string }) => x.status === 'active' && scope.readable.includes(x.branchId),
+      ),
+    };
+  }
+
+  /** 某供应商的机构授权列表 */
+  async listBranchAccess(scope: BranchScope, supplierId: string) {
+    await this.requireSupplier(scope, supplierId);
+    return this.repo.manager.query(
+      `SELECT p.id, b.id AS "branchId", b.code, b.name, p.status, p.created_at AS "createdAt"
+       FROM supplier_branch_profiles p JOIN branches b ON b.id = p.branch_id
+       WHERE p.supplier_id = $1 ORDER BY b.code`,
+      [supplierId],
+    );
+  }
+
+  /**
+   * 授予供应商在某机构的准入资格。
+   * 目标机构必须在授权方的可写范围内 —— 机构管理员只能把供应商引入自己的机构，
+   * 不能替别国机构做准入决定。总部因为不可写，跨机构授权须由目标机构自行执行。
+   */
+  async grantBranchAccess(scope: BranchScope, supplierId: string, ctx: AuditContext) {
+    const branchId = requireWritableBranch(scope);
+    const supplier = await this.repo.findOne({ where: { id: supplierId } });
+    if (!supplier) throw new NotFoundException('error.supplier.not_found');
+
+    await this.repo.manager.query(
+      `INSERT INTO supplier_branch_profiles (branch_id, supplier_id, status)
+       VALUES ($1, $2, 'active')
+       ON CONFLICT (branch_id, supplier_id) DO UPDATE SET status = 'active', updated_at = NOW()`,
+      [branchId, supplierId],
+    );
+
+    await this.audit.log(ctx, AuditEntityType.SUPPLIER, supplierId, AuditAction.SUPPLIER_BRANCH_GRANT, undefined, {
+      grantedBranchAccess: branchId,
+      businessId: supplier.businessId,
+    });
+    return { granted: true };
+  }
+
+  /**
+   * 撤销供应商在某机构的准入资格。
+   * 置为 inactive 而非删除：历史报价与审核记录仍需可追溯，删除会让审计链断裂。
+   * 同时让该供应商的登录立即失效 —— 否则被撤销的供应商凭旧 Token 还能继续读该机构数据。
+   */
+  async revokeBranchAccess(scope: BranchScope, supplierId: string, ctx: AuditContext) {
+    const branchId = requireWritableBranch(scope);
+    await this.requireSupplier(scope, supplierId);
+
+    await this.ds.transaction(async (em) => {
+      await em.query(
+        `UPDATE supplier_branch_profiles SET status = 'inactive', updated_at = NOW()
+         WHERE supplier_id = $1 AND branch_id = $2`,
+        [supplierId, branchId],
+      );
+      await em.query(
+        `UPDATE users SET token_version = token_version + 1
+         WHERE id IN (SELECT auth_user_id FROM supplier_accounts WHERE supplier_id = $1)`,
+        [supplierId],
+      );
+    });
+
+    await this.audit.log(ctx, AuditEntityType.SUPPLIER, supplierId, AuditAction.SUPPLIER_BRANCH_REVOKE, undefined, {
+      revokedBranchAccess: branchId,
+    });
+    return { revoked: true };
+  }
+
+  // ── 机构隔离 ──────────────────────────────────────────────────────────────
+  // 供应商是全局主档，本身不带 branch_id —— 其机构归属存在 supplier_branch_profiles。
+  // 因此隔离方式是「与档案表内联」而非等值条件：只有在当前作用域内拥有有效准入档案的供应商才可见。
+  // 同一家供应商可在多个机构有档案（跨境供应商），各机构看到的是同一条主档、不同的准入关系。
+
+  /** 给以 suppliers 为主表的查询加上机构过滤。 */
+  private scopeSuppliers<T extends SelectQueryBuilder<Supplier>>(
+    qb: T,
+    alias: string,
+    scope: BranchScope,
+  ): T {
+    if (!scope.readable.length) return qb.andWhere('1 = 0') as T;
+    return qb.innerJoin(
+      'supplier_branch_profiles',
+      '__sbp',
+      `__sbp.supplier_id = ${alias}.id AND __sbp.status = 'active' AND __sbp.branch_id IN (:...__scope)`,
+      { __scope: [...scope.readable] },
+    ) as T;
+  }
+
+  /**
+   * 取供应商并校验其在当前作用域内有准入档案。
+   * 跨机构的 supplierId 一律按「不存在」处理，不泄漏其存在性。
+   */
+  private async requireSupplier(scope: BranchScope, id: string): Promise<Supplier> {
+    if (!scope.readable.length) throw new NotFoundException('error.supplier.not_found');
+    const s = await this.scopeSuppliers(this.repo.createQueryBuilder('s'), 's', scope)
+      .where('s.id = :id', { id })
+      .getOne();
+    if (!s) throw new NotFoundException('error.supplier.not_found');
+    return s;
+  }
+
+  /** 取机构的国别代码，用于供应商国别与编号的默认值 */
+  private async branchCountryCode(branchId: string): Promise<string | undefined> {
+    const rows = await this.repo.manager.query('SELECT country_code FROM branches WHERE id = $1', [branchId]);
+    return rows[0]?.country_code ?? undefined;
+  }
+
+  /** 供应商加入某机构的准入档案。新建供应商时必须调用，否则该供应商对任何人都不可见。 */
+  private async attachToBranch(em: EntityManager, supplierId: string, branchId: string) {
+    await em.query(
+      `INSERT INTO supplier_branch_profiles (branch_id, supplier_id)
+       VALUES ($1, $2) ON CONFLICT (branch_id, supplier_id) DO NOTHING`,
+      [branchId, supplierId],
+    );
+  }
+
+  async findAll(
+    scope: BranchScope,
+    filters: {
     status?: SupplierStatus;
     reviewStatus?: SupplierReviewStatus;
     search?: string;
     page?: number;
     limit?: number;
   }) {
-    const qb = this.repo.createQueryBuilder('s');
+    const qb = this.scopeSuppliers(this.repo.createQueryBuilder('s'), 's', scope);
     if (filters.status) qb.andWhere('s.status = :status', { status: filters.status });
     if (filters.reviewStatus) qb.andWhere('s.review_status = :reviewStatus', { reviewStatus: filters.reviewStatus });
     if (filters.search) {
@@ -109,15 +280,13 @@ export class SupplierService {
     return { items, total, page, limit };
   }
 
-  async findById(id: string) {
-    const s = await this.repo.findOne({ where: { id } });
-    if (!s) throw new NotFoundException('error.supplier.not_found');
-    return s;
+  async findById(scope: BranchScope, id: string) {
+    return this.requireSupplier(scope, id);
   }
 
   /** 导出供应商清单 Excel（按当前筛选条件，含编号/名称/状态/审核状态/国家/联系方式）。 */
-  async exportSuppliers(filters: { status?: SupplierStatus; reviewStatus?: SupplierReviewStatus; search?: string }): Promise<Buffer> {
-    const qb = this.repo.createQueryBuilder('s');
+  async exportSuppliers(scope: BranchScope, filters: { status?: SupplierStatus; reviewStatus?: SupplierReviewStatus; search?: string }): Promise<Buffer> {
+    const qb = this.scopeSuppliers(this.repo.createQueryBuilder('s'), 's', scope);
     if (filters.status) qb.andWhere('s.status = :status', { status: filters.status });
     if (filters.reviewStatus) qb.andWhere('s.review_status = :reviewStatus', { reviewStatus: filters.reviewStatus });
     if (filters.search) {
@@ -311,7 +480,14 @@ export class SupplierService {
    * 批量新建供应商：逐行独立创建，失败的行不影响成功的行。
    * 防重：法定名称（trim + 不区分大小写）在文件内不可重复，且不可与系统已有供应商同名。
    */
-  async bulkCreateSuppliers(buffer: Buffer | undefined, ctx: AuditContext) {
+  async bulkCreateSuppliers(
+    scope: BranchScope,
+    isHq: boolean,
+    targetBranchId: string | undefined,
+    buffer: Buffer | undefined,
+    ctx: AuditContext,
+  ) {
+    const branchId = resolveAdminWriteBranch(scope, isHq, targetBranchId);
     if (!buffer?.length) throw new BadRequestException('error.tender.import_file_required');
     const wb = XLSX.read(buffer, { type: 'buffer' });
     const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -416,6 +592,7 @@ export class SupplierService {
           reviewStatus: SupplierReviewStatus.NOT_SUBMITTED,
         });
         const saved = await this.repo.save(supplier);
+        await this.attachToBranch(this.repo.manager, saved.id, branchId);
         await this.audit.log(ctx, AuditEntityType.SUPPLIER, saved.id, AuditAction.SUPPLIER_CREATE, undefined, {
           businessId, legalName: c.legalName, bulk: true,
         });
@@ -624,8 +801,8 @@ export class SupplierService {
     return { created, errors, total: nonEmptyRows };
   }
 
-  async findReviewDetail(id: string) {
-    const supplier = await this.findById(id);
+  async findReviewDetail(scope: BranchScope, id: string) {
+    const supplier = await this.findById(scope, id);
     const [documents, reviewLogs] = await Promise.all([
       this.documentRepo.find({ where: { supplierId: id }, order: { sortOrder: 'ASC', createdAt: 'ASC' } }),
       this.reviewLogRepo.find({ where: { supplierId: id }, order: { createdAt: 'DESC' } }),
@@ -633,8 +810,8 @@ export class SupplierService {
     return { supplier, documents, reviewLogs };
   }
 
-  async listReviewLogs(supplierId: string, page = 1, limit = 10) {
-    await this.findById(supplierId);
+  async listReviewLogs(scope: BranchScope, supplierId: string, page = 1, limit = 10) {
+    await this.findById(scope, supplierId);
     const safePage = Math.max(Number(page) || 1, 1);
     const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 50);
     const [items, total] = await this.reviewLogRepo.findAndCount({
@@ -648,10 +825,10 @@ export class SupplierService {
     };
   }
 
-  async update(id: string, data: Partial<Supplier>, ctx: AuditContext) {
-    const before = await this.findById(id);
+  async update(scope: BranchScope, id: string, data: Partial<Supplier>, ctx: AuditContext) {
+    const before = await this.findById(scope, id);
     await this.repo.update(id, data);
-    const after = await this.findById(id);
+    const after = await this.findById(scope, id);
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, id, AuditAction.SUPPLIER_CREATE, before as unknown as Record<string, unknown>, after as unknown as Record<string, unknown>);
     return after;
   }
@@ -664,8 +841,8 @@ export class SupplierService {
     return relation?.supplierId;
   }
 
-  async listMembers(supplierId: string, page = 1, limit = 10) {
-    await this.findById(supplierId);
+  async listMembers(scope: BranchScope, supplierId: string, page = 1, limit = 10) {
+    await this.findById(scope, supplierId);
     const safePage = Math.max(Number(page) || 1, 1);
     const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
     const qb = this.supplierAccountRepo.createQueryBuilder('account')
@@ -731,7 +908,7 @@ export class SupplierService {
     return relation;
   }
 
-  async updateMember(
+  async updateMember(scope: BranchScope, 
     supplierId: string,
     memberId: string,
     data: {
@@ -742,7 +919,7 @@ export class SupplierService {
     },
     ctx: AuditContext,
   ) {
-    await this.findById(supplierId);
+    await this.findById(scope, supplierId);
     const member = await this.supplierAccountRepo.findOne({ where: { id: memberId, supplierId } });
     if (!member) throw new NotFoundException('error.supplier.member_not_found');
 
@@ -791,14 +968,14 @@ export class SupplierService {
     return updated;
   }
 
-  async resetMemberPassword(
+  async resetMemberPassword(scope: BranchScope, 
     supplierId: string,
     memberId: string,
     password: string,
     ctx: AuditContext,
   ) {
     if (!password || password.length < 6) throw new BadRequestException('error.supplier.member_password_weak');
-    await this.findById(supplierId);
+    await this.findById(scope, supplierId);
     const member = await this.supplierAccountRepo.findOne({ where: { id: memberId, supplierId } });
     if (!member) throw new NotFoundException('error.supplier.member_not_found');
 
@@ -822,12 +999,37 @@ export class SupplierService {
     return { updated: true };
   }
 
-  async createCompanyForAccount(authUserId: string, data: Partial<Supplier>, ctx: AuditContext) {
+
+  /**
+   * 校验供应商自助注册时选择的机构。
+   *
+   * 机构由供应商在注册表单中显式选择，而非由系统推断 ——
+   * 「从哪个国家门户进来」在单一域名下无法可靠判断，猜错会把供应商静默塞进错误的国家，
+   * 这类数据错配事后极难发现，也极难纠正。选错由该机构的审核环节拦下即可。
+   *
+   * 只接受启用中的国家机构：总部不承接供应商，停用的机构也不应再吸纳新供应商。
+   */
+  private async requireRegistrationBranch(em: EntityManager, branchId?: string): Promise<string> {
+    if (!branchId) throw new BadRequestException('error.supplier.registration_branch_required');
+    const rows = await em.query(
+      `SELECT id FROM branches WHERE id = $1 AND type = 'BRANCH' AND status = 'active'`,
+      [branchId],
+    );
+    if (!rows.length) throw new BadRequestException('error.branch.not_found');
+    return rows[0].id;
+  }
+
+  async createCompanyForAccount(
+    authUserId: string,
+    data: Partial<Supplier> & { branchId?: string },
+    ctx: AuditContext,
+  ) {
     const existingRelation = await this.supplierAccountRepo.findOne({ where: { authUserId, status: 'active' } });
     if (existingRelation) throw new BadRequestException('error.supplier.company_already_bound');
     if (!data.legalName || !data.shortName) throw new BadRequestException('error.supplier.company_required');
 
     const result = await this.ds.transaction(async (em) => {
+      const branchId = await this.requireRegistrationBranch(em, data.branchId);
       const countryCode = data.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
       const nextSeq = await this.computeNextBusinessSeq(countryCode, em);
       const businessId = nextBusinessId(nextSeq, countryCode);
@@ -839,6 +1041,7 @@ export class SupplierService {
         reviewStatus: SupplierReviewStatus.NOT_SUBMITTED,
       });
       const savedSupplier = await em.save(supplier);
+      await this.attachToBranch(em, savedSupplier.id, branchId);
 
       const user = await em.findOne(User, { where: { id: authUserId } });
       const relation = em.create(SupplierAccount, {
@@ -868,8 +1071,8 @@ export class SupplierService {
     return result;
   }
 
-  async createInvitation(supplierId: string, data: { email?: string; relationRole?: 'admin' | 'operator' }, ctx: AuditContext) {
-    await this.findById(supplierId);
+  async createInvitation(scope: BranchScope, supplierId: string, data: { email?: string; relationRole?: 'admin' | 'operator' }, ctx: AuditContext) {
+    await this.findById(scope, supplierId);
     const token = randomUUID().replaceAll('-', '');
     const invitation = await this.invitationRepo.save(this.invitationRepo.create({
       token,
@@ -891,8 +1094,8 @@ export class SupplierService {
     return invitation;
   }
 
-  async listInvitations(supplierId: string, page = 1, limit = 10) {
-    await this.findById(supplierId);
+  async listInvitations(scope: BranchScope, supplierId: string, page = 1, limit = 10) {
+    await this.findById(scope, supplierId);
     await this.invitationRepo.createQueryBuilder()
       .update(SupplierInvitation)
       .set({ status: 'expired' })
@@ -1055,27 +1258,27 @@ export class SupplierService {
     return { supplierId: result.supplierId, relation: result.relation };
   }
 
-  async suspend(id: string, reason: string, ctx: AuditContext) {
-    const s = await this.findById(id);
+  async suspend(scope: BranchScope, id: string, reason: string, ctx: AuditContext) {
+    const s = await this.findById(scope, id);
     if (s.status !== SupplierStatus.ACTIVE) throw new BadRequestException('error.supplier.only_active_can_suspend');
     await this.repo.update(id, { status: SupplierStatus.SUSPENDED, suspendedReason: reason });
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, id, AuditAction.SUPPLIER_SUSPEND, { status: s.status }, { status: SupplierStatus.SUSPENDED, reason });
-    return this.findById(id);
+    return this.findById(scope, id);
   }
 
-  async resume(id: string, ctx: AuditContext) {
-    const s = await this.findById(id);
+  async resume(scope: BranchScope, id: string, ctx: AuditContext) {
+    const s = await this.findById(scope, id);
     if (s.status !== SupplierStatus.SUSPENDED) throw new BadRequestException('error.supplier.only_suspended_can_resume');
     await this.repo.update(id, {
       status: SupplierStatus.ACTIVE,
       suspendedReason: undefined,
     });
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, id, AuditAction.SUPPLIER_RESUME, { status: s.status }, { status: SupplierStatus.ACTIVE });
-    return this.findById(id);
+    return this.findById(scope, id);
   }
 
-  async approve(id: string, ctx: AuditContext, comment?: string) {
-    const before = await this.findById(id);
+  async approve(scope: BranchScope, id: string, ctx: AuditContext, comment?: string) {
+    const before = await this.findById(scope, id);
     if (before.status !== SupplierStatus.ACTIVE || before.reviewStatus !== SupplierReviewStatus.PENDING_REVIEW) {
       throw new BadRequestException('error.supplier.only_pending_review_can_approve');
     }
@@ -1086,14 +1289,14 @@ export class SupplierService {
       reviewedAt: new Date(),
       reviewComment: comment,
     });
-    const after = await this.findById(id);
+    const after = await this.findById(scope, id);
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, id, AuditAction.SUPPLIER_APPROVE, before as any, after as any, { comment });
     await this.writeReviewLog(id, 'approve', SupplierReviewStatus.APPROVED, ctx, comment);
     return after;
   }
 
-  async reject(id: string, comment: string | undefined, ctx: AuditContext) {
-    const before = await this.findById(id);
+  async reject(scope: BranchScope, id: string, comment: string | undefined, ctx: AuditContext) {
+    const before = await this.findById(scope, id);
     if (before.status !== SupplierStatus.ACTIVE || before.reviewStatus !== SupplierReviewStatus.PENDING_REVIEW) {
       throw new BadRequestException('error.supplier.only_pending_review_can_reject');
     }
@@ -1103,14 +1306,14 @@ export class SupplierService {
       reviewedAt: new Date(),
       reviewComment: comment,
     });
-    const after = await this.findById(id);
+    const after = await this.findById(scope, id);
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, id, AuditAction.SUPPLIER_REJECT, before as any, after as any, { comment });
     await this.writeReviewLog(id, 'reject', SupplierReviewStatus.REJECTED, ctx, comment);
     return after;
   }
 
-  async requestSupplement(id: string, comment: string | undefined, ctx: AuditContext) {
-    const before = await this.findById(id);
+  async requestSupplement(scope: BranchScope, id: string, comment: string | undefined, ctx: AuditContext) {
+    const before = await this.findById(scope, id);
     if (
       before.status !== SupplierStatus.ACTIVE
       || ![SupplierReviewStatus.PENDING_REVIEW, SupplierReviewStatus.APPROVED].includes(before.reviewStatus)
@@ -1123,13 +1326,13 @@ export class SupplierService {
       reviewedAt: new Date(),
       reviewComment: comment,
     });
-    const after = await this.findById(id);
+    const after = await this.findById(scope, id);
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, id, AuditAction.SUPPLIER_REQUEST_SUPPLEMENT, before as any, after as any, { comment });
     await this.writeReviewLog(id, 'request_supplement', SupplierReviewStatus.SUPPLEMENT_REQUIRED, ctx, comment);
     return after;
   }
 
-  async submitProfile(
+  async submitProfile(scope: BranchScope, 
     supplierId: string,
     payload: {
       legalName: string;
@@ -1143,7 +1346,7 @@ export class SupplierService {
     },
     ctx: AuditContext,
   ) {
-    const before = await this.findById(supplierId);
+    const before = await this.findById(scope, supplierId);
     if (!payload.legalName || !payload.shortName || !payload.contactName || !payload.contactPhone) {
       throw new BadRequestException('error.supplier.company_required');
     }
@@ -1194,16 +1397,16 @@ export class SupplierService {
       await em.save(log);
     });
 
-    const after = await this.findById(supplierId);
+    const after = await this.findById(scope, supplierId);
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, supplierId, AuditAction.SUPPLIER_PROFILE_SUBMIT, before as any, after as any, { documentCount: documents.length });
-    return this.findReviewDetail(supplierId);
+    return this.findReviewDetail(scope, supplierId);
   }
 
-  async getSupplierPortalProfile(supplierId: string) {
-    return this.findReviewDetail(supplierId);
+  async getSupplierPortalProfile(scope: BranchScope, supplierId: string) {
+    return this.findReviewDetail(scope, supplierId);
   }
 
-  async getSupplierPortalProfileForAccount(authUserId: string) {
+  async getSupplierPortalProfileForAccount(scope: BranchScope, authUserId: string) {
     const supplierId = await this.findSupplierIdForAccount(authUserId);
     if (!supplierId) {
       return {
@@ -1216,10 +1419,10 @@ export class SupplierService {
         reviewLogs: [],
       };
     }
-    return this.findReviewDetail(supplierId);
+    return this.findReviewDetail(scope, supplierId);
   }
 
-  async submitProfileForAccount(
+  async submitProfileForAccount(scope: BranchScope, 
     authUserId: string,
     payload: {
       legalName: string;
@@ -1230,11 +1433,13 @@ export class SupplierService {
       countryCode?: string;
       taxId?: string;
       documents?: SupplierDocumentInput[];
+      /** 首次提交时选择的注册机构。已绑定供应商的后续提交忽略此字段。 */
+      branchId?: string;
     },
     ctx: AuditContext,
   ) {
     const supplierId = await this.findSupplierIdForAccount(authUserId);
-    if (supplierId) return this.submitProfile(supplierId, payload, ctx);
+    if (supplierId) return this.submitProfile(scope, supplierId, payload, ctx);
 
     if (!payload.legalName || !payload.shortName || !payload.contactName || !payload.contactPhone) {
       throw new BadRequestException('error.supplier.company_required');
@@ -1245,6 +1450,7 @@ export class SupplierService {
     }
 
     const result = await this.ds.transaction(async (em) => {
+      const branchId = await this.requireRegistrationBranch(em, payload.branchId);
       const countryCode = payload.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
       const nextSeq = await this.computeNextBusinessSeq(countryCode, em);
       const businessId = nextBusinessId(nextSeq, countryCode);
@@ -1262,6 +1468,7 @@ export class SupplierService {
         reviewStatus: SupplierReviewStatus.PENDING_REVIEW,
       });
       const savedSupplier = await em.save(supplier);
+      await this.attachToBranch(em, savedSupplier.id, branchId);
 
       await em.save(em.create(SupplierAccount, {
         authUserId,
@@ -1311,7 +1518,7 @@ export class SupplierService {
       { businessId: result.businessId, source: 'profile_submit' },
     );
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, result.id, AuditAction.SUPPLIER_PROFILE_SUBMIT, undefined, result as any, { documentCount: documents.length });
-    return this.findReviewDetail(result.id);
+    return this.findReviewDetail(scope, result.id);
   }
 
   async checkFingerprint(fingerprintHash: string, currentSupplierId: string): Promise<boolean> {

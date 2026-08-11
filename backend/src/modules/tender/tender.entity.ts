@@ -31,6 +31,16 @@ export enum RankingMode {
   LEADING_FLAG = 'leading_flag',
 }
 
+/** 招标在公开大厅中的可见范围 */
+export enum HallVisibility {
+  /** 仅本机构的访客可见 —— 新建招标的默认值 */
+  BRANCH = 'branch',
+  /** 本机构 + hallVisibleBranches 列出的机构 */
+  BRANCHES = 'branches',
+  /** 所有访客可见，含未登录访客 */
+  GLOBAL = 'global',
+}
+
 export enum ParticipationMode {
   ALL = 'all',
   SELECTED = 'selected',
@@ -44,6 +54,17 @@ export class Tender {
   /** 机构归属。租户隔离的依据，由 TenantRepository 在写入时强制填充。 */
   @Column({ name: 'branch_id', type: 'uuid', nullable: true })
   branchId: string;
+
+  /**
+   * 大厅公开范围。默认仅本机构可见 ——
+   * 公开与否是各国机构自己的决定，不应因为系统支持了多机构就默认对外扩散。
+   */
+  @Column({ name: 'hall_visibility', type: 'varchar', length: 20, default: HallVisibility.BRANCH })
+  hallVisibility: HallVisibility;
+
+  /** hallVisibility=branches 时的附加可见机构 */
+  @Column({ name: 'hall_visible_branches', type: 'uuid', array: true, default: () => `'{}'` })
+  hallVisibleBranches: string[];
 
   @Column({ name: 'tender_no', type: 'varchar', length: 30, unique: true })
   tenderNo: string; // T-202604-0001

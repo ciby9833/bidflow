@@ -20,6 +20,10 @@
         <el-button v-if="auth.hasScope('supplier:create')" @click="accountImportVisible = true">
           {{ t('supplierList.accountBulkImport') }}
         </el-button>
+        <!-- 引入已在其他机构注册的供应商。仅在存在多个机构时才有意义 -->
+        <el-button v-if="auth.hasScope('supplier:create') && auth.branches.length > 1" @click="openImportExisting">
+          {{ t('supplierAccess.importExisting') }}
+        </el-button>
         <el-button v-if="auth.hasScope('supplier:create')" type="primary" @click="router.push('/suppliers/new')">{{ t('route.supplierCreate') }}</el-button>
       </div>
     </div>
@@ -83,7 +87,30 @@
     <el-table class="desktop-table" :data="suppliers" v-loading="loading" stripe>
       <el-table-column prop="businessId" :label="t('supplierList.supplierNo')" width="140" />
       <el-table-column prop="legalName" :label="t('supplier.legal_name')" min-width="200">
-        <template #default="{ row }">{{ row.legalName || '—' }}</template>
+        <template #default="{ row }">{{ row.legalName || '—' }}
+  <!-- 跨机构引入：只支持按编号精确查找，避免把全球供应商名录暴露给每个机构 -->
+  <el-dialog v-model="importExistingVisible" :title="t('supplierAccess.importExisting')" width="520px">
+    <p class="access-desc">{{ t('supplierAccess.lookupDesc') }}</p>
+    <div class="access-search">
+      <el-input v-model.trim="lookupKey" :placeholder="t('supplierAccess.lookupPlaceholder')" @keyup.enter="doLookup" />
+      <el-button type="primary" :loading="looking" @click="doLookup">{{ t('common.search') }}</el-button>
+    </div>
+
+    <div v-if="lookupResult" class="access-result">
+      <div class="access-name">{{ lookupResult.legalName || lookupResult.shortName }}</div>
+      <div class="access-meta">{{ lookupResult.businessId }} · {{ lookupResult.countryCode }}</div>
+      <div class="access-branches">
+        <span>{{ t('supplierAccess.currentBranches') }}</span>
+        <el-tag v-for="b in lookupResult.branches" :key="b.branchId" size="small" :type="b.status === 'active' ? 'success' : 'info'">
+          {{ b.code }}
+        </el-tag>
+      </div>
+      <el-alert v-if="lookupResult.alreadyInScope" type="info" show-icon :closable="false" :title="t('supplierAccess.alreadyGranted')" />
+      <el-button v-else type="primary" :loading="granting" @click="doGrant">{{ t('supplierAccess.grant') }}</el-button>
+    </div>
+    <el-alert v-else-if="lookupError" type="warning" show-icon :closable="false" :title="lookupError" />
+  </el-dialog>
+</template>
       </el-table-column>
       <el-table-column prop="shortName" :label="t('supplier.short_name')" width="140">
         <template #default="{ row }">{{ row.shortName || '—' }}</template>
@@ -167,6 +194,7 @@
 </template>
 
 <script setup lang="ts">
+
 import {
   computed, onBeforeUnmount, onMounted, reactive, ref, watch,
 } from 'vue';
@@ -185,6 +213,50 @@ const suppliers = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const exporting = ref(false);
+
+// ── 跨机构引入 ──────────────────────────────────────────────────────────────
+const importExistingVisible = ref(false);
+const lookupKey = ref('');
+const looking = ref(false);
+const granting = ref(false);
+const lookupResult = ref<any>(null);
+const lookupError = ref('');
+
+function openImportExisting() {
+  lookupKey.value = '';
+  lookupResult.value = null;
+  lookupError.value = '';
+  importExistingVisible.value = true;
+}
+
+async function doLookup() {
+  if (!lookupKey.value) return;
+  looking.value = true;
+  lookupResult.value = null;
+  lookupError.value = '';
+  try {
+    const res = await api.get('/api/suppliers/lookup/global', { params: { businessId: lookupKey.value } });
+    lookupResult.value = res.data.data;
+  } catch (e: any) {
+    lookupError.value = e.response?.data?.error?.message ?? t('supplierAccess.notFound');
+  } finally {
+    looking.value = false;
+  }
+}
+
+async function doGrant() {
+  granting.value = true;
+  try {
+    await api.post(`/api/suppliers/${lookupResult.value.id}/branch-access`);
+    ElMessage.success(t('supplierAccess.granted'));
+    importExistingVisible.value = false;
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error?.message ?? t('supplierAccess.grantFailed'));
+  } finally {
+    granting.value = false;
+  }
+}
 const supplierImportVisible = ref(false);
 const accountImportVisible = ref(false);
 
@@ -585,4 +657,10 @@ onBeforeUnmount(() => {
     text-align: center;
   }
 }
+.access-desc { margin: 0 0 12px; font-size: 13px; color: #6b7280; line-height: 1.6; }
+.access-search { display: flex; gap: 8px; }
+.access-result { margin-top: 16px; padding: 14px; border: 1px solid #e5e7eb; border-radius: 8px; }
+.access-name { font-size: 15px; font-weight: 600; color: #111827; }
+.access-meta { margin-top: 2px; font-size: 12px; color: #6b7280; }
+.access-branches { display: flex; align-items: center; gap: 6px; margin: 10px 0; font-size: 12px; color: #6b7280; }
 </style>
