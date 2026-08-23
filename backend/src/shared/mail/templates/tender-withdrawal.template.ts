@@ -1,6 +1,6 @@
 /**
  * 文件：backend/src/shared/mail/templates/tender-withdrawal.template.ts
- * 功能：生成「招标撤回通知」邮件的主题、纯文本与 HTML，支持 zh-CN / en / id-ID 三语。
+ * 功能：生成「招标撤回通知」邮件的主题、纯文本与 HTML，支持 zh-CN / en / id-ID / vi-VN 四语。
  * 交互：由 tender.service.ts 在招标撤回时调用后交给 MailService 发送给参与范围内供应商的关联用户。
  * 作者：吴川
  */
@@ -10,7 +10,7 @@ import type { SendMailInput } from '../mail.service';
 
 const LOGO_CID = 'bidflow-jnt-logo';
 
-type Locale = 'zh-CN' | 'en' | 'id-ID';
+type Locale = 'zh-CN' | 'en' | 'id-ID' | 'vi-VN';
 
 export interface TenderWithdrawalEmailInput {
   to: string;
@@ -67,12 +67,24 @@ const STRINGS: Record<Locale, {
     cta: 'Masuk untuk melihat',
     footer: 'Jika tender diterbitkan ulang atau ronde baru dimulai, ikuti notifikasi sistem. Hubungi pembeli jika ada pertanyaan.',
   },
+  'vi-VN': {
+    subject: (t) => `[J&T Cargo - Thông báo rút gói thầu] ${t}`,
+    greeting: (name) => `Kính gửi ${name},`,
+    intro: 'Gói thầu mà quý công ty đã nhận thông báo trước đó đã được bên mua rút lại và hiện không còn tiếp nhận xem thông tin hoặc báo giá.',
+    labelTenderNo: 'Mã gói thầu',
+    labelTenderTitle: 'Tên gói thầu',
+    labelDeadline: 'Hạn chót báo giá ban đầu',
+    noDeadline: 'Chưa thiết lập',
+    cta: 'Đăng nhập để xem',
+    footer: 'Nếu gói thầu được công bố lại hoặc mở vòng báo giá mới, vui lòng thực hiện theo thông báo trên hệ thống. Hãy liên hệ bên mua nếu cần hỗ trợ.',
+  },
 };
 
 function normalizeLocale(value?: string): Locale {
   if (!value) return 'en';
   const v = value.replace('_', '-').toLowerCase();
   if (v === 'id' || v.startsWith('id-')) return 'id-ID';
+  if (v === 'vi' || v.startsWith('vi-')) return 'vi-VN';
   if (v === 'zh' || v.startsWith('zh-')) return 'zh-CN';
   return 'en';
 }
@@ -89,7 +101,8 @@ export function buildTenderWithdrawalEmail(input: TenderWithdrawalEmailInput): S
   const productName = input.productName ?? 'BidFlow';
   const locale = normalizeLocale(input.locale);
   const s = STRINGS[locale];
-  const supplierName = input.supplierName?.trim() || (locale === 'zh-CN' ? '供应商' : locale === 'id-ID' ? 'Pemasok' : 'Supplier');
+  const supplierName = input.supplierName?.trim()
+    || (locale === 'zh-CN' ? '供应商' : locale === 'id-ID' ? 'Pemasok' : locale === 'vi-VN' ? 'Nhà cung cấp' : 'Supplier');
   const deadline = formatDeadline(input.bidDeadline) ?? s.noDeadline;
   const logoPath = resolve(process.cwd(), 'src/public/jnt-Logo.png');
   const subject = s.subject(input.tenderTitle);

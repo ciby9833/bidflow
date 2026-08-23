@@ -191,7 +191,7 @@
       "password": "初始密码（必填，至少 6 位）",
       "displayName": "显示名",
       "phone": "联系电话",
-      "locale": "语言（zh-CN / en / id-ID）"
+      "locale": "语言（zh-CN / en / id-ID / vi-VN）"
     },
     "example": {
       "businessId": "S-ID-00001",

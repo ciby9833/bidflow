@@ -94,6 +94,7 @@ const languageOpen = ref(false);
 
 const languageOptions: Array<{ value: SupportedLocale; label: string }> = [
   { value: 'id-ID', label: 'Bahasa Indonesia' },
+  { value: 'vi-VN', label: 'Tiếng Việt' },
   { value: 'en', label: 'English' },
   { value: 'zh-CN', label: '中文' },
 ];

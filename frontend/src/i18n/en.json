@@ -15,7 +15,8 @@
     "label": "Language",
     "zh": "Chinese",
     "en": "English",
-    "id": "Indonesian"
+    "id": "Indonesian",
+    "vi": "Vietnamese"
   },
   "common": {
     "add": "Add",
@@ -886,6 +887,7 @@
     "country": "Country",
     "currency": "Currency",
     "timezone": "Timezone",
+    "default_locale": "Default language",
     "members": "Members",
     "status": "Status",
     "active": "Active",

@@ -84,6 +84,14 @@
           <el-form-item :label="t('org.timezone')">
             <el-input v-model.trim="form.timezone" placeholder="Asia/Ho_Chi_Minh" />
           </el-form-item>
+          <el-form-item :label="t('org.default_locale')">
+            <el-select v-model="form.defaultLocale" style="width: 100%">
+              <el-option label="Bahasa Indonesia" value="id-ID" />
+              <el-option label="Tiếng Việt" value="vi-VN" />
+              <el-option label="English" value="en" />
+              <el-option label="中文" value="zh-CN" />
+            </el-select>
+          </el-form-item>
         </el-form>
         <template #footer>
           <el-button @click="createVisible = false">{{ t('common.cancel') }}</el-button>
@@ -128,7 +136,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api } from '../../composables/useApi';
@@ -136,7 +144,7 @@ import { api } from '../../composables/useApi';
 interface Branch {
   id: string; code: string; name: string; type: 'HQ' | 'BRANCH';
   countryCode?: string; status: string; memberCount: number;
-  settings?: { currency?: string; timezone?: string };
+  settings?: { currency?: string; timezone?: string; defaultLocale?: string };
 }
 interface Member { id: string; userId: string; email: string; displayName: string; role: string; status: string; }
 
@@ -147,7 +155,7 @@ const forbidden = ref(false);
 const saving = ref(false);
 
 const createVisible = ref(false);
-const form = reactive({ code: '', name: '', countryCode: '', currency: '', timezone: '' });
+const form = reactive({ code: '', name: '', countryCode: '', currency: '', timezone: '', defaultLocale: 'en' });
 
 const membersVisible = ref(false);
 const membersLoading = ref(false);
@@ -155,6 +163,15 @@ const members = ref<Member[]>([]);
 const currentBranch = ref<Branch | null>(null);
 const allUsers = ref<{ id: string; email: string; displayName: string; fullName?: string }[]>([]);
 const newMember = reactive({ userId: '', role: '' });
+
+watch(
+  () => form.countryCode.trim().toUpperCase(),
+  (countryCode) => {
+    if (countryCode === 'VN') form.defaultLocale = 'vi-VN';
+    else if (countryCode === 'ID') form.defaultLocale = 'id-ID';
+    else if (countryCode === 'CN') form.defaultLocale = 'zh-CN';
+  },
+);
 
 const membersTitle = computed(() => `${t('org.manage_members')} — ${currentBranch.value?.name ?? ''}`);
 // 总部只能有总部角色，国家机构只能有业务角色 —— 与后端 assertRoleFitsBranch 保持一致
@@ -182,7 +199,7 @@ async function load() {
 }
 
 function openCreate() {
-  Object.assign(form, { code: '', name: '', countryCode: '', currency: '', timezone: '' });
+  Object.assign(form, { code: '', name: '', countryCode: '', currency: '', timezone: '', defaultLocale: 'en' });
   createVisible.value = true;
 }
 
@@ -196,6 +213,7 @@ async function submitCreate() {
     const settings: Record<string, string> = {};
     if (form.currency) settings.currency = form.currency.toUpperCase();
     if (form.timezone) settings.timezone = form.timezone;
+    if (form.defaultLocale) settings.defaultLocale = form.defaultLocale;
     await api.post('/api/organization/branches', {
       code: form.code, name: form.name, countryCode: form.countryCode.toUpperCase(), settings,
     });

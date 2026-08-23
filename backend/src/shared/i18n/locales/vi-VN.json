@@ -1,0 +1,283 @@
+{
+  "error": {
+    "auth": {
+      "unauthenticated": "Không được xác thực. Vui lòng đăng nhập.",
+      "forbidden": "Quyền bị từ chối.",
+      "invalid_credentials": "Email hoặc mật khẩu không hợp lệ.",
+      "suspended": "Tài khoản đã bị tạm ngưng.",
+      "otp_not_requested": "Trước tiên, vui lòng yêu cầu mã xác minh.",
+      "otp_expired": "Mã xác minh đã hết hạn.",
+      "otp_invalid": "Mã xác minh không chính xác.",
+      "token_invalid": "Phiên đã hết hạn. Vui lòng đăng nhập lại.",
+      "email_exists": "Email đã được đăng ký.",
+      "email_code_too_frequent": "Mã xác minh được gửi quá gần đây. Vui lòng thử lại sau.",
+      "email_code_too_many_attempts": "Có quá nhiều lần xác minh sai. Vui lòng yêu cầu mã mới.",
+      "google_not_configured": "Tính năng đăng nhập bằng Google chưa được định cấu hình.",
+      "google_email_unverified": "Email Google chưa được xác minh.",
+      "branch_selection_required": "Vui lòng chọn một chi nhánh để tiếp tục"
+    },
+    "company_user": {
+      "not_found": "Không tìm thấy nhân viên.",
+      "employee_id_exists": "ID nhân viên đã tồn tại.",
+      "role_invalid": "Vai trò không hợp lệ."
+    },
+    "supplier": {
+      "not_found": "Không tìm thấy nhà cung cấp.",
+      "certification_required": "Chứng nhận nhà cung cấp không được phê duyệt.",
+      "business_id_conflict": "Xung đột ID doanh nghiệp của nhà cung cấp.",
+      "company_already_bound": "Công ty này đã bị ràng buộc với một tài khoản khác.",
+      "company_required": "Trước tiên, vui lòng chọn một công ty.",
+      "documents_required": "Vui lòng tải lên các tài liệu chứng nhận bắt buộc.",
+      "invitation_required": "Cần có lời mời hợp lệ.",
+      "invitation_not_found": "Không tìm thấy lời mời.",
+      "invitation_invalid": "Lời mời không hợp lệ.",
+      "invitation_expired": "Lời mời đã hết hạn.",
+      "invitation_not_pending": "Lời mời không ở trạng thái chờ xử lý.",
+      "member_manage_forbidden": "Chỉ quản trị viên nhà cung cấp mới có thể quản lý thành viên.",
+      "member_not_found": "Không tìm thấy tài khoản thành viên.",
+      "member_role_invalid": "Vai trò thành viên không hợp lệ.",
+      "member_status_invalid": "Trạng thái thành viên không hợp lệ.",
+      "member_last_active": "Không thể đình chỉ thành viên hoạt động cuối cùng.",
+      "member_primary_cannot_suspend": "Thành viên chính tài khoản không thể bị đình chỉ trực tiếp. Trước tiên hãy chuyển khoản chính.",
+      "member_primary_required": "Cần có tài khoản chính.",
+      "member_password_weak": "Mật khẩu quá ngắn (tối thiểu 6 ký tự).",
+      "only_active_can_suspend": "Chỉ những nhà cung cấp đang hoạt động mới có thể bị đình chỉ.",
+      "only_suspended_can_resume": "Chỉ những nhà cung cấp bị đình chỉ mới có thể được tiếp tục.",
+      "only_pending_review_can_approve": "Chỉ những nhà cung cấp đang chờ xử lý mới có thể được phê duyệt.",
+      "only_pending_review_can_reject": "Chỉ những nhà cung cấp đang chờ xử lý mới có thể bị từ chối.",
+      "only_pending_or_approved_can_request_supplement": "Chỉ những nhà cung cấp đang chờ xử lý hoặc được phê duyệt mới có thể được yêu cầu bổ sung.",
+      "self_registration_branch_ambiguous": "Tồn tại nhiều chi nhánh quốc gia; không thể xác định chi nhánh cho các nhà cung cấp tự đăng ký. Trước tiên, hãy định cấu hình điểm vào chi nhánh cho cổng thông tin công cộng.",
+      "registration_branch_required": "Vui lòng chọn chi nhánh quốc gia để đăng ký",
+      "lookup_key_required": "Nhập ID doanh nghiệp hoặc ID thuế"
+    },
+    "tender": {
+      "not_found": "Không tìm thấy đấu thầu.",
+      "invalid_status_transition": "Thao tác không được phép ở trạng thái hiện tại.",
+      "notification_resend_in_progress": "Việc gửi lại thông báo qua email đã được tiến hành cho cuộc đấu thầu này.",
+      "withdraw_in_progress": "Việc rút thầu đã được tiến hành. Vui lòng không lặp lại thao tác này.",
+      "deadline_passed": "Hạn chót đấu thầu đã qua.",
+      "only_draft_can_edit": "Chỉ có thể chỉnh sửa bản nháp.",
+      "cannot_invite": "Không thể mời nhà cung cấp ở trạng thái hiện tại.",
+      "participant_required": "Chọn ít nhất một nhà cung cấp tham gia.",
+      "invalid_participants": "Các nhà cung cấp tham gia phải được phê duyệt và đang hoạt động.",
+      "not_invited": "Nhà cung cấp này không được mời tham gia vòng hiện tại.",
+      "deadline_must_be_future": "Thời hạn phải trong tương lai.",
+      "start_must_before_deadline": "Thời gian bắt đầu phải trước thời hạn.",
+      "invalid_bid_start_at": "Thời gian bắt đầu đấu thầu không hợp lệ.",
+      "invalid_bid_deadline": "Thời hạn đấu thầu không hợp lệ.",
+      "import_file_required": "Vui lòng tải lên tệp nhập.",
+      "import_empty_workbook": "Sổ làm việc trống.",
+      "import_requires_header_and_rows": "Tệp nhập phải chứa một hàng tiêu đề và ít nhất một hàng dữ liệu.",
+      "import_missing_header": "Tệp nhập thiếu tiêu đề hợp lệ.",
+      "hall_branches_required": "Vui lòng chọn chi nhánh có thể xem gói thầu này"
+    },
+    "lot": {
+      "not_found": "Không tìm thấy lô."
+    },
+    "line": {
+      "not_found": "Không tìm thấy dòng/mục."
+    },
+    "quote": {
+      "tender_not_open": "Gói thầu chưa mở nhận báo giá.",
+      "deadline_passed": "Hạn chót đấu thầu đã qua.",
+      "cooldown_active": "Đang chờ đợi. Vui lòng thử lại sau.",
+      "rebid_limit_reached": "Đã đạt đến số lần đặt giá lại tối đa.",
+      "min_decrement_fail": "Không đáp ứng mức giảm tối thiểu.",
+      "version_conflict": "Xung đột phiên bản báo giá. Vui lòng làm mới và thử lại.",
+      "concurrent_submit": "Gửi trùng lặp.",
+      "required_field_missing": "Thiếu trường bắt buộc."
+    },
+    "upload": {
+      "file_required": "Vui lòng chọn tệp để tải lên.",
+      "file_type_not_allowed": "Không cho phép loại tệp.",
+      "file_too_large": "Tệp vượt quá giới hạn kích thước.",
+      "file_not_found": "Không tìm thấy tệp.",
+      "file_too_many": "Quá nhiều tệp đính kèm (tối đa 5)."
+    },
+    "export": {
+      "full_requires_manager": "Chỉ người quản lý mua hàng mới có thể thực hiện xuất toàn bộ."
+    },
+    "branch": {
+      "write_not_allowed": "Trụ sở chính không thể tạo dữ liệu doanh nghiệp. Vui lòng chuyển sang chi nhánh quốc gia.",
+      "not_found": "Không tìm thấy chi nhánh hoặc không hoạt động",
+      "code_required": "Yêu cầu mã chi nhánh",
+      "code_exists": "Mã chi nhánh đã tồn tại",
+      "hq_only": "Hành động này được giới hạn ở trụ sở chính",
+      "hq_cannot_be_disabled": "Không thể vô hiệu hóa trụ sở chính",
+      "member_exists": "Người dùng đã là thành viên của chi nhánh này",
+      "member_not_found": "Không tìm thấy thành viên",
+      "last_hq_admin": "Không thể xóa quản trị viên trụ sở cuối cùng",
+      "hq_role_outside_hq": "Chỉ có thể chỉ định vai trò trụ sở chính tại trụ sở chính",
+      "branch_role_in_hq": "Các thành viên trụ sở chính phải sử dụng vai trò trụ sở chính",
+      "supplier_cannot_be_member": "Tài khoản nhà cung cấp không thể là thành viên chi nhánh",
+      "no_active_branch": "Không có chi nhánh hoạt động nào",
+      "hq_membership_requires_admin": "Thành viên trụ sở chính phải được cấp từ bảng điều khiển của tổ chức",
+      "not_accessible": "Bạn không có quyền truy cập vào chi nhánh này",
+      "target_required": "Vui lòng chọn chi nhánh mục tiêu"
+    }
+  },
+  "quote": {
+    "ability": {
+      "tenderNotOpen": "Dự án này chưa mở nhận báo giá nên không thể gửi báo giá.",
+      "rebidLimitReached": "Đã đạt đến số lần đặt giá thầu lại tối đa. Bạn không thể thay đổi báo giá nữa.",
+      "cooldownActive": "Đang chờ đợi. Đợi {seconds} giây trước khi thay đổi lại báo giá."
+    }
+  },
+  "export": {
+    "sheet": {
+      "byItem": "Đánh giá theo mặt hàng",
+      "bySupplier": "Đánh giá theo nhà cung cấp",
+      "lotData": "Dữ liệu lô",
+      "summary": "Tóm tắt",
+      "lotQuotes": "Báo giá-{lotNo}"
+    },
+    "field": {
+      "roundNo": "Vòng",
+      "lotNo": "Số lô",
+      "lotTitle": "Tiêu đề lô",
+      "lotDescription": "Mô tả lô",
+      "rowNo": "Hàng",
+      "quantity": "Số lượng",
+      "unit": "Đơn vị",
+      "budgetAmount": "Ngân sách",
+      "currency": "Tiền tệ",
+      "itemLabel": "Mục / Dòng",
+      "rank": "Xếp hạng",
+      "quoteNo": "Số báo giá",
+      "supplierBusinessId": "ID nhà cung cấp",
+      "supplierName": "Nhà cung cấp",
+      "supplierContact": "Liên hệ",
+      "supplierPhone": "Điện thoại",
+      "supplierEmail": "Email",
+      "totalPrice": "Giá",
+      "version": "Phiên bản",
+      "submittedAt": "Đã gửi tại",
+      "remark": "Nhận xét",
+      "submitIp": "IP",
+      "key": "Trường",
+      "value": "Giá trị"
+    },
+    "summary": {
+      "tenderNo": "Số hồ sơ dự thầu",
+      "tenderTitle": "Tên gói thầu",
+      "exportMode": "Chế độ",
+      "exportView": "Xem",
+      "exportRound": "Vòng",
+      "exportedAt": "Được xuất tại",
+      "operator": "Người vận hành",
+      "modeFull": "Đầy đủ",
+      "modeMasked": "Đã ẩn thông tin",
+      "viewItem": "Theo mặt hàng",
+      "viewSupplier": "Theo nhà cung cấp",
+      "allRounds": "Tất cả"
+    },
+    "hint": {
+      "noLineQuotes": "Không có dữ liệu báo giá dòng.",
+      "noLotData": "Không có dữ liệu lô thầu."
+    },
+    "anonymousSupplier": "Nhà cung cấp {seq}",
+    "lotIntegralQuote": "Báo giá trọn gói"
+  },
+  "supplierAccountImport": {
+    "sheet": "Nhập tài khoản nhà cung cấp",
+    "headers": {
+      "businessId": "Số nhà cung cấp (bắt buộc)",
+      "email": "Email đăng nhập (bắt buộc)",
+      "password": "Mật khẩu ban đầu (bắt buộc, tối thiểu 6 ký tự)",
+      "displayName": "Tên hiển thị",
+      "phone": "Điện thoại",
+      "locale": "Ngôn ngữ (zh-CN / en / id-ID / vi-VN)"
+    },
+    "example": {
+      "businessId": "S-ID-00001",
+      "email": "budi@example.com",
+      "password": "Welcome@2026",
+      "displayName": "Budi",
+      "phone": "081234567890",
+      "locale": "id-ID"
+    },
+    "reason": {
+      "missingBusinessId": "Thiếu số nhà cung cấp",
+      "missingEmail": "Thiếu email",
+      "invalidEmail": "Định dạng email không hợp lệ",
+      "missingPassword": "Thiếu mật khẩu ban đầu",
+      "weakPassword": "Mật khẩu quá ngắn (tối thiểu 6 ký tự)",
+      "emailTooLong": "Email phải có 100 ký tự trở xuống",
+      "displayNameTooLong": "Tên hiển thị phải có 100 ký tự trở xuống",
+      "phoneTooLong": "Điện thoại phải có 30 ký tự trở xuống",
+      "duplicateInFile": "Email trùng lặp trong tệp",
+      "emailExists": "Email đã đăng ký",
+      "supplierNotFound": "Số nhà cung cấp không tồn tại",
+      "supplierNotEligible": "Trạng thái nhà cung cấp không hoạt động"
+    }
+  },
+  "supplierCreateImport": {
+    "sheet": "Tạo hàng loạt nhà cung cấp",
+    "headers": {
+      "legalName": "Tên pháp lý (bắt buộc)",
+      "shortName": "Tên viết tắt",
+      "contactName": "Người liên hệ",
+      "contactPhone": "Số điện thoại liên hệ",
+      "contactEmail": "Email liên hệ",
+      "taxId": "Mã số thuế",
+      "countryCode": "Quốc gia (ID mặc định)"
+    },
+    "example": {
+      "legalName": "Ví dụ về nhà cung cấp Co. Ltd.",
+      "shortName": "Nhà cung cấp mẫu",
+      "contactName": "Budi",
+      "contactPhone": "081234567890",
+      "contactEmail": "contact@example.com",
+      "taxId": "01.234.567.8-901.000",
+      "countryCode": "ID"
+    },
+    "reason": {
+      "missingName": "Thiếu tên pháp lý",
+      "duplicateInFile": "Đã trùng lặp trong tệp",
+      "alreadyExists": "Một nhà cung cấp có cùng tên tồn tại",
+      "invalidEmail": "Định dạng email không hợp lệ"
+    }
+  },
+  "supplierImport": {
+    "sheet": "Nhập nhà cung cấp",
+    "headerBusinessId": "Số nhà cung cấp.",
+    "headerName": "Tên nhà cung cấp (chỉ để tham khảo, không bắt buộc)",
+    "exampleId": "S-ID-00001",
+    "exampleName": "Nhà cung cấp mẫu",
+    "reason": {
+      "notFound": "Số nhà cung cấp không tồn tại trong hệ thống",
+      "notEligible": "Nhà cung cấp không được phê duyệt hoặc bị đình chỉ, không thể tham gia",
+      "duplicate": "Đã trùng lặp trong tệp"
+    }
+  },
+  "supplierExport": {
+    "sheet": "Nhà cung cấp",
+    "title": "Danh sách nhà cung cấp",
+    "exportedAt": "Được xuất tại",
+    "total": "Bản ghi",
+    "field": {
+      "businessId": "Số nhà cung cấp.",
+      "legalName": "Tên hợp pháp",
+      "shortName": "Tên viết tắt",
+      "status": "Trạng thái",
+      "reviewStatus": "Trạng thái xem xét",
+      "country": "Quốc gia",
+      "contactEmail": "Email liên hệ",
+      "contactPhone": "Số điện thoại liên hệ",
+      "contactName": "Người liên hệ"
+    },
+    "status": {
+      "pending": "Đang chờ xử lý",
+      "active": "Hoạt động",
+      "suspended": "Đã tạm dừng",
+      "blacklisted": "Đưa vào danh sách đen"
+    },
+    "reviewStatus": {
+      "not_submitted": "Chưa được gửi",
+      "pending_review": "Đang chờ xem xét",
+      "supplement_required": "Yêu cầu bổ sung",
+      "approved": "Đã phê duyệt",
+      "rejected": "Bị từ chối"
+    }
+  }
+}

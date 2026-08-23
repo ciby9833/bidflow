@@ -186,7 +186,7 @@
       "password": "Initial Password (required, min 6 chars)",
       "displayName": "Display Name",
       "phone": "Phone",
-      "locale": "Language (zh-CN / en / id-ID)"
+      "locale": "Language (zh-CN / en / id-ID / vi-VN)"
     },
     "example": {
       "businessId": "S-ID-00001",

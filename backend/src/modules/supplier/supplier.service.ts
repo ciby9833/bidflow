@@ -636,7 +636,7 @@ export class SupplierService {
     type ImportError = { row: number; value: string; reason: string };
     const errors: ImportError[] = [];
     const seenEmails = new Set<string>();
-    const VALID_LOCALES = new Set(['zh-CN', 'en', 'id-ID']);
+    const VALID_LOCALES = new Set(['zh-CN', 'en', 'id-ID', 'vi-VN']);
     const MAX_EMAIL_LENGTH = 100;
     const MAX_DISPLAY_NAME_LENGTH = 100;
     const MAX_PHONE_LENGTH = 30;

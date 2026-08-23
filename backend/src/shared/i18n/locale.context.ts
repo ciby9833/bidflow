@@ -6,8 +6,8 @@
  */
 import { AsyncLocalStorage } from 'async_hooks';
 
-export type SupportedLocale = 'zh-CN' | 'en' | 'id-ID';
-export const SUPPORTED_LOCALES: SupportedLocale[] = ['zh-CN', 'en', 'id-ID'];
+export type SupportedLocale = 'zh-CN' | 'en' | 'id-ID' | 'vi-VN';
+export const SUPPORTED_LOCALES: SupportedLocale[] = ['zh-CN', 'en', 'id-ID', 'vi-VN'];
 export const DEFAULT_LOCALE: SupportedLocale = 'en';
 
 interface LocaleStore {
@@ -30,6 +30,7 @@ export function normalizeLocale(value?: string | null): SupportedLocale {
   if (!value) return DEFAULT_LOCALE;
   const v = value.replace('_', '-').toLowerCase();
   if (v === 'id' || v.startsWith('id-')) return 'id-ID';
+  if (v === 'vi' || v.startsWith('vi-')) return 'vi-VN';
   if (v === 'en' || v.startsWith('en-')) return 'en';
   if (v === 'zh' || v.startsWith('zh-')) return 'zh-CN';
   return DEFAULT_LOCALE;

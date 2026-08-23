@@ -46,10 +46,10 @@ const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
     uiSchema: {
       order: ['total_price', 'currency', 'project_duration_days', 'warranty_months'],
       fields: {
-        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga' } },
-        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang' } },
-        project_duration_days: { type: 'number', label: { 'zh-CN': '工期（天）', en: 'Duration (days)', 'id-ID': 'Durasi (hari)' } },
-        warranty_months: { type: 'number', label: { 'zh-CN': '质保期（月）', en: 'Warranty (months)', 'id-ID': 'Garansi (bulan)' } },
+        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga', 'vi-VN': 'Tổng giá trị báo giá' } },
+        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang', 'vi-VN': 'Loại tiền tệ' } },
+        project_duration_days: { type: 'number', label: { 'zh-CN': '工期（天）', en: 'Duration (days)', 'id-ID': 'Durasi (hari)', 'vi-VN': 'Thời gian thực hiện (ngày)' } },
+        warranty_months: { type: 'number', label: { 'zh-CN': '质保期（月）', en: 'Warranty (months)', 'id-ID': 'Garansi (bulan)', 'vi-VN': 'Thời hạn bảo hành (tháng)' } },
       },
     },
   },
@@ -61,11 +61,11 @@ const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
     uiSchema: {
       order: ['total_price', 'currency', 'unit_price', 'unit', 'capacity_tons'],
       fields: {
-        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga' } },
-        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang' } },
-        unit_price: { type: 'currency', label: { 'zh-CN': '单价', en: 'Unit Price', 'id-ID': 'Harga Satuan' } },
-        unit: { type: 'select', options: ['ton-km', 'trip', 'day'], label: { 'zh-CN': '计价单位', en: 'Unit', 'id-ID': 'Satuan' } },
-        capacity_tons: { type: 'number', label: { 'zh-CN': '运载吨位', en: 'Capacity (tons)', 'id-ID': 'Kapasitas (ton)' } },
+        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga', 'vi-VN': 'Tổng giá trị báo giá' } },
+        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang', 'vi-VN': 'Loại tiền tệ' } },
+        unit_price: { type: 'currency', label: { 'zh-CN': '单价', en: 'Unit Price', 'id-ID': 'Harga Satuan', 'vi-VN': 'Đơn giá' } },
+        unit: { type: 'select', options: ['ton-km', 'trip', 'day'], label: { 'zh-CN': '计价单位', en: 'Unit', 'id-ID': 'Satuan', 'vi-VN': 'Đơn vị tính giá' } },
+        capacity_tons: { type: 'number', label: { 'zh-CN': '运载吨位', en: 'Capacity (tons)', 'id-ID': 'Kapasitas (ton)', 'vi-VN': 'Tải trọng (tấn)' } },
       },
     },
   },
@@ -77,10 +77,10 @@ const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
     uiSchema: {
       order: ['total_price', 'currency', 'delivery_days', 'payment_terms'],
       fields: {
-        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga' } },
-        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang' } },
-        delivery_days: { type: 'number', label: { 'zh-CN': '交货天数', en: 'Delivery Days', 'id-ID': 'Hari Pengiriman' } },
-        payment_terms: { type: 'text', label: { 'zh-CN': '付款条款', en: 'Payment Terms', 'id-ID': 'Syarat Pembayaran' } },
+        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga', 'vi-VN': 'Tổng giá trị báo giá' } },
+        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang', 'vi-VN': 'Loại tiền tệ' } },
+        delivery_days: { type: 'number', label: { 'zh-CN': '交货天数', en: 'Delivery Days', 'id-ID': 'Hari Pengiriman', 'vi-VN': 'Thời gian giao hàng (ngày)' } },
+        payment_terms: { type: 'text', label: { 'zh-CN': '付款条款', en: 'Payment Terms', 'id-ID': 'Syarat Pembayaran', 'vi-VN': 'Điều khoản thanh toán' } },
       },
     },
   },
@@ -626,14 +626,16 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return suppliers.map((supplier) => supplier.id);
   }
 
-  private resolveSupplierMailLocale(userLocale?: string, supplier?: Supplier): 'zh-CN' | 'en' | 'id-ID' {
+  private resolveSupplierMailLocale(userLocale?: string, supplier?: Supplier): 'zh-CN' | 'en' | 'id-ID' | 'vi-VN' {
     const countryCode = supplier?.countryCode?.trim().toUpperCase();
     const normalized = String(userLocale || '').replace('_', '-').toLowerCase();
 
     // 历史供应商账号没有显式语言时会落到 users 默认 zh-CN；印尼供应商不能因此收到中文邮件。
     if (countryCode === 'ID' && (!normalized || normalized === 'zh-cn' || normalized === 'zh')) return 'id-ID';
+    if (countryCode === 'VN' && (!normalized || normalized === 'zh-cn' || normalized === 'zh')) return 'vi-VN';
     if (countryCode === 'CN' && (!normalized || normalized === 'zh-cn' || normalized === 'zh')) return 'zh-CN';
     if (normalized === 'id' || normalized.startsWith('id-')) return 'id-ID';
+    if (normalized === 'vi' || normalized.startsWith('vi-')) return 'vi-VN';
     if (normalized === 'zh' || normalized.startsWith('zh-')) return 'zh-CN';
     return 'en';
   }

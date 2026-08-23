@@ -42,6 +42,7 @@ const COLLATION_BY_LOCALE: Record<SupportedLocale, string> = {
   'zh-CN': 'zh-Hans-CN',
   en: 'en-US',
   'id-ID': 'id-ID',
+  'vi-VN': 'vi-VN',
 };
 
 // ── 配色（专业、克制）──

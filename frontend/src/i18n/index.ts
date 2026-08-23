@@ -8,15 +8,17 @@ import { createI18n } from 'vue-i18n';
 import zhCN from './zh-CN.json';
 import en from './en.json';
 import idID from './id-ID.json';
+import viVN from './vi-VN.json';
 
 export const LOCALE_STORAGE_KEY = 'locale';
-export const supportedLocales = ['id-ID', 'en', 'zh-CN'] as const;
+export const supportedLocales = ['id-ID', 'vi-VN', 'en', 'zh-CN'] as const;
 export type SupportedLocale = typeof supportedLocales[number];
 
 export function normalizeLocale(value?: string | null): SupportedLocale | '' {
   if (!value) return '';
   const normalized = value.replace('_', '-').toLowerCase();
   if (normalized === 'id' || normalized === 'id-id' || normalized.startsWith('id-')) return 'id-ID';
+  if (normalized === 'vi' || normalized === 'vi-vn' || normalized.startsWith('vi-')) return 'vi-VN';
   if (normalized === 'en' || normalized.startsWith('en-')) return 'en';
   if (normalized === 'zh' || normalized.startsWith('zh-')) return 'zh-CN';
   return '';
@@ -38,7 +40,7 @@ export const i18n = createI18n({
   legacy: false,
   locale: resolveInitialLocale(),
   fallbackLocale: 'en',
-  messages: { 'zh-CN': zhCN, en, 'id-ID': idID },
+  messages: { 'zh-CN': zhCN, en, 'id-ID': idID, 'vi-VN': viVN },
 });
 
 export function setAppLocale(locale: SupportedLocale) {

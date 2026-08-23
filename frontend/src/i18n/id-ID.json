@@ -15,7 +15,8 @@
     "label": "Bahasa",
     "zh": "Mandarin",
     "en": "Inggris",
-    "id": "Indonesia"
+    "id": "Indonesia",
+    "vi": "Vietnam"
   },
   "common": {
     "add": "Tambah",
@@ -886,6 +887,7 @@
     "country": "Negara",
     "currency": "Mata uang",
     "timezone": "Zona waktu",
+    "default_locale": "Bahasa default",
     "members": "Anggota",
     "status": "Status",
     "active": "Aktif",

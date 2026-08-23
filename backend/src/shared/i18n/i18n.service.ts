@@ -1,6 +1,6 @@
 /**
  * 文件：backend/src/shared/i18n/i18n.service.ts
- * 功能：加载 zh-CN/en/id-ID 词条 JSON，提供按 key 路径取文案的能力，支持 {param} 占位符。
+ * 功能：加载 zh-CN/en/id-ID/vi-VN 词条 JSON，提供按 key 路径取文案的能力，支持 {param} 占位符。
  * 交互：被 i18n.exception.filter.ts、export.service.ts 调用；locale 来自 LocaleContext。
  * 作者：吴川
  */

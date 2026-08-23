@@ -16,9 +16,10 @@ import { useI18n } from 'vue-i18n';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import en from 'element-plus/es/locale/lang/en';
 import id from 'element-plus/es/locale/lang/id';
+import vi from 'element-plus/es/locale/lang/vi';
 import type { SupportedLocale } from './i18n';
 
 const { locale } = useI18n();
-const elementLocales = { 'zh-CN': zhCn, en, 'id-ID': id };
+const elementLocales = { 'zh-CN': zhCn, en, 'id-ID': id, 'vi-VN': vi };
 const elementLocale = computed(() => elementLocales[locale.value as SupportedLocale] ?? en);
 </script>

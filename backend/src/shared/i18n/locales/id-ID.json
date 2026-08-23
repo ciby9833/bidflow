@@ -186,7 +186,7 @@
       "password": "Kata Sandi Awal (wajib, min 6 karakter)",
       "displayName": "Nama Tampilan",
       "phone": "Telepon",
-      "locale": "Bahasa (zh-CN / en / id-ID)"
+      "locale": "Bahasa (zh-CN / en / id-ID / vi-VN)"
     },
     "example": {
       "businessId": "S-ID-00001",

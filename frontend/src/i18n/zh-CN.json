@@ -15,7 +15,8 @@
     "label": "语言",
     "zh": "中文",
     "en": "English",
-    "id": "Bahasa Indonesia"
+    "id": "Bahasa Indonesia",
+    "vi": "Tiếng Việt"
   },
   "common": {
     "add": "新增",
@@ -893,6 +894,7 @@
     "country": "国别",
     "currency": "货币",
     "timezone": "时区",
+    "default_locale": "默认语言",
     "members": "成员数",
     "status": "状态",
     "active": "启用",

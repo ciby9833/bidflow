@@ -124,6 +124,7 @@ const tabs = ref<Array<{ fullPath: string; path: string; title: string; fixed?: 
 const routeVersions = ref<Record<string, number>>({});
 const localeOptions: Array<{ label: string; value: SupportedLocale }> = [
   { label: 'Bahasa Indonesia', value: 'id-ID' },
+  { label: 'Tiếng Việt', value: 'vi-VN' },
   { label: 'English', value: 'en' },
   { label: '中文', value: 'zh-CN' },
 ];
