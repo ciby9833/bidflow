@@ -31,10 +31,17 @@ import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entit
 import { User, UserRole } from '../auth/user.entity';
 import { SupplierAccount } from '../auth/supplier-account.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
+import { Branch } from '../organization/branch.entity';
 import { MailService } from '../../shared/mail/mail.service';
 import { buildTenderInvitationEmail } from '../../shared/mail/templates/tender-invitation.template';
 import { buildTenderWithdrawalEmail } from '../../shared/mail/templates/tender-withdrawal.template';
 import { RedisService } from '../../shared/config/redis.config';
+
+function quoteRankPrice(quote: { priceInBase?: number | string | null; totalPrice: number | string }) {
+  const converted = Number(quote.priceInBase);
+  if (Number.isFinite(converted) && converted > 0) return converted;
+  return Number(quote.totalPrice);
+}
 
 // Three standard templates (spec_json + ui_schema stubs)
 const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
@@ -185,6 +192,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     @InjectRepository(Supplier) private readonly supplierRepo: Repository<Supplier>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(SupplierAccount) private readonly supplierAccountRepo: Repository<SupplierAccount>,
+    @InjectRepository(Branch) private readonly branchRepo: Repository<Branch>,
     private readonly audit: AuditService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
@@ -193,6 +201,11 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   private readonly logger = new Logger(TenderService.name);
+
+  private async defaultCurrencyForBranch(branchId: string) {
+    const branch = await this.branchRepo.findOne({ where: { id: branchId } });
+    return String(branch?.settings?.currency || DEFAULT_TENDER_CURRENCY).trim().toUpperCase();
+  }
 
   onModuleInit() {
     void this.refreshLifecycleStatuses();
@@ -261,6 +274,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     this.validateTenderSchedule(data.bidStartAt, data.bidDeadline);
     // 写入机构在事务外先行解析：总部或无归属用户会在此直接失败，避免开了事务再回滚。
     const branchId = requireWritableBranch(scope);
+    const defaultCurrency = await this.defaultCurrencyForBranch(branchId);
     return this.ds.transaction(async (em) => {
       const nextSeq = await this.computeNextTenderSeq(em, branchId);
       const tenderNo = nextTenderNo(nextSeq);
@@ -271,7 +285,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         tenderNo,
         title: data.title,
         type: data.type,
-        baseCurrency: data.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
+        baseCurrency: data.baseCurrency ?? defaultCurrency,
         rankingMode: (data.rankingMode as any) ?? 'leading_flag',
         bidStartAt: data.bidStartAt ? new Date(data.bidStartAt) : undefined,
         bidDeadline: data.bidDeadline ? new Date(data.bidDeadline) : undefined,
@@ -310,7 +324,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
           specJson: lots[i].specJson ?? template.specJson,
           uiSchema: lots[i].uiSchema ?? template.uiSchema,
           budgetAmount: lots[i].budgetAmount,
-          budgetCurrency: lots[i].budgetCurrency ?? data.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
+          budgetCurrency: lots[i].budgetCurrency ?? data.baseCurrency ?? defaultCurrency,
           sortOrder: i,
           schemaVersion: 1,
         });
@@ -756,12 +770,13 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     );
     const template = TEMPLATES[data.type ?? before.type];
     const hasAnyQuotes = await this.hasAnyQuotes(id);
+    const defaultCurrency = before.baseCurrency ?? await this.defaultCurrencyForBranch(branchId);
 
     await this.ds.transaction(async (em) => {
       await em.update(Tender, id, {
         title: data.title ?? before.title,
         type: data.type ?? before.type,
-        baseCurrency: data.baseCurrency ?? before.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
+        baseCurrency: data.baseCurrency ?? defaultCurrency,
         rankingMode: (data.rankingMode as any) ?? before.rankingMode,
         bidStartAt: data.bidStartAt ? new Date(data.bidStartAt) : data.bidStartAt === null ? undefined : before.bidStartAt,
         bidDeadline: data.bidDeadline ? new Date(data.bidDeadline) : data.bidDeadline === null ? undefined : before.bidDeadline,
@@ -787,7 +802,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
 
       if (data.lots?.length) {
         await this.syncLots(em, branchId, id, data.lots, {
-          baseCurrency: data.baseCurrency ?? before.baseCurrency ?? DEFAULT_TENDER_CURRENCY,
+          baseCurrency: data.baseCurrency ?? defaultCurrency,
           template,
           hasAnyQuotes,
           currentRound: before.currentQuoteRound ?? 1,
@@ -1196,7 +1211,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     const buildLotsForRound = (targetRound: number) => lots.map((lot) => {
         const lines = [...linesForLotRound(lot.id, targetRound)].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
         const latestLotQuotes = this.latestBySupplier(lotQuotes.filter((quote) => quote.lotId === lot.id))
-          .sort((a, b) => Number(a.totalPrice) - Number(b.totalPrice))
+          .sort((a, b) => quoteRankPrice(a) - quoteRankPrice(b))
           .map((quote, index) => this.enrichQuote(quote, supplierMap, index + 1, lotHistoryMap.get(`${quote.lotId}:${quote.supplierId}`) ?? []));
 
         return {
@@ -1210,7 +1225,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
           priceGroups: this.buildPriceGroups(latestLotQuotes),
           lines: lines.map((line) => {
             const latestQuotes = this.latestBySupplier(lineQuotes.filter((quote) => quote.lineId === line.id && quote.roundNo === targetRound))
-              .sort((a, b) => Number(a.totalPrice) - Number(b.totalPrice))
+              .sort((a, b) => quoteRankPrice(a) - quoteRankPrice(b))
               .map((quote, index) => this.enrichQuote(quote, supplierMap, index + 1, lineHistoryMap.get(`${targetRound}:${quote.lineId}:${quote.supplierId}`) ?? []));
             return {
               lineId: line.id,
@@ -1294,8 +1309,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private buildQuoteStats(quotes: Array<{ totalPrice: number }>) {
-    const prices = quotes.map((quote) => Number(quote.totalPrice)).filter((price) => Number.isFinite(price));
+  private buildQuoteStats(quotes: Array<{ totalPrice: number; priceInBase?: number | string | null }>) {
+    const prices = quotes.map((quote) => quoteRankPrice(quote)).filter((price) => Number.isFinite(price));
     const total = prices.reduce((sum, price) => sum + price, 0);
     return {
       quotedSupplierCount: quotes.length,
@@ -1305,15 +1320,16 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private buildPriceGroups(quotes: Array<{ totalPrice: number; currency: string; supplierId: string; supplierName?: string; supplier?: any }>) {
+  private buildPriceGroups(quotes: Array<{ totalPrice: number; currency: string; baseCurrency?: string; priceInBase?: number | string | null; supplierId: string; supplierName?: string; supplier?: any }>) {
     const groups = new Map<string, any>();
     for (const quote of quotes) {
-      const price = Number(quote.totalPrice);
-      const key = `${quote.currency}:${price.toFixed(4)}`;
+      const price = quoteRankPrice(quote);
+      const currency = quote.baseCurrency || quote.currency;
+      const key = `${currency}:${price.toFixed(4)}`;
       if (!groups.has(key)) {
         groups.set(key, {
           price,
-          currency: quote.currency,
+          currency,
           supplierCount: 0,
           suppliers: [],
         });

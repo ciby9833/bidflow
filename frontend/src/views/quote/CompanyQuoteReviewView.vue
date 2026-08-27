@@ -67,6 +67,12 @@
         <el-table-column label="报价" width="180">
           <template #default="{ row }">{{ Number(row.totalPrice).toLocaleString() }} {{ row.currency }}</template>
         </el-table-column>
+        <el-table-column label="折算报价" width="190">
+          <template #default="{ row }">{{ formatConvertedPrice(row) }}</template>
+        </el-table-column>
+        <el-table-column label="汇率" width="190">
+          <template #default="{ row }">{{ formatExchangeRate(row) }}</template>
+        </el-table-column>
         <el-table-column
           v-for="col in selectedLineRequiredColumns"
           :key="col.key"
@@ -98,6 +104,8 @@
           <el-descriptions-item label="联系邮箱">{{ selectedQuote.supplier?.contactEmail || '—' }}</el-descriptions-item>
           <el-descriptions-item label="报价编号">{{ selectedQuote.quoteNo }}</el-descriptions-item>
           <el-descriptions-item label="报价金额">{{ Number(selectedQuote.totalPrice).toLocaleString() }} {{ selectedQuote.currency }}</el-descriptions-item>
+          <el-descriptions-item label="折算报价">{{ formatConvertedPrice(selectedQuote) }}</el-descriptions-item>
+          <el-descriptions-item label="汇率">{{ formatExchangeRate(selectedQuote) }}</el-descriptions-item>
           <el-descriptions-item label="版本">V{{ selectedQuote.version }}</el-descriptions-item>
           <el-descriptions-item label="提交时间">{{ fmtDate(selectedQuote.submittedAt) }}</el-descriptions-item>
           <el-descriptions-item label="备注">{{ selectedQuote.remark || '—' }}</el-descriptions-item>
@@ -120,6 +128,12 @@
             </el-table-column>
             <el-table-column label="报价" width="160">
               <template #default="{ row }">{{ Number(row.totalPrice).toLocaleString() }} {{ row.currency }}</template>
+            </el-table-column>
+            <el-table-column label="折算报价" width="170">
+              <template #default="{ row }">{{ formatConvertedPrice(row) }}</template>
+            </el-table-column>
+            <el-table-column label="汇率" width="180">
+              <template #default="{ row }">{{ formatExchangeRate(row) }}</template>
             </el-table-column>
             <el-table-column
               v-for="col in selectedLineRequiredColumns"
@@ -189,6 +203,26 @@ function statusLabel(status?: string) {
 }
 function statusTag(status?: string) {
   return { draft: 'info', published: '', open: 'success', closed: 'info', awarded: 'warning', cancelled: 'danger' }[status ?? ''] ?? '';
+}
+
+function quoteRankPrice(quote: any) {
+  const converted = Number(quote?.priceInBase);
+  if (Number.isFinite(converted) && converted > 0) return converted;
+  return Number(quote?.totalPrice ?? 0);
+}
+
+function formatConvertedPrice(quote: any) {
+  const currency = quote?.baseCurrency || tender.value?.baseCurrency || quote?.currency || 'IDR';
+  return `${quoteRankPrice(quote).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
+}
+
+function formatExchangeRate(quote: any) {
+  const from = quote?.currency;
+  const to = quote?.baseCurrency || tender.value?.baseCurrency;
+  const rate = Number(quote?.exchangeRate ?? (from && to && from === to ? 1 : NaN));
+  if (!from || !to || !Number.isFinite(rate)) return '—';
+  const suffix = quote?.exchangeRateDate ? ` · ${quote.exchangeRateDate}` : '';
+  return `1 ${from} = ${rate.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${to}${suffix}`;
 }
 
 async function load() {

@@ -63,6 +63,7 @@
           <el-form-item :label="t('tenderCreate.baseCurrency')">
             <el-select v-model="form.baseCurrency" size="large" @change="syncLotCurrency" style="width:100%">
               <el-option value="IDR" :label="t('currency.idr')" />
+              <el-option value="VND" :label="t('currency.vnd')" />
               <el-option value="USD" :label="t('currency.usd')" />
               <el-option value="CNY" :label="t('currency.cny')" />
             </el-select>

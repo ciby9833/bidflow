@@ -81,6 +81,10 @@ interface QuoteHistoryItem {
   version: number;
   totalPrice: number | string;
   currency: string;
+  baseCurrency?: string;
+  exchangeRate?: number | string;
+  exchangeRateDate?: string;
+  priceInBase?: number | string;
   isLatest: boolean;
   remark?: string;
   submittedAt?: string;
@@ -111,6 +115,25 @@ const drawerSize = computed(() => (record.value?.kind === 'line' ? '720px' : '56
 function formatMoney(value: number | string, currency?: string) {
   const amount = Number(value ?? 0).toLocaleString(locale.value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return currency ? `${amount} ${currency}` : amount;
+}
+
+function quoteRankPrice(quote: QuoteHistoryItem) {
+  const converted = Number(quote.priceInBase);
+  if (Number.isFinite(converted) && converted > 0) return converted;
+  return Number(quote.totalPrice ?? 0);
+}
+
+function formatConvertedMoney(quote: QuoteHistoryItem) {
+  return formatMoney(quoteRankPrice(quote), quote.baseCurrency || quote.currency);
+}
+
+function formatExchangeRate(quote: QuoteHistoryItem) {
+  const from = quote.currency;
+  const to = quote.baseCurrency || quote.currency;
+  const rate = Number(quote.exchangeRate ?? (from === to ? 1 : NaN));
+  if (!from || !to || !Number.isFinite(rate)) return '-';
+  const suffix = quote.exchangeRateDate ? ` · ${quote.exchangeRateDate}` : '';
+  return `1 ${from} = ${rate.toLocaleString(locale.value, { maximumFractionDigits: 6 })} ${to}${suffix}`;
 }
 
 function fmtDate(value?: string) {
@@ -173,6 +196,20 @@ const HistoryTable = defineComponent({
           align: 'right',
         }, {
           default: ({ row }: { row: QuoteHistoryItem }) => h('span', { class: 'history-price' }, formatMoney(row.totalPrice, row.currency)),
+        }),
+        h(ElTableColumn, {
+          label: t('quote.convertedQuote'),
+          minWidth: 170,
+          align: 'right',
+        }, {
+          default: ({ row }: { row: QuoteHistoryItem }) => h('span', { class: 'history-price' }, formatConvertedMoney(row)),
+        }),
+        h(ElTableColumn, {
+          label: t('quote.exchangeRate'),
+          minWidth: 170,
+          showOverflowTooltip: true,
+        }, {
+          default: ({ row }: { row: QuoteHistoryItem }) => formatExchangeRate(row),
         }),
         h(ElTableColumn, {
           label: t('common.status'),

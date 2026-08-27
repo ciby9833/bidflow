@@ -35,7 +35,7 @@ export type ExportOptions = {
 const DEFAULT_FIELDS = [
   'roundNo', 'lotNo', 'lotTitle', 'itemLabel', 'rank',
   'quoteNo', 'supplierBusinessId', 'supplierName',
-  'totalPrice', 'currency', 'version', 'submittedAt',
+  'totalPrice', 'currency', 'priceInBase', 'baseCurrency', 'exchangeRate', 'exchangeRateDate', 'version', 'submittedAt',
 ];
 
 const COLLATION_BY_LOCALE: Record<SupportedLocale, string> = {
@@ -59,6 +59,12 @@ const COLOR = {
 
 type ColumnKind = 'rank' | 'price' | 'number' | 'text';
 interface ReviewColumn { id: string; field: string; header: string; kind: ColumnKind; }
+
+function quoteRankPrice(quote: { priceInBase?: number | string | null; totalPrice: number | string }) {
+  const converted = Number(quote.priceInBase);
+  if (Number.isFinite(converted) && converted > 0) return converted;
+  return Number(quote.totalPrice);
+}
 
 @Injectable()
 export class ExportService {
@@ -107,11 +113,11 @@ export class ExportService {
     const supplierMap = await this.buildSupplierMap(tenderId);
     const lineQuotes = await this.lineQuoteRepo.find({
       where: { tenderId, isLatest: true, isValid: true },
-      order: { roundNo: 'ASC', totalPrice: 'ASC' },
+      order: { roundNo: 'ASC', submittedAt: 'ASC' },
     });
     const latestLotQuotes = await this.quoteRepo.find({
       where: { tenderId, isLatest: true, isValid: true },
-      order: { totalPrice: 'ASC' },
+      order: { submittedAt: 'ASC' },
     });
     const filteredLineQuotes = targetRounds
       ? lineQuotes.filter((quote) => targetRounds.includes(quote.roundNo))
@@ -300,7 +306,7 @@ export class ExportService {
   private buildReviewColumns(fields: string[], colLabelMap: Map<string, string>): ReviewColumn[] {
     const kindOf = (field: string): ColumnKind => {
       if (field === 'rank') return 'rank';
-      if (field === 'totalPrice') return 'price';
+      if (field === 'totalPrice' || field === 'priceInBase' || field === 'exchangeRate') return 'price';
       if (field === 'roundNo' || field === 'version') return 'number';
       return 'text';
     };
@@ -425,7 +431,7 @@ export class ExportService {
     const rankMap = new Map<string, number>();
     for (const group of groups.values()) {
       [...group]
-        .sort((a, b) => Number(a.quote.totalPrice) - Number(b.quote.totalPrice))
+        .sort((a, b) => quoteRankPrice(a.quote) - quoteRankPrice(b.quote))
         .forEach((row, index) => rankMap.set(row.quote.id, index + 1));
     }
     return rows.map((row) => ({ ...row, rank: rankMap.get(row.quote.id) ?? 0 }));
@@ -449,6 +455,10 @@ export class ExportService {
       case 'supplierEmail': return mode === 'masked' ? '' : supplier?.contactEmail ?? '';
       case 'totalPrice': return Number(quote.totalPrice);
       case 'currency': return quote.currency;
+      case 'priceInBase': return quoteRankPrice(quote);
+      case 'baseCurrency': return quote.baseCurrency ?? '';
+      case 'exchangeRate': return quote.exchangeRate === null || quote.exchangeRate === undefined ? '' : Number(quote.exchangeRate);
+      case 'exchangeRateDate': return quote.exchangeRateDate ?? '';
       case 'version': return quote.version;
       case 'submittedAt': return this.fmtDate(quote.submittedAt);
       case 'remark': return quote.remark ?? '';

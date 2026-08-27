@@ -83,6 +83,7 @@
       "cooldown_active": "Cooldown active. Please try again later.",
       "rebid_limit_reached": "Maximum number of rebids reached.",
       "min_decrement_fail": "Minimum decrement not met.",
+      "exchange_rate_unavailable": "Exchange rate is unavailable. Please try again later or choose another currency.",
       "version_conflict": "Quote version conflict. Please refresh and retry.",
       "concurrent_submit": "Duplicate submission.",
       "required_field_missing": "Required field is missing."
@@ -141,6 +142,10 @@
       "unit": "Unit",
       "budgetAmount": "Budget",
       "currency": "Currency",
+      "baseCurrency": "Base Currency",
+      "priceInBase": "Converted Price",
+      "exchangeRate": "Exchange Rate",
+      "exchangeRateDate": "Rate Date",
       "itemLabel": "Item / Line",
       "rank": "Rank",
       "quoteNo": "Quote No.",

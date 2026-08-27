@@ -83,6 +83,7 @@
       "cooldown_active": "Đang chờ đợi. Vui lòng thử lại sau.",
       "rebid_limit_reached": "Đã đạt đến số lần đặt giá lại tối đa.",
       "min_decrement_fail": "Không đáp ứng mức giảm tối thiểu.",
+      "exchange_rate_unavailable": "Không thể lấy tỷ giá. Vui lòng thử lại sau hoặc chọn loại tiền khác.",
       "version_conflict": "Xung đột phiên bản báo giá. Vui lòng làm mới và thử lại.",
       "concurrent_submit": "Gửi trùng lặp.",
       "required_field_missing": "Thiếu trường bắt buộc."
@@ -141,6 +142,10 @@
       "unit": "Đơn vị",
       "budgetAmount": "Ngân sách",
       "currency": "Tiền tệ",
+      "baseCurrency": "Tiền tệ cơ sở",
+      "priceInBase": "Giá quy đổi",
+      "exchangeRate": "Tỷ giá",
+      "exchangeRateDate": "Ngày tỷ giá",
       "itemLabel": "Mục / Dòng",
       "rank": "Xếp hạng",
       "quoteNo": "Số báo giá",

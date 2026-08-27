@@ -52,6 +52,12 @@ export class Quote {
   @Column({ name: 'exchange_rate', type: 'numeric', precision: 16, scale: 6, nullable: true })
   exchangeRate?: number;
 
+  @Column({ name: 'exchange_rate_date', type: 'date', nullable: true })
+  exchangeRateDate?: string;
+
+  @Column({ name: 'exchange_rate_source', type: 'varchar', length: 60, nullable: true })
+  exchangeRateSource?: string;
+
   @Column({ name: 'base_currency', type: 'char', length: 3, nullable: true })
   baseCurrency?: string;
 

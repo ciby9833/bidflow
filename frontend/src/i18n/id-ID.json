@@ -83,6 +83,7 @@
   },
   "currency": {
     "idr": "IDR Rupiah Indonesia",
+    "vnd": "VND Dong Vietnam",
     "usd": "USD Dolar AS",
     "cny": "CNY Yuan China"
   },
@@ -726,6 +727,9 @@
     "myQuoteHistory": "Riwayat Penawaran Saya",
     "versionColumn": "Versi",
     "quoteAmount": "Penawaran",
+    "convertedQuote": "Penawaran Terkonversi",
+    "exchangeRate": "Kurs",
+    "exchangeRateDate": "Tanggal Kurs",
     "current": "Saat Ini",
     "history": "Riwayat",
     "submitTime": "Dikirim Pada",

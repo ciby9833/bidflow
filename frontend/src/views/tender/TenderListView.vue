@@ -71,6 +71,7 @@
             <label>{{ t('common.currency') }}</label>
             <el-select v-model="filters.baseCurrency" clearable :placeholder="t('common.allCurrencies')">
               <el-option value="IDR" :label="t('currency.idr')" />
+              <el-option value="VND" :label="t('currency.vnd')" />
               <el-option value="USD" :label="t('currency.usd')" />
               <el-option value="CNY" :label="t('currency.cny')" />
             </el-select>

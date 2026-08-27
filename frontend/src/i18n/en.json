@@ -83,6 +83,7 @@
   },
   "currency": {
     "idr": "IDR Indonesian Rupiah",
+    "vnd": "VND Vietnamese Dong",
     "usd": "USD US Dollar",
     "cny": "CNY Chinese Yuan"
   },
@@ -726,6 +727,9 @@
     "myQuoteHistory": "My Quote History",
     "versionColumn": "Version",
     "quoteAmount": "Quote",
+    "convertedQuote": "Converted Quote",
+    "exchangeRate": "Exchange Rate",
+    "exchangeRateDate": "Rate Date",
     "current": "Current",
     "history": "History",
     "submitTime": "Submitted At",

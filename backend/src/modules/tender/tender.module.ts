@@ -18,6 +18,7 @@ import { RankingSnapshot } from '../quote/ranking-snapshot.entity';
 import { Supplier } from '../supplier/supplier.entity';
 import { User } from '../auth/user.entity';
 import { SupplierAccount } from '../auth/supplier-account.entity';
+import { Branch } from '../organization/branch.entity';
 import { SupplierTenderController, TenderController } from './tender.controller';
 import { TenderService } from './tender.service';
 import { provideTenantRepository } from '../../shared/tenant/tenant-repository';
@@ -28,7 +29,7 @@ import { RedisService } from '../../shared/config/redis.config';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, Supplier, User, SupplierAccount, AuditLog]),
+    TypeOrmModule.forFeature([Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, Supplier, User, SupplierAccount, Branch, AuditLog]),
     MailModule,
   ],
   controllers: [TenderController, SupplierTenderController],

@@ -249,7 +249,7 @@
                   <template #default="{ row }">{{ t('tenderDetail.supplierCount', { count: row.quoteStats?.quotedSupplierCount ?? 0 }) }}</template>
                 </el-table-column>
                 <el-table-column :label="t('tenderDetail.minPrice')" width="130" fixed="right">
-                  <template #default="{ row }">{{ formatReviewPrice(row.quoteStats?.minPrice, firstCurrency(row.latestQuotes)) }}</template>
+                  <template #default="{ row }">{{ formatReviewPrice(row.quoteStats?.minPrice, reviewBaseCurrency(row.latestQuotes)) }}</template>
                 </el-table-column>
               </el-table>
               <button v-else type="button" class="lot-review-row" @click="selectLotReview(lot)">
@@ -267,9 +267,9 @@
               </div>
               <div class="review-summary">
                 <div><span>{{ t('tenderDetail.quoted') }}</span><strong>{{ t('tenderDetail.supplierCount', { count: activeReview.quoteStats?.quotedSupplierCount ?? 0 }) }}</strong></div>
-                <div><span>{{ t('tenderDetail.minPrice') }}</span><strong>{{ formatReviewPrice(activeReview.quoteStats?.minPrice, firstCurrency(activeReview.latestQuotes)) }}</strong></div>
-                <div><span>{{ t('tenderDetail.maxPrice') }}</span><strong>{{ formatReviewPrice(activeReview.quoteStats?.maxPrice, firstCurrency(activeReview.latestQuotes)) }}</strong></div>
-                <div><span>{{ t('tenderDetail.avgPrice') }}</span><strong>{{ formatReviewPrice(activeReview.quoteStats?.avgPrice, firstCurrency(activeReview.latestQuotes)) }}</strong></div>
+                <div><span>{{ t('tenderDetail.minPrice') }}</span><strong>{{ formatReviewPrice(activeReview.quoteStats?.minPrice, reviewBaseCurrency(activeReview.latestQuotes)) }}</strong></div>
+                <div><span>{{ t('tenderDetail.maxPrice') }}</span><strong>{{ formatReviewPrice(activeReview.quoteStats?.maxPrice, reviewBaseCurrency(activeReview.latestQuotes)) }}</strong></div>
+                <div><span>{{ t('tenderDetail.avgPrice') }}</span><strong>{{ formatReviewPrice(activeReview.quoteStats?.avgPrice, reviewBaseCurrency(activeReview.latestQuotes)) }}</strong></div>
               </div>
 
               <div v-if="activeReview.priceGroups?.length" class="price-groups">
@@ -298,6 +298,12 @@
                 </el-table-column>
                 <el-table-column :label="t('quote.quoteAmount')" width="150">
                   <template #default="{ row }">{{ formatReviewPrice(row.totalPrice, row.currency) }}</template>
+                </el-table-column>
+                <el-table-column :label="t('quote.convertedQuote')" width="170">
+                  <template #default="{ row }">{{ formatConvertedPrice(row) }}</template>
+                </el-table-column>
+                <el-table-column :label="t('quote.exchangeRate')" width="160">
+                  <template #default="{ row }">{{ formatExchangeRate(row) }}</template>
                 </el-table-column>
                 <el-table-column
                   v-for="col in activeReviewRequiredColumns"
@@ -356,6 +362,12 @@
                     <el-table-column prop="itemLabel" :label="t('tenderDetail.field.itemLabel')" min-width="220" show-overflow-tooltip />
                     <el-table-column :label="t('quote.quoteAmount')" width="150">
                       <template #default="{ row: quote }">{{ formatReviewPrice(quote.totalPrice, quote.currency) }}</template>
+                    </el-table-column>
+                    <el-table-column :label="t('quote.convertedQuote')" width="170">
+                      <template #default="{ row: quote }">{{ formatConvertedPrice(quote) }}</template>
+                    </el-table-column>
+                    <el-table-column :label="t('quote.exchangeRate')" width="160">
+                      <template #default="{ row: quote }">{{ formatExchangeRate(quote) }}</template>
                     </el-table-column>
                     <el-table-column
                       v-for="col in supplierQuoteColumns(row.quotes)"
@@ -487,6 +499,8 @@
           <el-descriptions-item :label="t('common.contact_email')">{{ selectedReviewQuote.supplier?.contactEmail || '—' }}</el-descriptions-item>
           <el-descriptions-item :label="t('tenderDetail.field.quoteNo')">{{ selectedReviewQuote.quoteNo }}</el-descriptions-item>
           <el-descriptions-item :label="t('tenderDetail.quoteAmount')">{{ formatReviewPrice(selectedReviewQuote.totalPrice, selectedReviewQuote.currency) }}</el-descriptions-item>
+          <el-descriptions-item :label="t('quote.convertedQuote')">{{ formatConvertedPrice(selectedReviewQuote) }}</el-descriptions-item>
+          <el-descriptions-item :label="t('quote.exchangeRate')">{{ formatExchangeRate(selectedReviewQuote) }}</el-descriptions-item>
           <el-descriptions-item :label="t('quote.versionColumn')">V{{ selectedReviewQuote.version }}</el-descriptions-item>
           <el-descriptions-item :label="t('quote.submitTime')">{{ fmtDate(selectedReviewQuote.submittedAt) }}</el-descriptions-item>
           <el-descriptions-item :label="t('quote.remark')">{{ selectedReviewQuote.remark || '—' }}</el-descriptions-item>
@@ -525,6 +539,12 @@
             </el-table-column>
             <el-table-column :label="t('quote.quoteAmount')" width="160">
               <template #default="{ row }">{{ formatReviewPrice(row.totalPrice, row.currency) }}</template>
+            </el-table-column>
+            <el-table-column :label="t('quote.convertedQuote')" width="170">
+              <template #default="{ row }">{{ formatConvertedPrice(row) }}</template>
+            </el-table-column>
+            <el-table-column :label="t('quote.exchangeRate')" width="160">
+              <template #default="{ row }">{{ formatExchangeRate(row) }}</template>
             </el-table-column>
             <el-table-column
               v-for="col in selectedReviewQuote.requiredColumns ?? []"
@@ -595,6 +615,10 @@ const defaultExportFields = [
   'supplierName',
   'totalPrice',
   'currency',
+  'priceInBase',
+  'baseCurrency',
+  'exchangeRate',
+  'exchangeRateDate',
   'version',
   'submittedAt',
 ];
@@ -648,6 +672,10 @@ const exportFieldOptions = computed(() => {
     { value: 'supplierEmail', label: t('common.contact_email') },
     { value: 'totalPrice', label: t('quote.quoteAmount') },
     { value: 'currency', label: t('common.currency') },
+    { value: 'priceInBase', label: t('quote.convertedQuote') },
+    { value: 'baseCurrency', label: t('tenderCreate.baseCurrency') },
+    { value: 'exchangeRate', label: t('quote.exchangeRate') },
+    { value: 'exchangeRateDate', label: t('quote.exchangeRateDate') },
     { value: 'version', label: t('quote.versionColumn') },
     { value: 'submittedAt', label: t('quote.submitTime') },
     { value: 'remark', label: t('quote.remark') },
@@ -686,14 +714,14 @@ const supplierReviews = computed(() => {
   }
   return Array.from(supplierMap.values())
     .map((item) => {
-      const prices = item.quotes.map((quote: any) => Number(quote.totalPrice)).filter((price: number) => Number.isFinite(price));
+      const prices = item.quotes.map((quote: any) => quoteRankPrice(quote)).filter((price: number) => Number.isFinite(price));
       return {
         ...item,
         quoteCount: item.quotes.length,
         totalAmount: prices.reduce((sum: number, price: number) => sum + price, 0),
         minPrice: prices.length ? Math.min(...prices) : null,
         maxPrice: prices.length ? Math.max(...prices) : null,
-        currency: item.quotes[0]?.currency || tender.value?.baseCurrency || 'IDR',
+        currency: item.quotes[0]?.baseCurrency || tender.value?.baseCurrency || 'IDR',
       };
     })
     .sort((a, b) => a.supplierName.localeCompare(b.supplierName));
@@ -904,9 +932,32 @@ function firstCurrency(quotes?: any[]) {
   return quotes?.[0]?.currency || tender.value?.baseCurrency || 'IDR';
 }
 
+function reviewBaseCurrency(quotes?: any[]) {
+  return quotes?.[0]?.baseCurrency || tender.value?.baseCurrency || firstCurrency(quotes);
+}
+
+function quoteRankPrice(quote: any) {
+  const converted = Number(quote?.priceInBase);
+  if (Number.isFinite(converted) && converted > 0) return converted;
+  return Number(quote?.totalPrice ?? 0);
+}
+
 function formatReviewPrice(value?: number | string | null, currency = 'IDR') {
   if (value === null || value === undefined || value === '') return '—';
   return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
+}
+
+function formatConvertedPrice(quote: any) {
+  return formatReviewPrice(quoteRankPrice(quote), quote?.baseCurrency || tender.value?.baseCurrency || quote?.currency || 'IDR');
+}
+
+function formatExchangeRate(quote: any) {
+  const from = quote?.currency;
+  const to = quote?.baseCurrency || tender.value?.baseCurrency;
+  const rate = Number(quote?.exchangeRate ?? (from && to && from === to ? 1 : NaN));
+  if (!from || !to || !Number.isFinite(rate)) return '—';
+  const suffix = quote?.exchangeRateDate ? ` · ${quote.exchangeRateDate}` : '';
+  return `1 ${from} = ${rate.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${to}${suffix}`;
 }
 
 function selectReviewLine(lot: any, line: any) {

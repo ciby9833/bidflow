@@ -62,9 +62,20 @@
           <h3>{{ t('quote.lineQuote') }}</h3>
           <p>{{ t('quote.lineQuoteDesc', { round: tender?.currentQuoteRound ?? 1 }) }}</p>
         </div>
-        <el-button :loading="loading" @click="load">
-          <el-icon><Refresh /></el-icon>{{ t('common.refresh') }}
-        </el-button>
+        <div class="line-head-actions">
+          <span class="line-currency-label">{{ t('quote.currency') }}</span>
+          <el-select v-model="lineCurrency" class="line-currency-select" :disabled="tender?.status !== 'open'">
+            <el-option
+              v-for="option in currencyOptions"
+              :key="option.value"
+              :value="option.value"
+              :label="option.label"
+            />
+          </el-select>
+          <el-button :loading="loading" @click="load">
+            <el-icon><Refresh /></el-icon>{{ t('common.refresh') }}
+          </el-button>
+        </div>
       </div>
       <el-table :data="lot.lines" border stripe class="line-quote-table">
         <el-table-column label="#" width="58" fixed>
@@ -114,7 +125,7 @@
             <span v-else class="muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column :label="t('quote.thisQuote')" width="300" fixed="right">
+        <el-table-column :label="t('quote.thisQuote')" width="310" fixed="right">
           <template #default="{ row }">
             <div v-if="lineState[row.id]" class="line-submit">
               <el-input-number
@@ -229,9 +240,12 @@
           </el-form-item>
           <el-form-item :label="t('quote.currency')" required>
             <el-select v-model="form.currency" style="width:100%">
-              <el-option value="IDR" :label="t('currency.idr')" />
-              <el-option value="USD" :label="t('currency.usd')" />
-              <el-option value="CNY" :label="t('currency.cny')" />
+              <el-option
+                v-for="option in currencyOptions"
+                :key="option.value"
+                :value="option.value"
+                :label="option.label"
+              />
             </el-select>
           </el-form-item>
         </div>
@@ -337,6 +351,7 @@ const attachments = ref<Array<{ key: string; name: string; size: number; mimeTyp
 const attachmentUploading = ref(false);
 
 const form = reactive({ totalPrice: 0, currency: 'IDR', remark: '' });
+const lineCurrency = ref('IDR');
 const lineState = reactive<Record<string, {
   price: number;
   currency: string;
@@ -355,6 +370,12 @@ const hasLineQuotes = computed(() => Boolean(lot.value?.lines?.length));
 const lineColumns = computed(() => lot.value?.uiSchema?.lineColumns ?? []);
 const supplierRequiredColumns = computed(() => lineColumns.value.filter((col: any) => Boolean(col.required)));
 const procurementLineColumns = computed(() => lineColumns.value.filter((col: any) => !col.required));
+const currencyOptions = computed(() => [
+  { value: 'IDR', label: t('currency.idr') },
+  { value: 'VND', label: t('currency.vnd') },
+  { value: 'USD', label: t('currency.usd') },
+  { value: 'CNY', label: t('currency.cny') },
+]);
 
 const quoteErrorKeys: Record<string, string> = {
   COOLDOWN_ACTIVE: 'error.quote.cooldown_active',
@@ -458,6 +479,7 @@ const rebidLimitReached = computed(() => {
 const localValidationMessage = computed(() => {
   if (rebidLimitReached.value) return '';
   if (!isRebid.value || !nextMaxPrice.value) return '';
+  if (form.currency !== myQuote.value?.currency) return '';
   if (Number(form.totalPrice) > nextMaxPrice.value) return t('quote.priceMustNotExceed', { amount: formatMoney(nextMaxPrice.value, form.currency) });
   return '';
 });
@@ -535,8 +557,9 @@ function getLineQuoteValidationMessage(lineId: string) {
   const state = lineState[lineId];
   const nextMax = getLineNextMaxPrice(lineId);
   if (!state?.quote || nextMax === null) return '';
+  if (lineCurrency.value !== state.quote.currency) return '';
   if (Number(state.price) > nextMax) {
-    return t('quote.minDecrementNotMetMax', { amount: formatMoney(nextMax, state.currency) });
+    return t('quote.minDecrementNotMetMax', { amount: formatMoney(nextMax, lineCurrency.value) });
   }
   return '';
 }
@@ -652,7 +675,7 @@ function ensureLineState(line: any) {
   if (!lineState[line.id]) {
     lineState[line.id] = {
       price: 0,
-      currency: lot.value?.budgetCurrency || tender.value?.baseCurrency || 'IDR',
+      currency: lineCurrency.value || lot.value?.budgetCurrency || tender.value?.baseCurrency || 'IDR',
       items: {},
       quote: null,
       ability: null,
@@ -683,7 +706,9 @@ async function refreshLineQuoteState(line: any, preserveDraft = true) {
       stopLineCooldown(line.id);
     }
     state.rank = rankRes.data.data;
-    state.currency = quote?.currency || lot.value?.budgetCurrency || tender.value?.baseCurrency || 'IDR';
+    if (!preserveDraft || !state.currency) {
+      state.currency = quote?.currency || lineCurrency.value || lot.value?.budgetCurrency || tender.value?.baseCurrency || 'IDR';
+    }
     if (!preserveDraft || !state.price) {
       state.price = quote ? Number(quote.totalPrice) : state.price;
     }
@@ -701,7 +726,9 @@ async function load() {
     const lotRes = await api.get(`/api/tenders/lots/${lotId}`);
     lot.value = lotRes.data.data;
     tender.value = lotRes.data.data.tender;
-    form.currency = lot.value?.budgetCurrency || tender.value?.baseCurrency || 'IDR';
+    const defaultCurrency = lot.value?.budgetCurrency || tender.value?.baseCurrency || 'IDR';
+    form.currency = defaultCurrency;
+    lineCurrency.value = defaultCurrency;
 
     await loadAttachments();
 
@@ -716,11 +743,18 @@ async function load() {
   }
 }
 
-async function loadLineQuoteState() {
+async function loadLineQuoteState(preserveCurrency = false) {
   const lines = lot.value?.lines ?? [];
   await Promise.all(lines.map(async (line: any) => {
     await refreshLineQuoteState(line, false);
   }));
+  if (!preserveCurrency) {
+    const firstQuotedLine = lines.find((line: any) => lineState[line.id]?.quote?.currency);
+    lineCurrency.value = firstQuotedLine ? lineState[firstQuotedLine.id].quote.currency : lineCurrency.value;
+  }
+  lines.forEach((line: any) => {
+    if (lineState[line.id]) lineState[line.id].currency = lineCurrency.value;
+  });
 }
 
 async function submitLineQuote(line: any) {
@@ -743,7 +777,7 @@ async function submitLineQuote(line: any) {
     return;
   }
   await ElMessageBox.confirm(
-    t('quote.confirmLineQuoteMessage', { amount: formatMoney(Number(state.price), state.currency) }),
+    t('quote.confirmLineQuoteMessage', { amount: formatMoney(Number(state.price), lineCurrency.value) }),
     t('quote.confirmLineQuote'),
     {
       type: 'warning',
@@ -755,12 +789,12 @@ async function submitLineQuote(line: any) {
   try {
     const res = await api.post(`/api/quotes/lines/${line.id}`, {
       totalPrice: state.price,
-      currency: state.currency,
+      currency: lineCurrency.value,
       items: state.items,
     });
     state.quote = res.data.data.quote;
     ElMessage.success(t('quote.lineSubmitted'));
-    await loadLineQuoteState();
+    await loadLineQuoteState(true);
   } catch (e: any) {
     const err = extractQuoteError(e);
     if (err?.code === 'COOLDOWN_ACTIVE') {
@@ -771,14 +805,14 @@ async function submitLineQuote(line: any) {
     if (err?.code === 'MIN_DECREMENT_FAIL') {
       const required = Number(err.detail?.required_price);
       ElMessage.error(Number.isFinite(required)
-        ? t('quote.minDecrementNotMetMax', { amount: formatMoney(required, state.currency) })
+        ? t('quote.minDecrementNotMetMax', { amount: formatMoney(required, lineCurrency.value) })
         : t('error.quote.min_decrement_fail'));
       await refreshLineQuoteState(line, true);
       return;
     }
     if (err?.code === 'REBID_LIMIT_REACHED') {
       ElMessage.error(t('quote.cannotRebid'));
-      await loadLineQuoteState();
+      await loadLineQuoteState(true);
       return;
     }
     if (err?.code === 'LINE_REQUIRED_FIELD_MISSING') {
@@ -1002,10 +1036,22 @@ onBeforeUnmount(() => {
   color: #64748b;
   font-size: 13px;
 }
+.line-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.line-currency-label {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.line-currency-select { width: 180px; }
 .line-quote-table { width: 100%; }
 .line-submit {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(120px, 1fr) auto;
   gap: 8px;
   align-items: center;
 }
@@ -1032,6 +1078,9 @@ onBeforeUnmount(() => {
 .form-alert { margin-bottom: 12px; }
 @media (max-width: 768px) {
   .quote-head { flex-direction: column; }
+  .line-panel-head { flex-direction: column; align-items: stretch; }
+  .line-head-actions { justify-content: space-between; }
+  .line-currency-select { width: 100%; }
   .form-grid { grid-template-columns: 1fr; }
 }
 </style>

@@ -83,6 +83,7 @@
   },
   "currency": {
     "idr": "IDR 印尼盾",
+    "vnd": "VND 越南盾",
     "usd": "USD 美元",
     "cny": "CNY 人民币"
   },
@@ -726,6 +727,9 @@
     "myQuoteHistory": "我的报价记录",
     "versionColumn": "版本",
     "quoteAmount": "报价",
+    "convertedQuote": "折算报价",
+    "exchangeRate": "汇率",
+    "exchangeRateDate": "汇率日期",
     "current": "当前",
     "history": "历史",
     "submitTime": "提交时间",

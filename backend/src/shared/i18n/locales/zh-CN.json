@@ -88,6 +88,7 @@
       "cooldown_active": "冷却中，请稍后再试",
       "rebid_limit_reached": "已达最大改价次数",
       "min_decrement_fail": "未达到最小降幅",
+      "exchange_rate_unavailable": "暂无法获取该币种汇率，请稍后再试或更换币种",
       "version_conflict": "报价版本冲突，请刷新后重试",
       "concurrent_submit": "请勿重复提交",
       "required_field_missing": "缺少必填字段"
@@ -146,6 +147,10 @@
       "unit": "单位",
       "budgetAmount": "预算金额",
       "currency": "币种",
+      "baseCurrency": "统一币种",
+      "priceInBase": "折算报价",
+      "exchangeRate": "汇率",
+      "exchangeRateDate": "汇率日期",
       "itemLabel": "事项/线路",
       "rank": "排名",
       "quoteNo": "报价编号",

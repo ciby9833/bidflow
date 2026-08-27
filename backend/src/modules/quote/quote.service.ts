@@ -64,6 +64,10 @@ function rebidCountFromQuoteCount(quoteCount: number): number {
   return Math.max(0, quoteCount - 1);
 }
 
+function isoDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
 // Redis key schema per §4.1
 const KEYS = {
   rank: (lotId: string) => `lot:${lotId}:rank`,
@@ -103,6 +107,7 @@ export class QuoteService {
 
   // ── 标包级投标附件（盖章报价单等，按 招标+标包+供应商+轮次 一份，最多 5 个）──
   private static readonly MAX_QUOTE_ATTACHMENTS = 5;
+  private static readonly FRANKFURTER_API = 'https://api.frankfurter.dev';
 
   // ── 机构锚点 ──────────────────────────────────────────────────────────────
   // 报价域的所有操作都锚定在 lot 或 line 上，后续查询的 tenderId / lotId 均由锚点派生。
@@ -185,6 +190,63 @@ export class QuoteService {
     }));
   }
 
+  private normalizeCurrency(currency: string) {
+    return String(currency || '').trim().toUpperCase();
+  }
+
+  private quoteRankPrice(quote: { priceInBase?: number | string | null; totalPrice: number | string }) {
+    const converted = Number(quote.priceInBase);
+    if (Number.isFinite(converted) && converted > 0) return converted;
+    return Number(quote.totalPrice);
+  }
+
+  private async resolveConversion(totalPrice: number, currency: string, baseCurrency: string, at: Date) {
+    const fromCurrency = this.normalizeCurrency(currency);
+    const toCurrency = this.normalizeCurrency(baseCurrency);
+    const exchangeRateDate = isoDate(at);
+
+    if (!fromCurrency || !toCurrency) throw new BadRequestException('error.quote.currency_required');
+    if (fromCurrency === toCurrency) {
+      return {
+        currency: fromCurrency,
+        baseCurrency: toCurrency,
+        exchangeRate: 1,
+        exchangeRateDate,
+        exchangeRateSource: 'same_currency',
+        priceInBase: Number(totalPrice),
+      };
+    }
+
+    const url = `${QuoteService.FRANKFURTER_API}/v2/rate/${encodeURIComponent(fromCurrency)}/${encodeURIComponent(toCurrency)}?date=${exchangeRateDate}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json().catch(() => null) as { rate?: number; date?: string; message?: string } | null;
+      if (!res.ok || !data?.rate) {
+        throw new BadRequestException({
+          code: 'EXCHANGE_RATE_UNAVAILABLE',
+          message_key: 'error.quote.exchange_rate_unavailable',
+          detail: { from_currency: fromCurrency, to_currency: toCurrency, date: exchangeRateDate, provider_message: data?.message },
+        });
+      }
+      const rate = Number(data.rate);
+      return {
+        currency: fromCurrency,
+        baseCurrency: toCurrency,
+        exchangeRate: rate,
+        exchangeRateDate: data.date ?? exchangeRateDate,
+        exchangeRateSource: 'frankfurter',
+        priceInBase: Math.round(Number(totalPrice) * rate * 10000) / 10000,
+      };
+    } catch (e) {
+      if (e instanceof BadRequestException) throw e;
+      throw new BadRequestException({
+        code: 'EXCHANGE_RATE_UNAVAILABLE',
+        message_key: 'error.quote.exchange_rate_unavailable',
+        detail: { from_currency: fromCurrency, to_currency: toCurrency, date: exchangeRateDate },
+      });
+    }
+  }
+
   // ── §4.2 Write Path ─────────────────────────────────────────────────────
   async submit(scope: BranchScope, data: {
     lotId: string;
@@ -248,6 +310,7 @@ export class QuoteService {
       // ⑤ Rebid count check
       const existing = await this.quoteRepo.findOne({ where: { lotId, supplierId, isLatest: true } });
       const isRebid = !!existing;
+      const conversion = await this.resolveConversion(data.totalPrice, data.currency, tender.baseCurrency, now);
 
       if (isRebid) {
         const quoteCount = await this.quoteRepo.count({ where: { lotId, supplierId } });
@@ -262,13 +325,18 @@ export class QuoteService {
 
         // ⑥ Min decrement check
         const minPct = Number(tender.minDecrementPct);
-        const lastPrice = Number(existing.totalPrice);
+        const lastPrice = this.quoteRankPrice(existing);
         const maxAllowed = lastPrice * (1 - minPct / 100);
-        if (data.totalPrice > maxAllowed) {
+        if (conversion.priceInBase > maxAllowed) {
           throw new BadRequestException({
             code: 'MIN_DECREMENT_FAIL',
             message_key: 'error.quote.min_decrement_fail',
-            detail: { required_price: maxAllowed },
+            detail: {
+              required_price: Math.floor((maxAllowed / conversion.exchangeRate) * 100) / 100,
+              required_price_base: maxAllowed,
+              base_currency: conversion.baseCurrency,
+              exchange_rate: conversion.exchangeRate,
+            },
           });
         }
       }
@@ -296,9 +364,12 @@ export class QuoteService {
           version: existing ? existing.version + 1 : 1,
           isLatest: true,
           totalPrice: data.totalPrice,
-          currency: data.currency,
-          baseCurrency: tender.baseCurrency,
-          priceInBase: data.currency === tender.baseCurrency ? data.totalPrice : undefined,
+          currency: conversion.currency,
+          exchangeRate: conversion.exchangeRate,
+          exchangeRateDate: conversion.exchangeRateDate,
+          exchangeRateSource: conversion.exchangeRateSource,
+          baseCurrency: conversion.baseCurrency,
+          priceInBase: conversion.priceInBase,
           lotSchemaVersion: lot.schemaVersion,
           items: data.items,
           remark: data.remark,
@@ -309,10 +380,17 @@ export class QuoteService {
       });
 
       // ⑧ Redis write
-      const price = Number(data.totalPrice);
+      const price = Number(conversion.priceInBase);
       await this.redis.zadd(KEYS.rank(lotId), price, supplierId);
       await this.redis.hset(KEYS.latest(lotId), supplierId, JSON.stringify({
-        version: newQuote.version, totalPrice: price, currency: data.currency, submittedAt: newQuote.submittedAt,
+        version: newQuote.version,
+        totalPrice: Number(data.totalPrice),
+        currency: conversion.currency,
+        baseCurrency: conversion.baseCurrency,
+        exchangeRate: conversion.exchangeRate,
+        exchangeRateDate: conversion.exchangeRateDate,
+        priceInBase: price,
+        submittedAt: newQuote.submittedAt,
       }));
       await this.redis.set(KEYS.cooldown(lotId, supplierId), '1', tender.cooldownSeconds);
 
@@ -326,13 +404,13 @@ export class QuoteService {
       const rank = await this.redis.zrank(KEYS.rank(lotId), supplierId);
       const total = await this.redis.zcard(KEYS.rank(lotId));
       await this.redis.publish(KEYS.channel(lotId), JSON.stringify({
-        type: 'rank_update', supplierId, rank, total, price,
+        type: 'rank_update', supplierId, rank, total, price, baseCurrency: conversion.baseCurrency,
       }));
 
       await this.audit.log(ctx, AuditEntityType.QUOTE, newQuote.id,
         isRebid ? AuditAction.QUOTE_REBID : AuditAction.QUOTE_SUBMIT,
         existing ? { price: existing.totalPrice, version: existing.version } : undefined,
-        { price: newQuote.totalPrice, version: newQuote.version, quoteNo: newQuote.quoteNo },
+        { price: newQuote.totalPrice, priceInBase: newQuote.priceInBase, baseCurrency: newQuote.baseCurrency, version: newQuote.version, quoteNo: newQuote.quoteNo },
       );
 
       return { quote: newQuote, idempotent: false, idempotencyKey };
@@ -412,6 +490,7 @@ export class QuoteService {
 
       const existing = await this.lineQuoteRepo.findOne({ where: { lineId, roundNo, supplierId, isLatest: true } });
       const isRebid = !!existing;
+      const conversion = await this.resolveConversion(data.totalPrice, data.currency, tender.baseCurrency, now);
 
       if (isRebid) {
         const quoteCount = await this.lineQuoteRepo.count({ where: { lineId, roundNo, supplierId } });
@@ -425,13 +504,18 @@ export class QuoteService {
         }
 
         const minPct = Number(tender.minDecrementPct);
-        const lastPrice = Number(existing.totalPrice);
+        const lastPrice = this.quoteRankPrice(existing);
         const maxAllowed = lastPrice * (1 - minPct / 100);
-        if (data.totalPrice > maxAllowed) {
+        if (conversion.priceInBase > maxAllowed) {
           throw new BadRequestException({
             code: 'MIN_DECREMENT_FAIL',
             message_key: 'error.quote.min_decrement_fail',
-            detail: { required_price: maxAllowed },
+            detail: {
+              required_price: Math.floor((maxAllowed / conversion.exchangeRate) * 100) / 100,
+              required_price_base: maxAllowed,
+              base_currency: conversion.baseCurrency,
+              exchange_rate: conversion.exchangeRate,
+            },
           });
         }
       }
@@ -458,9 +542,12 @@ export class QuoteService {
           version: existing ? existing.version + 1 : 1,
           isLatest: true,
           totalPrice: data.totalPrice,
-          currency: data.currency,
-          baseCurrency: tender.baseCurrency,
-          priceInBase: data.currency === tender.baseCurrency ? data.totalPrice : undefined,
+          currency: conversion.currency,
+          exchangeRate: conversion.exchangeRate,
+          exchangeRateDate: conversion.exchangeRateDate,
+          exchangeRateSource: conversion.exchangeRateSource,
+          baseCurrency: conversion.baseCurrency,
+          priceInBase: conversion.priceInBase,
           lineSchemaVersion: line.schemaVersion,
           items: data.items,
           remark: data.remark,
@@ -470,10 +557,17 @@ export class QuoteService {
         return em.save(quote);
       });
 
-      const price = Number(data.totalPrice);
+      const price = Number(conversion.priceInBase);
       await this.redis.zadd(KEYS.lineRank(lineId, roundNo), price, supplierId);
       await this.redis.hset(KEYS.lineLatest(lineId, roundNo), supplierId, JSON.stringify({
-        version: newQuote.version, totalPrice: price, currency: data.currency, submittedAt: newQuote.submittedAt,
+        version: newQuote.version,
+        totalPrice: Number(data.totalPrice),
+        currency: conversion.currency,
+        baseCurrency: conversion.baseCurrency,
+        exchangeRate: conversion.exchangeRate,
+        exchangeRateDate: conversion.exchangeRateDate,
+        priceInBase: price,
+        submittedAt: newQuote.submittedAt,
       }));
       await this.redis.set(KEYS.lineCooldown(lineId, roundNo, supplierId), '1', tender.cooldownSeconds);
       if (isRebid) {
@@ -484,7 +578,7 @@ export class QuoteService {
       await this.audit.log(ctx, AuditEntityType.QUOTE, newQuote.id,
         isRebid ? AuditAction.QUOTE_REBID : AuditAction.QUOTE_SUBMIT,
         existing ? { price: existing.totalPrice, version: existing.version, lineId, roundNo } : undefined,
-        { price: newQuote.totalPrice, version: newQuote.version, quoteNo: newQuote.quoteNo, lineId, roundNo },
+        { price: newQuote.totalPrice, priceInBase: newQuote.priceInBase, baseCurrency: newQuote.baseCurrency, version: newQuote.version, quoteNo: newQuote.quoteNo, lineId, roundNo },
       );
 
       return { quote: newQuote, idempotent: false, idempotencyKey };
@@ -502,9 +596,9 @@ export class QuoteService {
     if (supplierId) where.supplierId = supplierId;
     const quotes = await this.lineQuoteRepo.find({
       where,
-      order: { totalPrice: 'ASC', submittedAt: 'ASC' },
+      order: { submittedAt: 'ASC' },
     });
-    return this.withSupplierSummary(quotes);
+    return this.withSupplierSummary(quotes.sort((a, b) => this.quoteRankPrice(a) - this.quoteRankPrice(b)));
   }
 
   async getLineQuoteHistory(scope: BranchScope, lineId: string, supplierId: string, roundNo?: number) {
@@ -720,11 +814,11 @@ export class QuoteService {
     await this.requireLot(scope, lotId);
     const quotes = await this.quoteRepo.find({
       where: { lotId, isLatest: true, isValid: true },
-      order: { totalPrice: 'ASC' },
+      order: { submittedAt: 'ASC' },
     });
     await this.redis.rebuildLotRanking(lotId, quotes.map((q) => ({
       supplierId: q.supplierId,
-      price: Number(q.totalPrice),
+      price: this.quoteRankPrice(q),
     })));
     return quotes.length;
   }
@@ -735,14 +829,19 @@ export class QuoteService {
 
     const quotes = await this.quoteRepo.find({
       where: { lotId, isLatest: true, isValid: true },
-      order: { totalPrice: 'ASC' },
+      order: { submittedAt: 'ASC' },
     });
+    const rankedQuotes = quotes.sort((a, b) => this.quoteRankPrice(a) - this.quoteRankPrice(b));
 
-    const snapshotData = quotes.map((q, i) => ({
+    const snapshotData = rankedQuotes.map((q, i) => ({
       rank: i + 1,
       supplierId: q.supplierId,
       totalPrice: Number(q.totalPrice),
       currency: q.currency,
+      baseCurrency: q.baseCurrency,
+      exchangeRate: q.exchangeRate === undefined || q.exchangeRate === null ? undefined : Number(q.exchangeRate),
+      exchangeRateDate: q.exchangeRateDate,
+      priceInBase: this.quoteRankPrice(q),
       version: q.version,
       submittedAt: q.submittedAt.toISOString(),
     }));
@@ -757,8 +856,8 @@ export class QuoteService {
     if (supplierId) await this.ensureSupplierApproved(supplierId);
     const where: any = { lotId, isLatest: true };
     if (supplierId) where.supplierId = supplierId;
-    const quotes = await this.quoteRepo.find({ where, order: { totalPrice: 'ASC' } });
-    return this.withSupplierSummary(quotes);
+    const quotes = await this.quoteRepo.find({ where, order: { submittedAt: 'ASC' } });
+    return this.withSupplierSummary(quotes.sort((a, b) => this.quoteRankPrice(a) - this.quoteRankPrice(b)));
   }
 
   async getQuoteHistory(scope: BranchScope, lotId: string, supplierId: string) {

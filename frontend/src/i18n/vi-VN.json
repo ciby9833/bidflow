@@ -83,6 +83,7 @@
   },
   "currency": {
     "idr": "IDR Rupiah Indonesia",
+    "vnd": "VND Đồng Việt Nam",
     "usd": "USD Đô la Mỹ",
     "cny": "Nhân dân tệ Trung Quốc"
   },
@@ -726,6 +727,9 @@
     "myQuoteHistory": "Lịch sử báo giá của tôi",
     "versionColumn": "Phiên bản",
     "quoteAmount": "Báo giá",
+    "convertedQuote": "Báo giá quy đổi",
+    "exchangeRate": "Tỷ giá",
+    "exchangeRateDate": "Ngày tỷ giá",
     "current": "Hiện tại",
     "history": "Lịch sử",
     "submitTime": "Đã gửi tại",

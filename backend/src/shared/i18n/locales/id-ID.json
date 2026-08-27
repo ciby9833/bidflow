@@ -83,6 +83,7 @@
       "cooldown_active": "Sedang masa cooldown. Coba lagi nanti.",
       "rebid_limit_reached": "Batas perubahan harga tercapai.",
       "min_decrement_fail": "Penurunan minimum tidak terpenuhi.",
+      "exchange_rate_unavailable": "Kurs belum tersedia. Coba lagi nanti atau pilih mata uang lain.",
       "version_conflict": "Konflik versi penawaran. Silakan segarkan halaman.",
       "concurrent_submit": "Pengiriman duplikat.",
       "required_field_missing": "Kolom wajib belum diisi."
@@ -141,6 +142,10 @@
       "unit": "Satuan",
       "budgetAmount": "Anggaran",
       "currency": "Mata Uang",
+      "baseCurrency": "Mata Uang Dasar",
+      "priceInBase": "Harga Terkonversi",
+      "exchangeRate": "Kurs",
+      "exchangeRateDate": "Tanggal Kurs",
       "itemLabel": "Item / Baris",
       "rank": "Peringkat",
       "quoteNo": "No. Penawaran",

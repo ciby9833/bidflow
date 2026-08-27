@@ -12,6 +12,7 @@
     "migration:revert": "typeorm migration:revert -d dist/shared/config/typeorm.config.js",
     "suppliers:approve": "node scripts/approve-suppliers.js",
     "suppliers:fix-tender-visibility": "node scripts/fix-supplier-tender-visibility.js",
+    "quotes:backfill-currency": "node scripts/backfill-quote-currency-conversions.js",
     "tenders:invite-approved": "node scripts/backfill-selected-tender-invitations.js",
     "lint": "eslint src --ext .ts",
     "test": "jest",
