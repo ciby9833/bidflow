@@ -33,6 +33,7 @@ export interface BranchAccess {
   branchCode: string;
   branchName: string;
   branchType: 'HQ' | 'BRANCH';
+  currency?: string;
   role?: string;
 }
 
@@ -61,18 +62,28 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function applyAuthSession(session: {
-    accessToken: string;
-    user: AuthUser;
+    accessToken?: string;
+    user?: AuthUser;
+    requiresBranchSelection?: boolean;
+    selectionToken?: string;
     scopes?: string[];
     redirect?: string;
     branches?: BranchAccess[];
     activeBranchId?: string;
   }, redirectOverride?: string) {
+    // Google sign-in and password login must both handle the restricted selection response.
+    if (session.requiresBranchSelection && session.selectionToken) {
+      pendingSelection.value = { selectionToken: session.selectionToken, branches: session.branches ?? [] };
+      router.replace('/select-branch');
+      return;
+    }
+    if (!session.accessToken || !session.user) throw new Error('invalid auth session');
     token.value = session.accessToken;
     user.value = session.user;
     scopes.value = session.scopes ?? [];
     branches.value = session.branches ?? [];
     activeBranchId.value = session.activeBranchId ?? null;
+    isHq.value = activeBranch.value?.branchType === 'HQ';
     localStorage.setItem('token', session.accessToken);
     router.replace(redirectOverride ?? session.redirect ?? '/hall');
   }
@@ -150,7 +161,9 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('token', d.accessToken);
     branches.value = d.branches ?? [];
     activeBranchId.value = d.activeBranchId ?? null;
-    window.location.reload();
+    // Detail URLs and mobile back stacks belong to the previous institution.
+    sessionStorage.removeItem('bidflow:mobile:tabState');
+    window.location.replace(window.location.pathname.startsWith('/m/') ? '/m/hall' : '/hall');
   }
 
   /** 用受限令牌完成机构选择，换取正式会话 */

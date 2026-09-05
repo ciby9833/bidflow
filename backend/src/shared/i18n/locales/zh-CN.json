@@ -53,9 +53,14 @@
       "only_pending_or_approved_can_request_supplement": "仅待审核或已通过可补充材料",
       "self_registration_branch_ambiguous": "存在多个国家机构，无法判断自助注册供应商的归属。请先为公开门户配置机构入口。",
       "registration_branch_required": "请选择要注册的国家机构",
-      "lookup_key_required": "请输入商务编号或税号"
+      "lookup_key_required": "请输入商务编号或税号",
+      "invalid_country": "请选择有效的公司注册国家／地区代码"
     },
     "tender": {
+      "deadline_state": "当前招标状态不允许延期或重新开放",
+      "deadline_conflict": "招标或轮次已变更，请刷新后重试",
+      "deadline_extension_only": "新截止时间必须晚于当前时间、原截止时间及开始时间",
+      "deadline_input": "请填写有效的截止时间、调整原因和供应商公告",
       "not_found": "招标不存在",
       "invalid_status_transition": "当前状态不允许该操作",
       "notification_resend_in_progress": "该招标正在补发邮件，请勿重复操作",
@@ -89,6 +94,8 @@
       "rebid_limit_reached": "已达最大改价次数",
       "min_decrement_fail": "未达到最小降幅",
       "exchange_rate_unavailable": "暂无法获取该币种汇率，请稍后再试或更换币种",
+      "currency_locked": "本轮报价币种已锁定，请使用本轮首次报价选择的币种",
+      "currency_history_inconsistent": "本轮历史报价存在多个币种，请联系管理员处理",
       "version_conflict": "报价版本冲突，请刷新后重试",
       "concurrent_submit": "请勿重复提交",
       "required_field_missing": "缺少必填字段"

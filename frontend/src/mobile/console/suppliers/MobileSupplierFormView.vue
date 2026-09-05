@@ -6,6 +6,10 @@
 -->
 <template>
   <main class="supplier-form" v-loading="loading">
+    <el-form label-position="top">
+      <TargetBranchSelect v-if="!isEdit" v-model="form.branchId" />
+      <SupplierCountrySelect v-model="form.countryCode" :branch-id="form.branchId" :auto-default="!isEdit" />
+    </el-form>
     <section class="group">
       <label><span>公司全称</span><input v-model.trim="form.legalName" placeholder="请输入" /></label>
       <label><span>简称</span><input v-model.trim="form.shortName" placeholder="请输入" /></label>
@@ -25,18 +29,19 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { api } from '../../../composables/useApi';
+import TargetBranchSelect from '../../../components/TargetBranchSelect.vue';
+import SupplierCountrySelect from '../../../components/SupplierCountrySelect.vue';
 
 const route = useRoute();
 const router = useRouter();
 const isEdit = computed(() => route.path.endsWith('/edit'));
 const loading = ref(false);
 const saving = ref(false);
-// 当前供应商主数据只开放印尼，H5 表单不展示国家输入；未来多国家开放时再恢复选择器。
-const FIXED_SUPPLIER_COUNTRY_CODE = 'ID';
 const form = reactive({
+  branchId: '',
   legalName: '',
   shortName: '',
-  countryCode: FIXED_SUPPLIER_COUNTRY_CODE,
+  countryCode: '',
   region: '',
   contactName: '',
   contactEmail: '',
@@ -52,7 +57,7 @@ async function load() {
     const supplier = res.data.data;
     form.legalName = supplier.legalName || '';
     form.shortName = supplier.shortName || '';
-    form.countryCode = FIXED_SUPPLIER_COUNTRY_CODE;
+    form.countryCode = supplier.countryCode ?? '';
     form.region = supplier.region || '';
     form.contactName = supplier.contactName || '';
     form.contactEmail = supplier.contactEmail || '';
@@ -71,10 +76,10 @@ async function save() {
   saving.value = true;
   try {
     if (isEdit.value) {
-      await api.patch(`/api/suppliers/${route.params.id}`, { ...form, countryCode: FIXED_SUPPLIER_COUNTRY_CODE });
+      await api.patch(`/api/suppliers/${route.params.id}`, { ...form, countryCode: form.countryCode || undefined });
       router.replace(`/m/console/suppliers/${route.params.id}/review`);
     } else {
-      const res = await api.post('/api/suppliers', { ...form, countryCode: FIXED_SUPPLIER_COUNTRY_CODE });
+      const res = await api.post('/api/suppliers', { ...form, countryCode: form.countryCode || undefined });
       router.replace(`/m/console/suppliers/${res.data.data.id}/review`);
     }
   } finally {

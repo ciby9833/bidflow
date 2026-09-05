@@ -31,6 +31,7 @@
 
         <el-card v-else-if="!editing">
           <section class="profile-view">
+            <div class="kv"><span>{{ t('supplierCountry.label') }}</span><strong>{{ form.countryCode || '-' }}</strong></div>
             <div class="kv"><span>{{ t('supplier.legal_name') }}</span><strong>{{ form.legalName || t('supplierProfile.notFilled') }}</strong></div>
             <div class="kv"><span>{{ t('supplier.short_name') }}</span><strong>{{ form.shortName || t('supplierProfile.notFilled') }}</strong></div>
             <div class="kv"><span>{{ t('common.contact_name') }}</span><strong>{{ form.contactName || t('supplierProfile.notFilled') }}</strong></div>
@@ -65,6 +66,7 @@
               </el-select>
               <div class="branch-hint">{{ t('supplierProfile.registerBranchHint') }}</div>
             </el-form-item>
+            <SupplierCountrySelect v-model="form.countryCode" :branch-id="form.branchId" :auto-default="needsBranchChoice" />
             <el-form-item :label="t('supplier.legal_name')" required><el-input v-model="form.legalName" /></el-form-item>
             <el-form-item :label="t('supplier.short_name')" required><el-input v-model="form.shortName" /></el-form-item>
             <el-row :gutter="12">
@@ -188,6 +190,8 @@ import { useI18n } from 'vue-i18n';
 import dayjs from 'dayjs';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { CopyDocument, Delete } from '@element-plus/icons-vue';
+import { buildSupplierDocuments as buildRequiredDocs } from '../../composables/supplierDocuments';
+import SupplierCountrySelect from '../../components/SupplierCountrySelect.vue';
 import { api } from '../../composables/useApi';
 import { preselectBranch } from '../../composables/useBranchPreselect';
 import { useAuthStore } from '../../stores/auth';
@@ -249,21 +253,6 @@ const preview = reactive({
   url: '',
   kind: 'inline' as 'inline' | 'download',
 });
-const docTemplates: Record<string, Array<{ docType: string; docLabel: string }>> = {
-  CN: [
-    { docType: 'business_license', docLabel: 'business_license' },
-    { docType: 'legal_representative_id', docLabel: 'legal_representative_id' },
-    { docType: 'bank_account_certificate', docLabel: 'bank_account_certificate' },
-  ],
-  ID: [
-    { docType: 'nib', docLabel: 'nib' },
-    { docType: 'npwp', docLabel: 'npwp' },
-    { docType: 'akta_sk', docLabel: 'Akta / SK Kemenkumham' },
-  ],
-};
-// 当前业务仅开放印尼供应商认证，前端不展示国家选择器。
-// 后续开放多国家时，恢复国家选择控件，并按国家扩展 docTemplates 即可。
-const FIXED_SUPPLIER_COUNTRY_CODE = 'ID';
 const form = reactive({
   branchId: '',
   legalName: '',
@@ -271,12 +260,10 @@ const form = reactive({
   contactName: '',
   contactEmail: '',
   contactPhone: '',
-  countryCode: FIXED_SUPPLIER_COUNTRY_CODE,
+  countryCode: '',
   taxId: '',
   reviewStatus: 'not_submitted',
-  documents: [
-    { docType: 'nib', docLabel: 'nib', textValue: '', fileName: '', fileUrl: '', objectKey: '', mimeType: '', fileSize: 0 },
-  ] as any[],
+  documents: buildRequiredDocs('') as any[],
 });
 const hasSubmitted = computed(() => form.reviewStatus !== 'not_submitted');
 const canEditProfile = computed(() => ['not_submitted', 'supplement_required', 'rejected'].includes(form.reviewStatus));
@@ -299,20 +286,6 @@ function reviewTag(status?: string) {
   }[status || 'not_submitted'] ?? 'info';
 }
 
-function buildRequiredDocs(countryCode = FIXED_SUPPLIER_COUNTRY_CODE, existing: any[] = []) {
-  const templates = docTemplates[String(countryCode).toUpperCase()] ?? docTemplates.ID;
-  return templates.map((item) => ({
-    ...item,
-    textValue: '',
-    fileName: '',
-    fileUrl: '',
-    objectKey: '',
-    mimeType: '',
-    fileSize: 0,
-    ...(existing.find((doc) => doc.docType === item.docType) ?? {}),
-  }));
-}
-
 async function load() {
   loading.value = true;
   try {
@@ -324,7 +297,7 @@ async function load() {
     form.contactName = supplier.contactName ?? '';
     form.contactEmail = supplier.contactEmail ?? '';
     form.contactPhone = supplier.contactPhone ?? '';
-    form.countryCode = FIXED_SUPPLIER_COUNTRY_CODE;
+    form.countryCode = supplier.countryCode || form.countryCode;
     form.taxId = supplier.taxId ?? '';
     form.reviewStatus = supplier.reviewStatus ?? 'not_submitted';
     form.documents = buildRequiredDocs(form.countryCode, documents ?? []);
@@ -513,7 +486,7 @@ async function submit() {
     ElMessage.error(t('supplierProfile.validationBaseRequired'));
     return;
   }
-  const validDocuments = form.documents.filter((doc) => doc.docType && doc.docLabel && doc.fileUrl);
+  const validDocuments = form.documents.filter((doc) => doc.docType && doc.docLabel && (doc.fileUrl || doc.textValue));
   if (validDocuments.length !== form.documents.length) {
     ElMessage.error(t('supplierProfile.validationDocsRequired'));
     return;
@@ -531,7 +504,7 @@ async function submit() {
       contactName: form.contactName,
       contactEmail: form.contactEmail,
       contactPhone: form.contactPhone,
-      countryCode: FIXED_SUPPLIER_COUNTRY_CODE,
+      countryCode: form.countryCode || undefined,
       taxId: form.taxId,
       // 仅首次提交（尚未绑定供应商主体）时有意义，后端对已绑定的账号忽略此字段
       branchId: form.branchId || undefined,
@@ -548,7 +521,7 @@ async function submit() {
 watch(
   () => form.countryCode,
   (value, oldValue) => {
-    if (!oldValue) return;
+    if (value === oldValue) return;
     form.documents = buildRequiredDocs(value, form.documents);
   },
 );

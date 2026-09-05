@@ -259,7 +259,8 @@
     "bank_account_certificate": "Bank Account Certificate",
     "nib": "NIB Business Identification Number",
     "npwp": "NPWP Tax Number",
-    "akta_sk": "Akta / SK Kemenkumham"
+    "akta_sk": "Akta / SK Kemenkumham",
+    "company_registration": "Company registration / supporting document"
   },
   "supplierAction": {
     "approve": "Approve",
@@ -294,7 +295,7 @@
     "allStatuses": "All Statuses",
     "allReviews": "All Reviews",
     "updated": "Supplier information updated",
-    "suspendReasonPrompt": "Enter suspension reason",
+    "suspendReasonPrompt": "This action affects this company across all institutions. Enter suspension reason",
     "suspendSupplier": "Suspend Supplier",
     "suspended": "Suspended",
     "resumed": "Resumed",
@@ -860,7 +861,8 @@
     },
     "supplier": {
       "certification_required": "Supplier certification is not approved yet, so invited tenders and bidding are unavailable",
-      "documents_required": "Please provide at least one certification note or attachment link"
+      "documents_required": "Please provide at least one certification note or attachment link",
+      "invalid_country": "Select a valid company registration country / region code"
     },
     "quote": {
       "cooldown_active": "Re-bid cooldown active",
@@ -868,7 +870,9 @@
       "min_decrement_fail": "Price decrease insufficient",
       "deadline_passed": "Bid deadline passed",
       "tender_not_open": "Tender is not open",
-      "concurrent_submit": "Concurrent submission detected"
+      "concurrent_submit": "Concurrent submission detected",
+      "currency_locked": "The quote currency is locked for this round. Use the currency selected for the first quote.",
+      "currency_history_inconsistent": "Historical quotes in this round use multiple currencies. Contact an administrator."
     }
   },
   "branch": {
@@ -942,5 +946,14 @@
     "granted": "Access granted",
     "grantFailed": "Failed to grant access",
     "notFound": "No supplier found with that ID"
+  },
+  "supplierCountry": {
+    "label": "Company registration country / region",
+    "select": "Select the company's registration country / region",
+    "hint": "Defaults to the target institution. For cross-border companies, select the actual place of registration. Switching institutions does not change it.",
+    "shared": "Company details, certification and global suspension are shared across admitted institutions. To stop cooperation only here, revoke access to this institution.",
+    "revoke": "Revoke access here",
+    "revokeConfirm": "Revoke access only to the current institution? The company and its other institutional access remain. Linked accounts will need to sign in again.",
+    "revoked": "Access to this institution revoked"
   }
 }

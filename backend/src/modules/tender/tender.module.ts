@@ -21,6 +21,7 @@ import { SupplierAccount } from '../auth/supplier-account.entity';
 import { Branch } from '../organization/branch.entity';
 import { SupplierTenderController, TenderController } from './tender.controller';
 import { TenderService } from './tender.service';
+import { DeadlineChangeService } from './deadline-change.service';
 import { provideTenantRepository } from '../../shared/tenant/tenant-repository';
 import { AuditLog } from '../../shared/audit/audit-log.entity';
 import { AuditService } from '../../shared/audit/audit.service';
@@ -34,7 +35,7 @@ import { RedisService } from '../../shared/config/redis.config';
   ],
   controllers: [TenderController, SupplierTenderController],
   providers: [
-    TenderService, AuditService, RedisService,
+    TenderService, DeadlineChangeService, AuditService, RedisService,
     provideTenantRepository(Tender),
     provideTenantRepository(Lot),
   ],

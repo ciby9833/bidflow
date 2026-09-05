@@ -116,6 +116,9 @@ export class HallService {
 
     return {
       ...tender,
+      deadlineChanges: await this.tenderRepo.manager.query(`SELECT id,round_no,old_deadline,new_deadline,
+        announcement,timezone,created_at FROM tender_deadline_changes
+        WHERE tender_id=$1 ORDER BY created_at DESC LIMIT 100`, [tender.id]),
       // 招标所属机构。前端据此判断：若与访客当前机构不同，
       // 提示"切换到该机构后可参与"，而不是让用户面对一个点不动的按钮。
       branch: branch ? { code: branch.code, name: branch.name } : null,

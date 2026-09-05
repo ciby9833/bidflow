@@ -1121,6 +1121,13 @@ function formatSize(size?: number) {
 }
 
 onMounted(async () => {
+  if (!isEdit.value) {
+    const branchCurrency = auth.activeBranch?.currency?.trim().toUpperCase();
+    if (branchCurrency) {
+      form.baseCurrency = branchCurrency;
+      syncLotCurrency();
+    }
+  }
   void loadOtherBranches();
   await loadTender();
   if (!isEdit.value) await loadSupplierOptions(1);

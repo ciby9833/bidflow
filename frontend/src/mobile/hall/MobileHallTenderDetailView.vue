@@ -16,6 +16,7 @@
         <span>{{ tender.bidDeadline ? fmt(tender.bidDeadline) : t('hall.deadline_not_set') }}</span>
       </div>
       <h2>{{ t('hall.lots') }}</h2>
+      <TenderDeadlineChanges :tender="tender" :notices="tender.deadlineChanges || []" />
       <div v-for="lot in tender.lots || []" :key="lot.id" class="lot">
         <strong>{{ lot.title }}</strong>
         <small>{{ lot.description || t('hall.contact_buyer_for_requirements') }}</small>
@@ -25,6 +26,7 @@
 </template>
 
 <script setup lang="ts">
+import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import { onMounted, ref } from 'vue';
 import dayjs from 'dayjs';
 import { useI18n } from 'vue-i18n';

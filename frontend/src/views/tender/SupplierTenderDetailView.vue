@@ -20,6 +20,7 @@
           <el-icon><Refresh /></el-icon>{{ t('common.refresh') }}
         </el-button>
       </header>
+      <TenderDeadlineChanges :tender="tender" />
 
       <section class="info-grid">
         <div><span>{{ t('common.type') }}</span><strong>{{ typeLabel(tender.type) }}</strong></div>
@@ -110,6 +111,7 @@
 </template>
 
 <script setup lang="ts">
+import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import {
   onActivated, onMounted, reactive, ref,
 } from 'vue';

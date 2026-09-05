@@ -49,6 +49,7 @@
         <span>{{ t('supplierProfile.companyInfo') }}</span>
       </div>
       <div class="profile-card">
+        <div><span>{{ t('supplierCountry.label') }}</span><strong>{{ form.countryCode || '-' }}</strong></div>
         <div><span>{{ t('supplier.legal_name') }}</span><strong>{{ form.legalName || t('supplierProfile.notFilled') }}</strong></div>
         <div><span>{{ t('supplier.short_name') }}</span><strong>{{ form.shortName || t('supplierProfile.notFilled') }}</strong></div>
         <div><span>{{ t('common.contact_name') }}</span><strong>{{ form.contactName || t('supplierProfile.notFilled') }}</strong></div>
@@ -157,6 +158,7 @@ import {
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { CopyDocument, Delete } from '@element-plus/icons-vue';
+import { buildSupplierDocuments as buildRequiredDocs } from '../../composables/supplierDocuments';
 import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -169,30 +171,15 @@ const error = ref('');
 const joinToken = ref('');
 const joining = ref(false);
 const joinPreview = ref<any>(null);
-// 当前业务仅开放印尼供应商认证，浏览页不展示国家字段。
-// 后续开放多国家时，恢复显示字段，并按国家扩展 docTemplates 即可。
-const FIXED_SUPPLIER_COUNTRY_CODE = 'ID';
 const form = reactive({
   legalName: '',
   shortName: '',
   contactName: '',
   contactEmail: '',
   contactPhone: '',
-  countryCode: FIXED_SUPPLIER_COUNTRY_CODE,
+  countryCode: '',
   taxId: '',
 });
-const docTemplates: Record<string, Array<{ docType: string; docLabel: string }>> = {
-  CN: [
-    { docType: 'business_license', docLabel: 'business_license' },
-    { docType: 'legal_representative_id', docLabel: 'legal_representative_id' },
-    { docType: 'bank_account_certificate', docLabel: 'bank_account_certificate' },
-  ],
-  ID: [
-    { docType: 'nib', docLabel: 'nib' },
-    { docType: 'npwp', docLabel: 'npwp' },
-    { docType: 'akta_sk', docLabel: 'Akta / SK Kemenkumham' },
-  ],
-};
 const documents = ref<any[]>([]);
 const rawDocuments = ref<any[]>([]);
 const logs = ref<any[]>([]);
@@ -225,48 +212,20 @@ const memberTotal = ref(0);
 const memberQuery = reactive({ page: 1, limit: 10 });
 function docLabel(doc: any) { return t(`supplierDocs.${doc.docType}`, doc.docLabel || doc.docType); }
 
-function buildRequiredDocs(countryCode = FIXED_SUPPLIER_COUNTRY_CODE, existing: any[] = []) {
-  const templates = docTemplates[String(countryCode).toUpperCase()] ?? docTemplates.ID;
-  const templateDocs = templates.map((item) => ({
-    ...item,
-    textValue: '',
-    fileName: '',
-    fileUrl: '',
-    objectKey: '',
-    mimeType: '',
-    fileSize: 0,
-    ...(existing.find((doc) => doc.docType === item.docType) ?? {}),
-  }));
-  const templateTypes = new Set(templates.map((item) => item.docType));
-  const extraDocs = existing
-    .filter((doc) => doc.docType && !templateTypes.has(doc.docType))
-    .map((doc, index) => ({
-      docLabel: doc.docLabel || doc.docType || `attachment_${index + 1}`,
-      textValue: '',
-      fileName: '',
-      fileUrl: '',
-      objectKey: '',
-      mimeType: '',
-      fileSize: 0,
-      ...doc,
-    }));
-  return [...templateDocs, ...extraDocs];
-}
-
 async function load() {
   loading.value = true;
   try {
     const res = await api.get('/api/supplier/profile');
-    const { supplier, documents, reviewLogs } = res.data.data;
+    const { supplier, documents: loadedDocuments, reviewLogs } = res.data.data;
     form.legalName = supplier.legalName ?? '';
     form.shortName = supplier.shortName ?? '';
     form.contactName = supplier.contactName ?? '';
     form.contactEmail = supplier.contactEmail ?? '';
     form.contactPhone = supplier.contactPhone ?? '';
-    form.countryCode = FIXED_SUPPLIER_COUNTRY_CODE;
+    form.countryCode = supplier.countryCode || form.countryCode;
     form.taxId = supplier.taxId ?? '';
     reviewStatus.value = supplier.reviewStatus ?? 'not_submitted';
-    rawDocuments.value = documents ?? [];
+    rawDocuments.value = loadedDocuments ?? [];
     documents.value = buildRequiredDocs(form.countryCode, rawDocuments.value);
     logs.value = reviewLogs ?? [];
     if (auth.user?.supplierId) await Promise.all([loadInvitations(), loadReviewLogs(), loadMembers()]);
@@ -506,7 +465,7 @@ function fmt(value?: string) {
 watch(
   () => form.countryCode,
   (value, oldValue) => {
-    if (!oldValue) return;
+    if (value === oldValue) return;
     documents.value = buildRequiredDocs(value, documents.value);
   },
 );

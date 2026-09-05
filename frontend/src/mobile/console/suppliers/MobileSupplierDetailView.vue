@@ -7,6 +7,7 @@
 <template>
   <main class="supplier-detail" v-loading="loading">
     <template v-if="detail">
+      <el-alert :title="t('supplierCountry.shared')" type="info" :closable="false" show-icon />
       <section class="profile">
         <span class="avatar">{{ supplierInitial(detail.supplier) }}</span>
         <h1>{{ detail.supplier.legalName || detail.supplier.shortName || '未提交名称' }}</h1>
@@ -77,6 +78,7 @@
       </section>
 
       <section v-if="canEdit" class="actions">
+        <button v-if="!auth.isHq" type="button" @click="revokeBranch">{{ t('supplierCountry.revoke') }}</button>
         <button
           v-for="item in supplierActions"
           :key="item.key"
@@ -90,6 +92,7 @@
     <div v-if="actionOpen" class="sheet-mask" @click="closeAction">
       <section class="action-sheet" @click.stop>
         <h3>{{ actionTitle }}</h3>
+        <p>{{ t('supplierCountry.shared') }}</p>
         <textarea v-model.trim="comment" :placeholder="actionPlaceholder" />
         <button class="confirm" type="button" @click="submitAction">确认</button>
         <button class="cancel" type="button" @click="closeAction">取消</button>
@@ -102,7 +105,8 @@
 import { computed, onMounted, ref } from 'vue';
 import dayjs from 'dayjs';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { api } from '../../../composables/useApi';
 import { useAuthStore } from '../../../stores/auth';
 import { getSupplierActions, type SupplierActionKey } from '../../../shared/supplier-action-rules';
@@ -111,6 +115,8 @@ import {
 } from './supplier-options';
 
 const route = useRoute();
+const router = useRouter();
+const { t } = useI18n();
 const auth = useAuthStore();
 const loading = ref(false);
 const detail = ref<any>(null);
@@ -193,6 +199,13 @@ function invitationMetaText(item: any) {
   const status = invitationStatusText(item?.status);
   if (item?.status === 'pending') return `邀请码${status} · ${fmt(item.expiresAt)} 过期`;
   return `邀请码${status}`;
+}
+
+async function revokeBranch() {
+  await ElMessageBox.confirm(t('supplierCountry.revokeConfirm'), t('supplierCountry.revoke'), { type: 'warning' });
+  await api.delete(`/api/suppliers/${route.params.id}/branch-access`);
+  ElMessage.success(t('supplierCountry.revoked'));
+  router.replace('/m/console/suppliers');
 }
 
 function openAction(type: 'approve' | 'supplement' | 'reject' | 'suspend') {

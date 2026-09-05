@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { lockQuoteAdmission } from './quote-admission';
 import { v4 as uuidv4 } from 'uuid';
 import { Quote } from './quote.entity';
 import { LineQuote } from './line-quote.entity';
@@ -28,6 +29,8 @@ import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
 import { I18nService } from '../../shared/i18n/i18n.service';
+import { SupplierRoundCurrency } from './supplier-round-currency.entity';
+import { TenderExchangeRate } from './tender-exchange-rate.entity';
 
 function quoteNo(seq: number): string {
   const ym = new Date().toISOString().slice(0, 7).replace('-', '');
@@ -200,51 +203,146 @@ export class QuoteService {
     return Number(quote.totalPrice);
   }
 
-  private async resolveConversion(totalPrice: number, currency: string, baseCurrency: string, at: Date) {
+  private async resolveConversion(totalPrice: number, currency: string, tender: Tender, at: Date) {
     const fromCurrency = this.normalizeCurrency(currency);
-    const toCurrency = this.normalizeCurrency(baseCurrency);
-    const exchangeRateDate = isoDate(at);
+    const toCurrency = this.normalizeCurrency(tender.baseCurrency);
 
-    if (!fromCurrency || !toCurrency) throw new BadRequestException('error.quote.currency_required');
-    if (fromCurrency === toCurrency) {
-      return {
-        currency: fromCurrency,
-        baseCurrency: toCurrency,
-        exchangeRate: 1,
-        exchangeRateDate,
-        exchangeRateSource: 'same_currency',
-        priceInBase: Number(totalPrice),
-      };
+    if (!/^[A-Z]{3}$/.test(fromCurrency) || !/^[A-Z]{3}$/.test(toCurrency)) {
+      throw new BadRequestException('error.quote.currency_required');
     }
 
-    const url = `${QuoteService.FRANKFURTER_API}/v2/rate/${encodeURIComponent(fromCurrency)}/${encodeURIComponent(toCurrency)}?date=${exchangeRateDate}`;
-    try {
-      const res = await fetch(url);
-      const data = await res.json().catch(() => null) as { rate?: number; date?: string; message?: string } | null;
-      if (!res.ok || !data?.rate) {
+    const configuredRateDate = tender.bidStartAt && tender.bidStartAt <= at ? tender.bidStartAt : at;
+    const lockedRate = await this.getOrCreateTenderRoundRate(
+      tender,
+      fromCurrency,
+      toCurrency,
+      isoDate(configuredRateDate),
+    );
+
+    const rate = Number(lockedRate.exchangeRate);
+    return {
+      currency: fromCurrency,
+      baseCurrency: toCurrency,
+      exchangeRate: rate,
+      exchangeRateDate: lockedRate.rateDate,
+      exchangeRateSource: lockedRate.source,
+      priceInBase: Math.round(Number(totalPrice) * rate * 10000) / 10000,
+    };
+  }
+
+  /**
+   * One provider request per tender round and currency pair. The advisory lock makes
+   * the cache fill safe across concurrent line submissions and multiple app nodes.
+   */
+  private async getOrCreateTenderRoundRate(
+    tender: Tender,
+    fromCurrency: string,
+    toCurrency: string,
+    requestedDate: string,
+  ): Promise<TenderExchangeRate> {
+    const roundNo = tender.currentQuoteRound ?? 1;
+    const lockName = `tender-rate:${tender.id}:${roundNo}:${fromCurrency}:${toCurrency}`;
+
+    return this.ds.transaction(async (em) => {
+      await em.query('SELECT pg_advisory_xact_lock(hashtext($1))', [lockName]);
+      const existing = await em.findOne(TenderExchangeRate, {
+        where: { tenderId: tender.id, roundNo, fromCurrency, toCurrency },
+      });
+      if (existing) return existing;
+
+      if (fromCurrency === toCurrency) {
+        return em.save(em.create(TenderExchangeRate, {
+          branchId: tender.branchId,
+          tenderId: tender.id,
+          roundNo,
+          fromCurrency,
+          toCurrency,
+          exchangeRate: 1,
+          rateDate: requestedDate,
+          source: 'same_currency',
+        }));
+      }
+
+      const url = `${QuoteService.FRANKFURTER_API}/v2/rate/${encodeURIComponent(fromCurrency)}/${encodeURIComponent(toCurrency)}?date=${requestedDate}`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json().catch(() => null) as { rate?: number; date?: string; message?: string } | null;
+        if (!res.ok || !data?.rate) {
+          throw new BadRequestException({
+            code: 'EXCHANGE_RATE_UNAVAILABLE',
+            message_key: 'error.quote.exchange_rate_unavailable',
+            detail: { from_currency: fromCurrency, to_currency: toCurrency, date: requestedDate, provider_message: data?.message },
+          });
+        }
+        return em.save(em.create(TenderExchangeRate, {
+          branchId: tender.branchId,
+          tenderId: tender.id,
+          roundNo,
+          fromCurrency,
+          toCurrency,
+          exchangeRate: Number(data.rate),
+          rateDate: data.date ?? requestedDate,
+          source: 'frankfurter',
+        }));
+      } catch (e) {
+        if (e instanceof BadRequestException) throw e;
         throw new BadRequestException({
           code: 'EXCHANGE_RATE_UNAVAILABLE',
           message_key: 'error.quote.exchange_rate_unavailable',
-          detail: { from_currency: fromCurrency, to_currency: toCurrency, date: exchangeRateDate, provider_message: data?.message },
+          detail: { from_currency: fromCurrency, to_currency: toCurrency, date: requestedDate },
         });
       }
-      const rate = Number(data.rate);
-      return {
-        currency: fromCurrency,
-        baseCurrency: toCurrency,
-        exchangeRate: rate,
-        exchangeRateDate: data.date ?? exchangeRateDate,
-        exchangeRateSource: 'frankfurter',
-        priceInBase: Math.round(Number(totalPrice) * rate * 10000) / 10000,
-      };
-    } catch (e) {
-      if (e instanceof BadRequestException) throw e;
+    });
+  }
+
+  /** Enforces one original quote currency across every lot and line in a supplier's round. */
+  private async lockSupplierRoundCurrency(
+    em: EntityManager,
+    tender: Tender,
+    supplierId: string,
+    currency: string,
+  ) {
+    const roundNo = tender.currentQuoteRound ?? 1;
+    const lockName = `supplier-round-currency:${tender.id}:${roundNo}:${supplierId}`;
+    await em.query('SELECT pg_advisory_xact_lock(hashtext($1))', [lockName]);
+
+    const existing = await em.findOne(SupplierRoundCurrency, {
+      where: { tenderId: tender.id, roundNo, supplierId },
+    });
+    if (existing && existing.currency !== currency) {
       throw new BadRequestException({
-        code: 'EXCHANGE_RATE_UNAVAILABLE',
-        message_key: 'error.quote.exchange_rate_unavailable',
-        detail: { from_currency: fromCurrency, to_currency: toCurrency, date: exchangeRateDate },
+        code: 'QUOTE_CURRENCY_LOCKED',
+        message_key: 'error.quote.currency_locked',
+        detail: { currency: existing.currency, round_no: roundNo },
       });
     }
+    if (existing) return existing;
+
+    const historical = await em.query(
+      `SELECT DISTINCT currency
+       FROM line_quotes
+       WHERE tender_id = $1 AND round_no = $2 AND supplier_id = $3`,
+      [tender.id, roundNo, supplierId],
+    ) as Array<{ currency: string }>;
+    if (historical.length > 1) {
+      throw new BadRequestException('error.quote.currency_history_inconsistent');
+    }
+    const historicalCurrency = this.normalizeCurrency(historical[0]?.currency);
+    if (historicalCurrency && historicalCurrency !== currency) {
+      throw new BadRequestException({
+        code: 'QUOTE_CURRENCY_LOCKED',
+        message_key: 'error.quote.currency_locked',
+        detail: { currency: historicalCurrency, round_no: roundNo },
+      });
+    }
+
+    return em.save(em.create(SupplierRoundCurrency, {
+      branchId: tender.branchId,
+      tenderId: tender.id,
+      roundNo,
+      supplierId,
+      currency,
+    }));
   }
 
   // ── §4.2 Write Path ─────────────────────────────────────────────────────
@@ -277,11 +375,13 @@ export class QuoteService {
     await this.ensureCanParticipate(tender, supplierId);
     const now = new Date();
     if (tender.status === TenderStatus.PUBLISHED && (!tender.bidStartAt || tender.bidStartAt <= now) && (!tender.bidDeadline || tender.bidDeadline > now)) {
-      await this.tenderRepo.update(tender.id, { status: TenderStatus.OPEN });
+      await this.tenderRepo.createQueryBuilder().update(Tender).set({ status: TenderStatus.OPEN })
+        .where("id=:id AND status='published' AND (bid_start_at IS NULL OR bid_start_at<=:now) AND (bid_deadline IS NULL OR bid_deadline>:now)", { id: tender.id, now }).execute();
       tender.status = TenderStatus.OPEN;
     }
     if ([TenderStatus.PUBLISHED, TenderStatus.OPEN].includes(tender.status) && tender.bidDeadline && tender.bidDeadline <= now) {
-      await this.tenderRepo.update(tender.id, { status: TenderStatus.CLOSED });
+      await this.tenderRepo.createQueryBuilder().update(Tender).set({ status: TenderStatus.CLOSED })
+        .where("id=:id AND status IN ('published','open') AND bid_deadline<=:now", { id: tender.id, now }).execute();
       tender.status = TenderStatus.CLOSED;
     }
     if (tender.status !== TenderStatus.OPEN) throw new ForbiddenException('error.quote.tender_not_open');
@@ -310,7 +410,7 @@ export class QuoteService {
       // ⑤ Rebid count check
       const existing = await this.quoteRepo.findOne({ where: { lotId, supplierId, isLatest: true } });
       const isRebid = !!existing;
-      const conversion = await this.resolveConversion(data.totalPrice, data.currency, tender.baseCurrency, now);
+      const conversion = await this.resolveConversion(data.totalPrice, data.currency, tender, now);
 
       if (isRebid) {
         const quoteCount = await this.quoteRepo.count({ where: { lotId, supplierId } });
@@ -344,6 +444,8 @@ export class QuoteService {
       // ⑦ DB transaction (optimistic lock + version bump)
       const idempotencyKey = data.idempotencyKey ?? uuidv4();
       const newQuote = await this.ds.transaction(async (em) => {
+        await lockQuoteAdmission(em, tender);
+        await this.lockSupplierRoundCurrency(em, tender, supplierId, conversion.currency);
         if (existing) {
           const updateResult = await em.update(Quote,
             { lotId, supplierId, isLatest: true, version: existing.version },
@@ -441,11 +543,13 @@ export class QuoteService {
 
     const now = new Date();
     if (tender.status === TenderStatus.PUBLISHED && (!tender.bidStartAt || tender.bidStartAt <= now) && (!tender.bidDeadline || tender.bidDeadline > now)) {
-      await this.tenderRepo.update(tender.id, { status: TenderStatus.OPEN });
+      await this.tenderRepo.createQueryBuilder().update(Tender).set({ status: TenderStatus.OPEN })
+        .where("id=:id AND status='published' AND (bid_start_at IS NULL OR bid_start_at<=:now) AND (bid_deadline IS NULL OR bid_deadline>:now)", { id: tender.id, now }).execute();
       tender.status = TenderStatus.OPEN;
     }
     if ([TenderStatus.PUBLISHED, TenderStatus.OPEN].includes(tender.status) && tender.bidDeadline && tender.bidDeadline <= now) {
-      await this.tenderRepo.update(tender.id, { status: TenderStatus.CLOSED });
+      await this.tenderRepo.createQueryBuilder().update(Tender).set({ status: TenderStatus.CLOSED })
+        .where("id=:id AND status IN ('published','open') AND bid_deadline<=:now", { id: tender.id, now }).execute();
       tender.status = TenderStatus.CLOSED;
     }
     if (tender.status !== TenderStatus.OPEN) throw new ForbiddenException('error.quote.tender_not_open');
@@ -490,7 +594,7 @@ export class QuoteService {
 
       const existing = await this.lineQuoteRepo.findOne({ where: { lineId, roundNo, supplierId, isLatest: true } });
       const isRebid = !!existing;
-      const conversion = await this.resolveConversion(data.totalPrice, data.currency, tender.baseCurrency, now);
+      const conversion = await this.resolveConversion(data.totalPrice, data.currency, tender, now);
 
       if (isRebid) {
         const quoteCount = await this.lineQuoteRepo.count({ where: { lineId, roundNo, supplierId } });
@@ -522,6 +626,8 @@ export class QuoteService {
 
       const idempotencyKey = data.idempotencyKey ?? uuidv4();
       const newQuote = await this.ds.transaction(async (em) => {
+        await lockQuoteAdmission(em, tender);
+        await this.lockSupplierRoundCurrency(em, tender, supplierId, conversion.currency);
         if (existing) {
           const updateResult = await em.update(LineQuote,
             { lineId, roundNo, supplierId, isLatest: true, version: existing.version },

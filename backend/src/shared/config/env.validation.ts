@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer';
-import { IsBoolean, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, validateSync } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, validateSync } from 'class-validator';
 
 enum NodeEnv {
   Development = 'development',
@@ -23,6 +23,7 @@ class EnvironmentVariables {
   @IsOptional() @IsString() SMTP_PASS: string;
   @IsOptional() @IsString() SMTP_FROM: string;
   @IsOptional() @IsBoolean() SMTP_SECURE: boolean = false;
+  @IsOptional() @IsIn(['smtp', 'console']) SUPPLIER_REGISTER_EMAIL_MODE: string = 'smtp';
   @IsOptional() @IsString() GOOGLE_CLIENT_ID: string;
   @IsEnum(NodeEnv) @IsOptional() NODE_ENV: NodeEnv = NodeEnv.Development;
   @IsNumber() @IsOptional() PORT: number = 3000;

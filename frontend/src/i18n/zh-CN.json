@@ -259,7 +259,8 @@
     "bank_account_certificate": "银行开户证明",
     "nib": "NIB 企业识别号",
     "npwp": "NPWP 税号",
-    "akta_sk": "Akta / SK Kemenkumham"
+    "akta_sk": "Akta / SK Kemenkumham",
+    "company_registration": "公司注册证明／支持材料"
   },
   "supplierAction": {
     "approve": "通过",
@@ -294,7 +295,7 @@
     "allStatuses": "全部状态",
     "allReviews": "全部审核",
     "updated": "供应商信息已更新",
-    "suspendReasonPrompt": "请输入冻结原因",
+    "suspendReasonPrompt": "此操作影响该公司在所有机构的状态。 请输入冻结原因",
     "suspendSupplier": "冻结供应商",
     "suspended": "已冻结",
     "resumed": "已解冻",
@@ -867,7 +868,8 @@
     },
     "supplier": {
       "certification_required": "供应商认证未通过，暂不可查看受邀项目或提交报价",
-      "documents_required": "请至少填写一项认证资料说明或附件链接"
+      "documents_required": "请至少填写一项认证资料说明或附件链接",
+      "invalid_country": "请选择有效的公司注册国家／地区代码"
     },
     "quote": {
       "cooldown_active": "改价冷却中",
@@ -875,7 +877,9 @@
       "min_decrement_fail": "降幅不足最低要求",
       "deadline_passed": "报价已截止",
       "tender_not_open": "招标未开标",
-      "concurrent_submit": "请勿重复提交"
+      "concurrent_submit": "请勿重复提交",
+      "currency_locked": "本轮报价币种已锁定，请使用首次报价选择的币种",
+      "currency_history_inconsistent": "本轮历史报价存在多个币种，请联系管理员处理"
     }
   },
   "branch": {
@@ -949,5 +953,14 @@
     "granted": "已授予准入资格",
     "grantFailed": "授权失败",
     "notFound": "未找到该编号对应的供应商"
+  },
+  "supplierCountry": {
+    "label": "公司注册国家／地区",
+    "select": "请选择公司实际注册国家／地区",
+    "hint": "默认参考目标机构；跨境公司请选择实际注册地。切换机构不会改变此信息。",
+    "shared": "公司资料、认证及全局挂起状态由各准入机构共享。仅停止本机构合作，请使用“撤销本机构准入”。",
+    "revoke": "撤销本机构准入",
+    "revokeConfirm": "仅撤销该供应商在当前机构的准入，保留公司主档及其他机构的准入。关联账号需重新登录。是否继续？",
+    "revoked": "已撤销本机构准入"
   }
 }

@@ -259,7 +259,8 @@
     "bank_account_certificate": "Sertifikat Rekening Bank",
     "nib": "Nomor Induk Berusaha (NIB)",
     "npwp": "NPWP",
-    "akta_sk": "Akta / SK Kemenkumham"
+    "akta_sk": "Akta / SK Kemenkumham",
+    "company_registration": "Dokumen pendaftaran / pendukung perusahaan"
   },
   "supplierAction": {
     "approve": "Setujui",
@@ -294,7 +295,7 @@
     "allStatuses": "Semua Status",
     "allReviews": "Semua Ulasan",
     "updated": "Informasi pemasok diperbarui",
-    "suspendReasonPrompt": "Masukkan alasan pembekuan",
+    "suspendReasonPrompt": "Tindakan ini memengaruhi perusahaan di semua institusi. Masukkan alasan pembekuan",
     "suspendSupplier": "Bekukan Pemasok",
     "suspended": "Dibekukan",
     "resumed": "Diaktifkan kembali",
@@ -860,7 +861,8 @@
     },
     "supplier": {
       "certification_required": "Sertifikasi pemasok belum disetujui, sehingga tender undangan dan penawaran belum tersedia",
-      "documents_required": "Silakan isi setidaknya satu keterangan sertifikasi atau tautan lampiran"
+      "documents_required": "Silakan isi setidaknya satu keterangan sertifikasi atau tautan lampiran",
+      "invalid_country": "Pilih kode negara / wilayah pendaftaran perusahaan yang valid"
     },
     "quote": {
       "cooldown_active": "Cooldown aktif",
@@ -868,7 +870,9 @@
       "min_decrement_fail": "Penurunan harga tidak mencukupi",
       "deadline_passed": "Batas waktu penawaran terlewat",
       "tender_not_open": "Tender belum terbuka",
-      "concurrent_submit": "Pengiriman bersamaan terdeteksi"
+      "concurrent_submit": "Pengiriman bersamaan terdeteksi",
+      "currency_locked": "Mata uang penawaran telah dikunci untuk putaran ini. Gunakan mata uang pada penawaran pertama.",
+      "currency_history_inconsistent": "Riwayat penawaran pada putaran ini memakai beberapa mata uang. Hubungi administrator."
     }
   },
   "branch": {
@@ -942,5 +946,14 @@
     "granted": "Akses diberikan",
     "grantFailed": "Gagal memberi akses",
     "notFound": "Pemasok dengan ID tersebut tidak ditemukan"
+  },
+  "supplierCountry": {
+    "label": "Negara / wilayah pendaftaran perusahaan",
+    "select": "Pilih negara / wilayah pendaftaran perusahaan",
+    "hint": "Default mengikuti institusi tujuan. Untuk perusahaan lintas negara, pilih tempat pendaftaran sebenarnya. Pergantian institusi tidak mengubahnya.",
+    "shared": "Data perusahaan, sertifikasi, dan penangguhan global digunakan bersama oleh semua institusi terkait. Untuk menghentikan kerja sama di sini saja, cabut akses institusi ini.",
+    "revoke": "Cabut akses institusi ini",
+    "revokeConfirm": "Cabut akses hanya ke institusi saat ini? Perusahaan dan akses institusi lainnya tetap ada. Akun terkait harus masuk kembali.",
+    "revoked": "Akses institusi ini dicabut"
   }
 }

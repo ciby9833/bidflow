@@ -16,6 +16,7 @@
         <p>{{ tender.hallSummary || t('supplierTenderHall.noSummary') }}</p>
       </section>
 
+      <TenderDeadlineChanges :tender="tender" />
       <section class="metric-grid">
         <div><span>{{ t('common.type') }}</span><strong>{{ typeLabel(tender.type) }}</strong></div>
         <div><span>{{ t('common.currency') }}</span><strong>{{ tender.baseCurrency || 'IDR' }}</strong></div>
@@ -79,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import { reactive, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';

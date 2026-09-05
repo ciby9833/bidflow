@@ -17,6 +17,7 @@
         </p>
       </div>
       <div class="actions" v-if="auth.hasScope('supplier:edit')">
+        <el-button v-if="!auth.isHq" type="warning" @click="revokeBranch">{{ t('supplierCountry.revoke') }}</el-button>
         <el-button
           v-for="action in supplierActions"
           :key="action.key"
@@ -26,6 +27,7 @@
       </div>
     </div>
 
+    <el-alert :title="t('supplierCountry.shared')" type="info" :closable="false" show-icon />
     <el-row :gutter="20" v-if="detail">
       <el-col :lg="14" :span="24">
         <el-card>
@@ -43,7 +45,7 @@
           <div class="kv">
             <span>{{ t('supplier.country') }}</span>
             <span class="country-edit">
-              <el-select v-model="countryDraft" size="small" filterable class="country-select" @change="saveCountry">
+              <el-select v-model="countryDraft" size="small" filterable class="country-select" :disabled="!auth.hasScope('supplier:edit')" @change="saveCountry">
                 <el-option v-for="c in countryOptions" :key="c.code" :label="c.label" :value="c.code" />
               </el-select>
             </span>
@@ -275,6 +277,13 @@ async function withComment(title: string, apiPath: string) {
 async function doApprove() { await withComment(t('supplierAction.approve'), 'approve'); }
 async function doSupplement() { await withComment(t('supplierAction.supplement'), 'request-supplement'); }
 async function doReject() { await withComment(t('supplierReviewDetail.rejectApplication'), 'reject'); }
+async function revokeBranch() {
+  await ElMessageBox.confirm(t('supplierCountry.revokeConfirm'), t('supplierCountry.revoke'), { type: 'warning' });
+  await api.delete(`/api/suppliers/${route.params.id}/branch-access`);
+  ElMessage.success(t('supplierCountry.revoked'));
+  router.replace(backPath.value);
+}
+
 async function doSuspend() {
   const { value } = await ElMessageBox.prompt(t('supplierList.suspendReasonPrompt'), t('supplierList.suspendSupplier'), { confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') });
   await api.post(`/api/suppliers/${route.params.id}/suspend`, { reason: value });

@@ -73,6 +73,7 @@
       </div>
 
       <!-- Info strip -->
+      <TenderDeadlineChanges :tender="tender" :editable="auth.hasScope('tender:deadline_adjust')" @changed="load" />
       <div class="info-strip">
         <div class="info-item">
           <span class="info-label">{{ t('common.type') }}</span>
@@ -572,6 +573,7 @@
 </template>
 
 <script setup lang="ts">
+import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import {
   computed, nextTick, reactive, ref, onActivated, onMounted, watch,
 } from 'vue';

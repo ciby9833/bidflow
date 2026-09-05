@@ -34,6 +34,7 @@
       </el-alert>
 
       <p class="summary">{{ tender.hallSummary || tender.description || t('hall.detail_public_summary') }}</p>
+      <TenderDeadlineChanges :tender="tender" :notices="tender.deadlineChanges || []" />
       <el-divider />
       <h3>{{ t('hall.lot_information') }}</h3>
       <ul class="lots">
@@ -47,6 +48,7 @@
 </template>
 
 <script setup lang="ts">
+import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import { computed, onMounted, ref } from 'vue';
 import dayjs from 'dayjs';
 import { useI18n } from 'vue-i18n';

@@ -55,7 +55,7 @@ export class LineQuote {
   @Column({ name: 'currency', type: 'char', length: 3, default: 'IDR' })
   currency: string;
 
-  @Column({ name: 'exchange_rate', type: 'numeric', precision: 16, scale: 6, nullable: true })
+  @Column({ name: 'exchange_rate', type: 'numeric', precision: 24, scale: 12, nullable: true })
   exchangeRate?: number;
 
   @Column({ name: 'exchange_rate_date', type: 'date', nullable: true })

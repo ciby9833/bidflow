@@ -5,7 +5,7 @@
  * 作者：吴川
  */
 import {
-  BadRequestException, ForbiddenException, Injectable, UnauthorizedException,
+  BadRequestException, ForbiddenException, Injectable, Logger, UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -77,6 +77,8 @@ const PASSWORD_RESET_COOLDOWN_PREFIX = 'auth:password-reset:cooldown';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(CompanyUser) private readonly companyUserRepo: Repository<CompanyUser>,
@@ -180,12 +182,18 @@ export class AuthService {
     );
     await this.redis.set(`${REGISTER_EMAIL_REQUEST_PREFIX}:${normalizedEmail}`, '1', ttlSeconds + 86400);
     await this.redis.del(`${REGISTER_EMAIL_FAIL_PREFIX}:${normalizedEmail}`);
-    await this.mail.send(buildVerificationCodeEmail({
-      to: normalizedEmail,
-      code,
-      expiresInMinutes: Math.floor(ttlSeconds / 60),
-      productName: 'BidFlow',
-    }));
+    // Explicitly opt in on local development only. Never expose codes in API responses or production logs.
+    if (this.config.get<string>('NODE_ENV') === 'development'
+      && this.config.get<string>('SUPPLIER_REGISTER_EMAIL_MODE') === 'console') {
+      this.logger.log(`[DEV ONLY][supplier-register] email=${normalizedEmail} code=${code} expiresIn=${ttlSeconds}s (SMTP skipped)`);
+    } else {
+      await this.mail.send(buildVerificationCodeEmail({
+        to: normalizedEmail,
+        code,
+        expiresInMinutes: Math.floor(ttlSeconds / 60),
+        productName: 'BidFlow',
+      }));
+    }
 
     return { sent: true, expiresIn: ttlSeconds, resendIn: cooldownSeconds };
   }

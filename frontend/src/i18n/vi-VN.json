@@ -259,7 +259,8 @@
     "bank_account_certificate": "Chứng chỉ tài khoản ngân hàng",
     "nib": "Mã số nhận dạng doanh nghiệp NIB",
     "npwp": "Mã số thuế NPWP",
-    "akta_sk": "Giấy phép kinh doanh / quyết định pháp lý"
+    "akta_sk": "Giấy phép kinh doanh / quyết định pháp lý",
+    "company_registration": "Giấy đăng ký / tài liệu hỗ trợ doanh nghiệp"
   },
   "supplierAction": {
     "approve": "Phê duyệt",
@@ -294,7 +295,7 @@
     "allStatuses": "Tất cả trạng thái",
     "allReviews": "Tất cả Bài đánh giá",
     "updated": "Đã cập nhật thông tin về nhà cung cấp",
-    "suspendReasonPrompt": "Nhập lý do đình chỉ",
+    "suspendReasonPrompt": "Thao tác này ảnh hưởng đến doanh nghiệp tại tất cả đơn vị. Nhập lý do đình chỉ",
     "suspendSupplier": "Đình chỉ nhà cung cấp",
     "suspended": "Đã tạm dừng",
     "resumed": "Đã tiếp tục",
@@ -860,7 +861,8 @@
     },
     "supplier": {
       "certification_required": "Chứng nhận nhà cung cấp chưa được phê duyệt, do đó, các gói thầu và đấu thầu được mời không có sẵn",
-      "documents_required": "Vui lòng cung cấp ít nhất một ghi chú chứng nhận hoặc liên kết đính kèm"
+      "documents_required": "Vui lòng cung cấp ít nhất một ghi chú chứng nhận hoặc liên kết đính kèm",
+      "invalid_country": "Vui lòng chọn mã quốc gia / vùng đăng ký doanh nghiệp hợp lệ"
     },
     "quote": {
       "cooldown_active": "Thời gian chờ đặt giá thầu lại đang hoạt động",
@@ -868,7 +870,9 @@
       "min_decrement_fail": "Giảm giá chưa đủ",
       "deadline_passed": "Đã hết thời hạn đấu thầu",
       "tender_not_open": "Đấu thầu chưa được mở",
-      "concurrent_submit": "Đã phát hiện thấy việc gửi đồng thời"
+      "concurrent_submit": "Đã phát hiện thấy việc gửi đồng thời",
+      "currency_locked": "Đơn vị tiền tệ báo giá đã được khóa cho vòng này. Hãy dùng đơn vị của lần báo giá đầu tiên.",
+      "currency_history_inconsistent": "Lịch sử báo giá trong vòng này có nhiều đơn vị tiền tệ. Vui lòng liên hệ quản trị viên."
     }
   },
   "branch": {
@@ -942,5 +946,14 @@
     "granted": "Đã cấp quyền truy cập",
     "grantFailed": "Không cấp được quyền truy cập",
     "notFound": "Không tìm thấy nhà cung cấp nào có ID đó"
+  },
+  "supplierCountry": {
+    "label": "Quốc gia / vùng đăng ký doanh nghiệp",
+    "select": "Chọn quốc gia / vùng đăng ký doanh nghiệp",
+    "hint": "Mặc định theo đơn vị đích. Doanh nghiệp xuyên biên giới cần chọn nơi đăng ký thực tế. Chuyển đơn vị không thay đổi thông tin này.",
+    "shared": "Thông tin doanh nghiệp, chứng nhận và trạng thái đình chỉ toàn cục được chia sẻ giữa các đơn vị đã tiếp nhận. Để chỉ ngừng hợp tác tại đây, hãy thu hồi quyền tham gia đơn vị này.",
+    "revoke": "Thu hồi quyền tại đơn vị này",
+    "revokeConfirm": "Chỉ thu hồi quyền tham gia đơn vị hiện tại? Doanh nghiệp và quyền tại các đơn vị khác được giữ nguyên. Các tài khoản liên kết cần đăng nhập lại.",
+    "revoked": "Đã thu hồi quyền tại đơn vị này"
   }
 }

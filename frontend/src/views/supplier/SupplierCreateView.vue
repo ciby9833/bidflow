@@ -14,6 +14,7 @@
     <el-card class="form-card">
       <el-form :model="form" label-position="top" @submit.prevent="submit">
         <TargetBranchSelect v-model="form.branchId" />
+        <SupplierCountrySelect v-model="form.countryCode" :branch-id="form.branchId" auto-default />
             <el-form-item :label="t('supplier.legal_name')" required>
           <el-input v-model="form.legalName" size="large" />
         </el-form-item>
@@ -61,15 +62,14 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { api } from '../../composables/useApi';
 import TargetBranchSelect from '../../components/TargetBranchSelect.vue';
+import SupplierCountrySelect from '../../components/SupplierCountrySelect.vue';
 
 const { t } = useI18n();
 const router = useRouter();
 const loading = ref(false);
 const error = ref('');
-// 当前供应商主数据只开放印尼，创建页不展示国家选择；未来多国家开放时再恢复选择器。
-const FIXED_SUPPLIER_COUNTRY_CODE = 'ID';
 const form = reactive({
-  branchId: '', legalName: '', shortName: '', countryCode: FIXED_SUPPLIER_COUNTRY_CODE, region: '', contactName: '', contactEmail: '', contactPhone: '', taxId: '' });
+  branchId: '', legalName: '', shortName: '', countryCode: '', region: '', contactName: '', contactEmail: '', contactPhone: '', taxId: '' });
 
 async function submit() {
   if (!form.legalName.trim() || !form.shortName.trim()) {
@@ -79,7 +79,7 @@ async function submit() {
   loading.value = true;
   error.value = '';
   try {
-    await api.post('/api/suppliers', { ...form, countryCode: FIXED_SUPPLIER_COUNTRY_CODE });
+    await api.post('/api/suppliers', { ...form, countryCode: form.countryCode || undefined });
     ElMessage.success(t('supplierCreate.created'));
     router.push('/suppliers');
   } catch (e: any) {

@@ -48,9 +48,14 @@
       "only_pending_or_approved_can_request_supplement": "Only pending or approved suppliers can be asked for supplements.",
       "self_registration_branch_ambiguous": "Multiple country branches exist; cannot determine the branch for self-registered suppliers. Configure a branch entry point for the public portal first.",
       "registration_branch_required": "Please select the country branch to register with",
-      "lookup_key_required": "Enter a business ID or tax ID"
+      "lookup_key_required": "Enter a business ID or tax ID",
+      "invalid_country": "Select a valid company registration country / region code"
     },
     "tender": {
+      "deadline_state": "This tender cannot be extended or reopened in its current state.",
+      "deadline_conflict": "The tender or round changed. Refresh and try again.",
+      "deadline_extension_only": "The new deadline must be after now, the previous deadline and the start time.",
+      "deadline_input": "Enter a valid deadline, reason and supplier announcement.",
       "not_found": "Tender not found.",
       "invalid_status_transition": "Operation not allowed in current status.",
       "notification_resend_in_progress": "Email notification resend is already in progress for this tender.",
@@ -84,6 +89,8 @@
       "rebid_limit_reached": "Maximum number of rebids reached.",
       "min_decrement_fail": "Minimum decrement not met.",
       "exchange_rate_unavailable": "Exchange rate is unavailable. Please try again later or choose another currency.",
+      "currency_locked": "The quote currency is locked for this round. Use the currency selected for the first quote.",
+      "currency_history_inconsistent": "Historical quotes in this round use multiple currencies. Contact an administrator.",
       "version_conflict": "Quote version conflict. Please refresh and retry.",
       "concurrent_submit": "Duplicate submission.",
       "required_field_missing": "Required field is missing."

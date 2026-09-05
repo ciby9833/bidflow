@@ -666,7 +666,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     const t = await this.findById(scope, id);
     if (t.status !== TenderStatus.PUBLISHED) throw new BadRequestException('error.tender.invalid_status_transition');
     if (t.bidDeadline && t.bidDeadline <= new Date()) throw new BadRequestException('error.tender.deadline_passed');
-    await this.tenderRepo.update(id, { status: TenderStatus.OPEN, bidStartAt: new Date(), updatedBy: ctx.userId } as any);
+    await this.updateLifecycleIfUnchanged(t, { status: TenderStatus.OPEN, bidStartAt: new Date(), updatedBy: ctx.userId });
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_OPEN, { status: t.status, bidStartAt: t.bidStartAt }, { status: TenderStatus.OPEN, bidStartAt: new Date().toISOString() });
     return this.findById(scope, id);
   }
@@ -674,7 +674,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   async close(scope: BranchScope, id: string, ctx: AuditContext) {
     const t = await this.findById(scope, id);
     if (![TenderStatus.PUBLISHED, TenderStatus.OPEN].includes(t.status)) throw new BadRequestException('error.tender.invalid_status_transition');
-    await this.tenderRepo.update(id, { status: TenderStatus.CLOSED, updatedBy: ctx.userId } as any);
+    await this.updateLifecycleIfUnchanged(t, { status: TenderStatus.CLOSED, updatedBy: ctx.userId });
     await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_CLOSE, { status: t.status }, { status: TenderStatus.CLOSED });
     return this.findById(scope, id);
   }
@@ -700,7 +700,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      await this.tenderRepo.update(id, { status: TenderStatus.DRAFT, updatedBy: ctx.userId } as any);
+      await this.updateLifecycleIfUnchanged(t, { status: TenderStatus.DRAFT, updatedBy: ctx.userId });
       await this.audit.log(ctx, AuditEntityType.TENDER, id, AuditAction.TENDER_WITHDRAW, { status: t.status }, { status: TenderStatus.DRAFT });
       if (notificationLocked) {
         withdrawalNotice = await this.sendAndRecordSupplierNotifications(t, TenderNotificationType.WITHDRAWAL, TenderNotificationTrigger.WITHDRAW, ctx);
@@ -939,6 +939,12 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     const previousInvitedIds = await this.getInvitedSupplierIds(id, previousRound);
     const previousSupplierIds = previousInvitedIds.length ? previousInvitedIds : await this.getQuotedSupplierIds(id, previousRound);
     await this.ds.transaction(async (em) => {
+      const locked = await em.findOne(Tender, { where: { id, branchId }, lock: { mode: 'pessimistic_write' } });
+      if (!locked || locked.currentQuoteRound !== before.currentQuoteRound || locked.status !== before.status ||
+          locked.bidDeadline?.getTime() !== before.bidDeadline?.getTime() ||
+          locked.updatedAt.getTime() !== before.updatedAt.getTime()) {
+        throw new ConflictException('error.tender.deadline_conflict');
+      }
       await em.update(Tender, id, {
         currentQuoteRound: nextRound,
         status: TenderStatus.DRAFT,
@@ -1509,6 +1515,17 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     const now = new Date();
     if (tender.bidDeadline && tender.bidDeadline <= now) return false;
     return !tender.bidStartAt || tender.bidStartAt <= now;
+  }
+
+  private async updateLifecycleIfUnchanged(before: Tender, changes: Partial<Pick<Tender, 'status' | 'bidStartAt' | 'updatedBy'>>) {
+    const result = await this.tenderRepo.createQueryBuilder().update(Tender).set(changes)
+      .where('id = :id AND status = :status AND current_quote_round = :round', {
+        id: before.id, status: before.status, round: before.currentQuoteRound,
+      })
+      .andWhere("date_trunc('milliseconds', updated_at) = :updated", { updated: before.updatedAt })
+      .andWhere('bid_deadline IS NOT DISTINCT FROM :deadline', { deadline: before.bidDeadline ?? null })
+      .execute();
+    if (!result.affected) throw new ConflictException('error.tender.deadline_conflict');
   }
 
   private validateTenderSchedule(bidStartAt?: string, bidDeadline?: string) {

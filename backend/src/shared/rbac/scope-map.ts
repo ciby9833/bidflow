@@ -22,7 +22,7 @@ export const HQ_SCOPES = [
 export const SCOPE_MAP: Record<UserRole, string[]> = {
   super_admin: ['*'],
   purchase_manager: [
-    'tender:view', 'tender:create', 'tender:edit', 'tender:publish', 'tender:close',
+    'tender:view', 'tender:create', 'tender:edit', 'tender:publish', 'tender:close', 'tender:deadline_adjust',
     'supplier:view', 'supplier:create', 'supplier:edit',
     'quote:view_all', 'export:full', 'export:masked',
     'admin:unlock', 'eval:freeze', 'user:view',

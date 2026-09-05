@@ -20,8 +20,8 @@
         <el-button v-if="auth.hasScope('supplier:create')" @click="accountImportVisible = true">
           {{ t('supplierList.accountBulkImport') }}
         </el-button>
-        <!-- 引入已在其他机构注册的供应商。仅在存在多个机构时才有意义 -->
-        <el-button v-if="auth.hasScope('supplier:create') && auth.branches.length > 1" @click="openImportExisting">
+        <!-- 目标机构管理者引入已有主档，不要求该管理者本人拥有多个机构。 -->
+        <el-button v-if="auth.hasScope('supplier:create') && auth.hasScope('supplier:edit') && !auth.isHq" @click="openImportExisting">
           {{ t('supplierAccess.importExisting') }}
         </el-button>
         <el-button v-if="auth.hasScope('supplier:create')" type="primary" @click="router.push('/suppliers/new')">{{ t('route.supplierCreate') }}</el-button>
@@ -35,6 +35,7 @@
       template-url="/api/suppliers/import-template"
       template-filename="supplier-import-template.xlsx"
       upload-url="/api/suppliers/import"
+      requires-target-branch
       :template-hint="t('supplierList.supplierTemplateHint')"
       :success-label="(c: number) => t('supplierList.bulkCreated', { count: c })"
       :identifier-label="t('supplier.legal_name')"
@@ -49,6 +50,7 @@
       template-url="/api/suppliers/accounts/import-template"
       template-filename="supplier-account-import-template.xlsx"
       upload-url="/api/suppliers/accounts/import"
+      requires-target-branch
       :template-hint="t('supplierList.accountTemplateHint')"
       :success-label="(c: number) => t('supplierList.accountCreated', { count: c })"
       :identifier-label="t('supplierList.accountIdentifier')"
@@ -84,10 +86,6 @@
         >{{ item.label }}</button>
       </div>
     </section>
-    <el-table class="desktop-table" :data="suppliers" v-loading="loading" stripe>
-      <el-table-column prop="businessId" :label="t('supplierList.supplierNo')" width="140" />
-      <el-table-column prop="legalName" :label="t('supplier.legal_name')" min-width="200">
-        <template #default="{ row }">{{ row.legalName || '—' }}
   <!-- 跨机构引入：只支持按编号精确查找，避免把全球供应商名录暴露给每个机构 -->
   <el-dialog v-model="importExistingVisible" :title="t('supplierAccess.importExisting')" width="520px">
     <p class="access-desc">{{ t('supplierAccess.lookupDesc') }}</p>
@@ -110,7 +108,11 @@
     </div>
     <el-alert v-else-if="lookupError" type="warning" show-icon :closable="false" :title="lookupError" />
   </el-dialog>
-</template>
+    <el-alert :title="t('supplierCountry.shared')" type="info" :closable="false" show-icon />
+    <el-table class="desktop-table" :data="suppliers" v-loading="loading" stripe>
+      <el-table-column prop="businessId" :label="t('supplierList.supplierNo')" width="140" />
+      <el-table-column prop="legalName" :label="t('supplier.legal_name')" min-width="200">
+        <template #default="{ row }">{{ row.legalName || '—' }}</template>
       </el-table-column>
       <el-table-column prop="shortName" :label="t('supplier.short_name')" width="140">
         <template #default="{ row }">{{ row.shortName || '—' }}</template>
@@ -179,7 +181,7 @@
       <el-form label-width="96px">
         <el-form-item :label="t('supplier.legal_name')"><el-input v-model="editForm.legalName" /></el-form-item>
         <el-form-item :label="t('supplier.short_name')"><el-input v-model="editForm.shortName" /></el-form-item>
-        <el-form-item :label="t('common.country')"><el-input v-model="editForm.countryCode" maxlength="2" /></el-form-item>
+        <SupplierCountrySelect v-model="editForm.countryCode" />
         <el-form-item :label="t('common.contact_name')"><el-input v-model="editForm.contactName" /></el-form-item>
         <el-form-item :label="t('common.contact_email')"><el-input v-model="editForm.contactEmail" /></el-form-item>
         <el-form-item :label="t('common.contact_phone')"><el-input v-model="editForm.contactPhone" /></el-form-item>
@@ -205,6 +207,7 @@ import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
 import { getSupplierActions, type SupplierActionKey } from '../../shared/supplier-action-rules';
 import BulkImportDialog from '../../components/BulkImportDialog.vue';
+import SupplierCountrySelect from '../../components/SupplierCountrySelect.vue';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -285,7 +288,7 @@ let searchTimer: number | undefined;
 const editForm = reactive({
   legalName: '',
   shortName: '',
-  countryCode: 'CN',
+  countryCode: '',
   contactName: '',
   contactEmail: '',
   contactPhone: '',
@@ -395,7 +398,7 @@ function openEdit(row: any) {
   editingId.value = row.id;
   editForm.legalName = row.legalName || '';
   editForm.shortName = row.shortName || '';
-  editForm.countryCode = row.countryCode || 'CN';
+  editForm.countryCode = row.countryCode || '';
   editForm.contactName = row.contactName || '';
   editForm.contactEmail = row.contactEmail || '';
   editForm.contactPhone = row.contactPhone || '';

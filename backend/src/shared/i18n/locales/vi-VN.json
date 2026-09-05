@@ -48,9 +48,14 @@
       "only_pending_or_approved_can_request_supplement": "Chỉ những nhà cung cấp đang chờ xử lý hoặc được phê duyệt mới có thể được yêu cầu bổ sung.",
       "self_registration_branch_ambiguous": "Tồn tại nhiều chi nhánh quốc gia; không thể xác định chi nhánh cho các nhà cung cấp tự đăng ký. Trước tiên, hãy định cấu hình điểm vào chi nhánh cho cổng thông tin công cộng.",
       "registration_branch_required": "Vui lòng chọn chi nhánh quốc gia để đăng ký",
-      "lookup_key_required": "Nhập ID doanh nghiệp hoặc ID thuế"
+      "lookup_key_required": "Nhập ID doanh nghiệp hoặc ID thuế",
+      "invalid_country": "Vui lòng chọn mã quốc gia / vùng đăng ký doanh nghiệp hợp lệ"
     },
     "tender": {
+      "deadline_state": "Trạng thái hiện tại không cho phép gia hạn hoặc mở lại.",
+      "deadline_conflict": "Gói thầu hoặc vòng đã thay đổi. Tải lại và thử lại.",
+      "deadline_extension_only": "Thời hạn mới phải sau hiện tại, thời hạn cũ và thời gian bắt đầu.",
+      "deadline_input": "Nhập thời hạn, lý do và thông báo nhà cung cấp hợp lệ.",
       "not_found": "Không tìm thấy đấu thầu.",
       "invalid_status_transition": "Thao tác không được phép ở trạng thái hiện tại.",
       "notification_resend_in_progress": "Việc gửi lại thông báo qua email đã được tiến hành cho cuộc đấu thầu này.",
@@ -84,6 +89,8 @@
       "rebid_limit_reached": "Đã đạt đến số lần đặt giá lại tối đa.",
       "min_decrement_fail": "Không đáp ứng mức giảm tối thiểu.",
       "exchange_rate_unavailable": "Không thể lấy tỷ giá. Vui lòng thử lại sau hoặc chọn loại tiền khác.",
+      "currency_locked": "Đơn vị tiền tệ báo giá đã được khóa cho vòng này. Hãy dùng đơn vị của lần báo giá đầu tiên.",
+      "currency_history_inconsistent": "Lịch sử báo giá trong vòng này có nhiều đơn vị tiền tệ. Vui lòng liên hệ quản trị viên.",
       "version_conflict": "Xung đột phiên bản báo giá. Vui lòng làm mới và thử lại.",
       "concurrent_submit": "Gửi trùng lặp.",
       "required_field_missing": "Thiếu trường bắt buộc."

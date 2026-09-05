@@ -48,9 +48,14 @@
       "only_pending_or_approved_can_request_supplement": "Hanya pemasok menunggu atau disetujui yang dapat diminta tambahan dokumen.",
       "self_registration_branch_ambiguous": "Terdapat beberapa cabang negara; cabang untuk pemasok yang mendaftar sendiri tidak dapat ditentukan. Konfigurasikan titik masuk cabang untuk portal publik terlebih dahulu.",
       "registration_branch_required": "Silakan pilih cabang negara untuk mendaftar",
-      "lookup_key_required": "Masukkan ID bisnis atau NPWP"
+      "lookup_key_required": "Masukkan ID bisnis atau NPWP",
+      "invalid_country": "Pilih kode negara / wilayah pendaftaran perusahaan yang valid"
     },
     "tender": {
+      "deadline_state": "Status tender tidak mengizinkan perpanjangan atau pembukaan kembali.",
+      "deadline_conflict": "Tender atau putaran berubah. Muat ulang dan coba lagi.",
+      "deadline_extension_only": "Batas waktu baru harus setelah sekarang, batas waktu sebelumnya dan waktu mulai.",
+      "deadline_input": "Isi batas waktu, alasan dan pengumuman pemasok yang valid.",
       "not_found": "Tender tidak ditemukan.",
       "invalid_status_transition": "Operasi tidak diizinkan pada status saat ini.",
       "notification_resend_in_progress": "Pengiriman ulang email untuk tender ini sedang berlangsung.",
@@ -84,6 +89,8 @@
       "rebid_limit_reached": "Batas perubahan harga tercapai.",
       "min_decrement_fail": "Penurunan minimum tidak terpenuhi.",
       "exchange_rate_unavailable": "Kurs belum tersedia. Coba lagi nanti atau pilih mata uang lain.",
+      "currency_locked": "Mata uang penawaran telah dikunci untuk putaran ini. Gunakan mata uang pada penawaran pertama.",
+      "currency_history_inconsistent": "Riwayat penawaran pada putaran ini memakai beberapa mata uang. Hubungi administrator.",
       "version_conflict": "Konflik versi penawaran. Silakan segarkan halaman.",
       "concurrent_submit": "Pengiriman duplikat.",
       "required_field_missing": "Kolom wajib belum diisi."

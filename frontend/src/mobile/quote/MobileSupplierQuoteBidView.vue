@@ -16,6 +16,7 @@
         <p>{{ tender.title }}</p>
       </section>
 
+      <TenderDeadlineChanges :tender="tender" />
       <section class="rule-grid">
         <div><span>{{ t('hall.deadline_short') }}</span><strong>{{ tender.bidDeadline ? fmt(tender.bidDeadline) : t('common.not_set') }}</strong></div>
         <div><span>{{ t('quote.maxRebid') }}</span><strong>{{ t('quote.times', { count: tender.maxRebidCount }) }}</strong></div>
@@ -85,6 +86,7 @@
             <span>{{ t('quote.currency') }}</span>
             <select v-model="form.currency">
               <option value="IDR">{{ t('currency.idr') }}</option>
+              <option value="VND">{{ t('currency.vnd') }}</option>
               <option value="USD">{{ t('currency.usd') }}</option>
               <option value="CNY">{{ t('currency.cny') }}</option>
             </select>
@@ -106,6 +108,7 @@
 </template>
 
 <script setup lang="ts">
+import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import {
   computed, onBeforeUnmount, onMounted, reactive, ref,
 } from 'vue';
@@ -290,6 +293,7 @@ function formatQuoteError(e: any) {
   if (err?.code === 'REBID_LIMIT_REACHED') return t('quote.cannotRebid');
   if (err?.code === 'COOLDOWN_ACTIVE') return t('quote.cooldownWait', { seconds: err.detail?.retry_after_seconds ?? 60 });
   if (err?.code === 'MIN_DECREMENT_FAIL') return t('error.quote.min_decrement_fail');
+  if (err?.code === 'QUOTE_CURRENCY_LOCKED') return t('error.quote.currency_locked');
   return e.response?.data?.message || t('quote.submitFailed');
 }
 

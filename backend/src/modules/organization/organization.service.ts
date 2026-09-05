@@ -59,6 +59,7 @@ export class OrganizationService {
 
   async createBranch(input: CreateBranchInput, ctx: AuditContext) {
     const code = input.code.trim().toUpperCase();
+    const countryCode = input.countryCode.trim().toUpperCase();
     if (!code) throw new BadRequestException('error.branch.code_required');
 
     const existing = await this.branchRepo.findOne({ where: { code } });
@@ -69,8 +70,12 @@ export class OrganizationService {
       name: input.name.trim(),
       // 接口只能创建国家机构：全系统仅一个总部，由迁移建立且不可增删
       type: BranchType.BRANCH,
-      countryCode: input.countryCode.trim().toUpperCase(),
-      settings: input.settings ?? {},
+      countryCode,
+      settings: {
+        ...(input.settings ?? {}),
+        ...(!input.settings?.currency && countryCode === 'ID' ? { currency: 'IDR' } : {}),
+        ...(!input.settings?.currency && countryCode === 'VN' ? { currency: 'VND' } : {}),
+      },
       status: BranchStatus.ACTIVE,
     });
     const saved = await this.branchRepo.save(branch);

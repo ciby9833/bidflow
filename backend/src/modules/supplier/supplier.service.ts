@@ -18,7 +18,7 @@ import { SupplierDocument } from './supplier-document.entity';
 import { SupplierReviewLog } from './supplier-review-log.entity';
 import { SupplierInvitation } from './supplier-invitation.entity';
 import {
-  BranchScope, requireWritableBranch, resolveAdminWriteBranch,
+  BranchScope, branchScopeFor, requireWritableBranch, resolveAdminWriteBranch,
 } from '../../shared/tenant/branch-scope';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
@@ -26,11 +26,9 @@ import * as argon2 from 'argon2';
 import { AccountType, RegisterSource, User, UserRole, UserStatus } from '../auth/user.entity';
 import { SupplierAccount } from '../auth/supplier-account.entity';
 
-// 当前产品阶段仅开放印尼供应商认证，后端统一默认 ID。
-// 后续开放多国家时，再由前端传入国家码，并在资料模板与校验规则中扩展对应国家。
-const DEFAULT_SUPPLIER_COUNTRY_CODE = 'ID';
+import { supplierCountryCode } from './supplier-country';
 
-function nextBusinessId(seq: number, region = DEFAULT_SUPPLIER_COUNTRY_CODE): string {
+function nextBusinessId(seq: number, region: string): string {
   return `S-${region}-${String(seq).padStart(5, '0')}`;
 }
 
@@ -74,23 +72,32 @@ export class SupplierService {
     // 国别缺省跟随目标机构，而非硬编码的系统默认值 ——
     // 否则在越南机构下建的供应商会显示为印尼，编号也会生成成 S-ID-xxx。
     // 仍允许显式指定：供应商公司注册地未必等于其对接的机构所在国。
-    const branchCountry = await this.branchCountryCode(branchId);
-    const region = data.countryCode ?? branchCountry ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
-    const nextSeq = await this.computeNextBusinessSeq(region);
-    const businessId = nextBusinessId(nextSeq, region);
+    const saved = await this.ds.transaction(async (em) => {
+      await this.requireRegistrationBranch(em, branchId);
+      const region = supplierCountryCode(data.countryCode, await this.branchCountryCode(branchId, em));
+      const nextSeq = await this.computeNextBusinessSeq(region, em);
+      const businessId = nextBusinessId(nextSeq, region);
 
-    const existing = await this.repo.findOne({ where: { businessId } });
-    if (existing) throw new ConflictException('error.supplier.business_id_conflict');
+      const existing = await em.findOne(Supplier, { where: { businessId } });
+      if (existing) throw new ConflictException('error.supplier.business_id_conflict');
 
-    const supplier = this.repo.create({
-      ...data,
-      countryCode: region,
-      businessId,
-      status: data.status ?? SupplierStatus.ACTIVE,
-      reviewStatus: data.reviewStatus ?? SupplierReviewStatus.NOT_SUBMITTED,
+      const supplier = em.create(Supplier, {
+        legalName: data.legalName,
+        shortName: data.shortName,
+        region: data.region,
+        contactName: data.contactName,
+        contactEmail: data.contactEmail,
+        contactPhone: data.contactPhone,
+        taxId: data.taxId,
+        countryCode: region,
+        businessId,
+        status: SupplierStatus.ACTIVE,
+        reviewStatus: SupplierReviewStatus.NOT_SUBMITTED,
+      });
+      const saved = await em.save(supplier);
+      await this.attachToBranch(em, saved.id, branchId);
+      return saved;
     });
-    const saved = await this.repo.save(supplier);
-    await this.attachToBranch(this.repo.manager, saved.id, branchId);
 
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, saved.id, AuditAction.SUPPLIER_CREATE, undefined, { businessId: saved.businessId, legalName: saved.legalName });
     return saved;
@@ -234,8 +241,8 @@ export class SupplierService {
   }
 
   /** 取机构的国别代码，用于供应商国别与编号的默认值 */
-  private async branchCountryCode(branchId: string): Promise<string | undefined> {
-    const rows = await this.repo.manager.query('SELECT country_code FROM branches WHERE id = $1', [branchId]);
+  private async branchCountryCode(branchId: string, em = this.repo.manager): Promise<string | undefined> {
+    const rows = await em.query('SELECT country_code FROM branches WHERE id = $1', [branchId]);
     return rows[0]?.country_code ?? undefined;
   }
 
@@ -378,6 +385,7 @@ export class SupplierService {
    */
   private async computeNextBusinessSeq(region: string, em?: EntityManager): Promise<number> {
     const runner = em ?? this.repo.manager;
+    if (em) await em.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`supplier-number:${region}`]);
     const rows = await runner.query(
       `SELECT COALESCE(MAX(CAST(SPLIT_PART(business_id, '-', 3) AS INTEGER)), 0) AS max_seq
        FROM suppliers WHERE business_id LIKE $1`,
@@ -488,6 +496,8 @@ export class SupplierService {
     ctx: AuditContext,
   ) {
     const branchId = resolveAdminWriteBranch(scope, isHq, targetBranchId);
+    await this.requireRegistrationBranch(this.repo.manager, branchId);
+    const branchCountry = await this.branchCountryCode(branchId);
     if (!buffer?.length) throw new BadRequestException('error.tender.import_file_required');
     const wb = XLSX.read(buffer, { type: 'buffer' });
     const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -537,11 +547,16 @@ export class SupplierService {
         errors.push({ row: rowNo, value: legalName, reason: this.i18n.t('supplierCreateImport.reason.invalidEmail') });
         return;
       }
-      if (countryCode && !/^[A-Z]{2}$/.test(countryCode)) countryCode = '';
+      try {
+        countryCode = supplierCountryCode(countryCode, branchCountry);
+      } catch {
+        errors.push({ row: rowNo, value: countryCode, reason: this.i18n.t('error.supplier.invalid_country') });
+        return;
+      }
 
       candidates.push({
         rowNo, legalName, shortName, contactName, contactPhone, contactEmail, taxId,
-        countryCode: countryCode || DEFAULT_SUPPLIER_COUNTRY_CODE,
+        countryCode,
       });
     });
 
@@ -564,35 +579,28 @@ export class SupplierService {
     // 逐行独立创建（任一失败不影响其他）
     // 按国家代码取该区段现有 businessId 的最大后缀，避免被历史删除留下的空洞撞库。
     const created: Array<{ id: string; businessId: string; legalName: string }> = [];
-    const seqByRegion = new Map<string, number>();
-    const regions = Array.from(new Set(candidates.map((c) => c.countryCode)));
-    for (const region of regions) {
-      const rows = await this.repo.query(
-        `SELECT COALESCE(MAX(CAST(SPLIT_PART(business_id, '-', 3) AS INTEGER)), 0) AS max_seq
-         FROM suppliers WHERE business_id LIKE $1`,
-        [`S-${region}-%`],
-      );
-      seqByRegion.set(region, Number(rows?.[0]?.max_seq ?? 0));
-    }
     for (const c of candidates) {
       try {
-        const next = (seqByRegion.get(c.countryCode) ?? 0) + 1;
-        seqByRegion.set(c.countryCode, next);
-        const businessId = nextBusinessId(next, c.countryCode);
-        const supplier = this.repo.create({
-          businessId,
-          legalName: c.legalName,
-          shortName: c.shortName || undefined,
-          contactName: c.contactName || undefined,
-          contactPhone: c.contactPhone || undefined,
-          contactEmail: c.contactEmail || undefined,
-          taxId: c.taxId || undefined,
-          countryCode: c.countryCode,
-          status: SupplierStatus.ACTIVE,
-          reviewStatus: SupplierReviewStatus.NOT_SUBMITTED,
+        let businessId = '';
+        const saved = await this.ds.transaction(async (em) => {
+          await this.requireRegistrationBranch(em, branchId);
+          businessId = nextBusinessId(await this.computeNextBusinessSeq(c.countryCode, em), c.countryCode);
+          const supplier = em.create(Supplier, {
+            businessId,
+            legalName: c.legalName,
+            shortName: c.shortName || undefined,
+            contactName: c.contactName || undefined,
+            contactPhone: c.contactPhone || undefined,
+            contactEmail: c.contactEmail || undefined,
+            taxId: c.taxId || undefined,
+            countryCode: c.countryCode,
+            status: SupplierStatus.ACTIVE,
+            reviewStatus: SupplierReviewStatus.NOT_SUBMITTED,
+          });
+          const saved = await em.save(supplier);
+          await this.attachToBranch(em, saved.id, branchId);
+          return saved;
         });
-        const saved = await this.repo.save(supplier);
-        await this.attachToBranch(this.repo.manager, saved.id, branchId);
         await this.audit.log(ctx, AuditEntityType.SUPPLIER, saved.id, AuditAction.SUPPLIER_CREATE, undefined, {
           businessId, legalName: c.legalName, bulk: true,
         });
@@ -625,7 +633,9 @@ export class SupplierService {
    * 逐行独立事务（User + SupplierAccount 同时建），失败的行不影响成功的行。
    * 同一供应商可多个账号（首个建的若该供应商尚无账号，则标 isPrimary=true）。
    */
-  async bulkImportSupplierAccounts(buffer: Buffer | undefined, ctx: AuditContext) {
+  async bulkImportSupplierAccounts(scope: BranchScope, isHq: boolean, targetBranchId: string | undefined, buffer: Buffer | undefined, ctx: AuditContext) {
+    const branchId = resolveAdminWriteBranch(scope, isHq, targetBranchId);
+    await this.requireRegistrationBranch(this.repo.manager, branchId);
     if (!buffer?.length) throw new BadRequestException('error.tender.import_file_required');
     const wb = XLSX.read(buffer, { type: 'buffer' });
     const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -715,7 +725,8 @@ export class SupplierService {
       const businessIds = Array.from(new Set(candidates.map((c) => c.businessId)));
       const [existingUsers, suppliers] = await Promise.all([
         this.userRepo.find({ where: [{ email: In(emails) }, { loginName: In(emails) }] }),
-        this.repo.find({ where: { businessId: In(businessIds) } }),
+        this.scopeSuppliers(this.repo.createQueryBuilder('s'), 's', branchScopeFor(branchId))
+          .andWhere('s.business_id IN (:...businessIds)', { businessIds }).getMany(),
       ]);
       const existEmails = new Set([
         ...existingUsers.map((u) => u.email?.toLowerCase()).filter(Boolean),
@@ -750,6 +761,15 @@ export class SupplierService {
     for (const c of candidates) {
       try {
         const result = await this.ds.transaction(async (em) => {
+          // Recheck inside the transaction; a business ID alone never grants account-management access.
+          const access = await em.query(
+            `SELECT s.id FROM suppliers s JOIN supplier_branch_profiles p ON p.supplier_id = s.id
+             JOIN branches b ON b.id = p.branch_id
+             WHERE s.business_id = $1 AND p.branch_id = $2 AND p.status = 'active'
+               AND s.status = 'active' AND b.status = 'active' AND b.type = 'BRANCH' FOR SHARE OF p, b, s`,
+            [c.businessId, branchId],
+          );
+          if (!access.length) throw new NotFoundException('error.supplier.not_found');
           // 同一批内重复邮箱由 seenEmails 防护；并发并行写时靠 DB 唯一索引兜底
           const passwordHash = await argon2.hash(c.password);
           const user = await em.save(em.create(User, {
@@ -827,7 +847,12 @@ export class SupplierService {
 
   async update(scope: BranchScope, id: string, data: Partial<Supplier>, ctx: AuditContext) {
     const before = await this.findById(scope, id);
-    await this.repo.update(id, data);
+    // Company data is global; IDs, certification and suspension have dedicated operations.
+    const editable = ['legalName', 'shortName', 'region', 'contactName', 'contactEmail', 'contactPhone', 'taxId'] as const;
+    const changes: Partial<Supplier> = {};
+    for (const key of editable) if (data[key] !== undefined) changes[key] = data[key];
+    if (data.countryCode !== undefined) changes.countryCode = supplierCountryCode(data.countryCode, before.countryCode);
+    await this.repo.update(id, changes);
     const after = await this.findById(scope, id);
     await this.audit.log(ctx, AuditEntityType.SUPPLIER, id, AuditAction.SUPPLIER_CREATE, before as unknown as Record<string, unknown>, after as unknown as Record<string, unknown>);
     return after;
@@ -1030,11 +1055,17 @@ export class SupplierService {
 
     const result = await this.ds.transaction(async (em) => {
       const branchId = await this.requireRegistrationBranch(em, data.branchId);
-      const countryCode = data.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
+      const countryCode = supplierCountryCode(data.countryCode, await this.branchCountryCode(branchId, em));
       const nextSeq = await this.computeNextBusinessSeq(countryCode, em);
       const businessId = nextBusinessId(nextSeq, countryCode);
       const supplier = em.create(Supplier, {
-        ...data,
+        legalName: data.legalName,
+        shortName: data.shortName,
+        region: data.region,
+        contactName: data.contactName,
+        contactEmail: data.contactEmail,
+        contactPhone: data.contactPhone,
+        taxId: data.taxId,
         businessId,
         countryCode,
         status: SupplierStatus.ACTIVE,
@@ -1362,12 +1393,16 @@ export class SupplierService {
         contactName: payload.contactName,
         contactEmail: payload.contactEmail,
         contactPhone: payload.contactPhone,
-        countryCode: payload.countryCode ?? before.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE,
+        countryCode: supplierCountryCode(payload.countryCode, before.countryCode),
         taxId: payload.taxId,
         reviewStatus: SupplierReviewStatus.PENDING_REVIEW,
         reviewComment: undefined,
       });
 
+      // Older clients may only send their local country's template. Preserve omitted document types.
+      const previousDocuments = await em.find(SupplierDocument, { where: { supplierId } });
+      const submittedTypes = new Set(documents.map(d => d.docType));
+      documents.push(...previousDocuments.filter(d => !submittedTypes.has(d.docType)));
       await em.delete(SupplierDocument, { supplierId });
       for (let i = 0; i < documents.length; i += 1) {
         const item = em.create(SupplierDocument, {
@@ -1413,7 +1448,7 @@ export class SupplierService {
         supplier: {
           reviewStatus: SupplierReviewStatus.NOT_SUBMITTED,
           status: SupplierStatus.ACTIVE,
-          countryCode: DEFAULT_SUPPLIER_COUNTRY_CODE,
+          countryCode: '',
         },
         documents: [],
         reviewLogs: [],
@@ -1451,7 +1486,7 @@ export class SupplierService {
 
     const result = await this.ds.transaction(async (em) => {
       const branchId = await this.requireRegistrationBranch(em, payload.branchId);
-      const countryCode = payload.countryCode ?? DEFAULT_SUPPLIER_COUNTRY_CODE;
+      const countryCode = supplierCountryCode(payload.countryCode, await this.branchCountryCode(branchId, em));
       const nextSeq = await this.computeNextBusinessSeq(countryCode, em);
       const businessId = nextBusinessId(nextSeq, countryCode);
       const user = await em.findOne(User, { where: { id: authUserId } });
@@ -1506,19 +1541,20 @@ export class SupplierService {
         metadata: { documentCount: documents.length, createdFromProfileSubmit: true },
       }));
 
-      return savedSupplier;
+      return { supplier: savedSupplier, branchId };
     });
 
     await this.audit.log(
       ctx,
       AuditEntityType.SUPPLIER,
-      result.id,
+      result.supplier.id,
       AuditAction.SUPPLIER_CREATE,
       undefined,
-      { businessId: result.businessId, source: 'profile_submit' },
+      { businessId: result.supplier.businessId, source: 'profile_submit' },
     );
-    await this.audit.log(ctx, AuditEntityType.SUPPLIER, result.id, AuditAction.SUPPLIER_PROFILE_SUBMIT, undefined, result as any, { documentCount: documents.length });
-    return this.findReviewDetail(scope, result.id);
+    await this.audit.log(ctx, AuditEntityType.SUPPLIER, result.supplier.id, AuditAction.SUPPLIER_PROFILE_SUBMIT, undefined, result.supplier as any, { documentCount: documents.length });
+    // The incoming scope belongs to the unbound account. Only use the branch validated and bound above.
+    return this.findReviewDetail(branchScopeFor(result.branchId), result.supplier.id);
   }
 
   async checkFingerprint(fingerprintHash: string, currentSupplierId: string): Promise<boolean> {

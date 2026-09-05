@@ -7,7 +7,10 @@
 <template>
   <div class="mobile-shell">
     <template v-if="showChrome">
-      <MobileNavBar />
+      <div>
+        <MobileNavBar />
+        <div v-if="auth.isLoggedIn && auth.canSwitchBranch" class="mobile-branch"><BranchSwitcher /></div>
+      </div>
       <main ref="contentRef" class="mobile-content">
         <router-view :key="`${route.fullPath}:${refreshKey}`" />
       </main>
@@ -25,8 +28,11 @@ import { useRoute } from 'vue-router';
 import MobileNavBar from './components/MobileNavBar.vue';
 import MobileTabBar from './components/MobileTabBar.vue';
 import { rememberMobileTabPath } from './mobileTabState';
+import BranchSwitcher from '../components/BranchSwitcher.vue';
+import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
+const auth = useAuthStore();
 const showChrome = computed(() => !route.meta.hideMobileChrome);
 const refreshKey = ref(0);
 const contentRef = ref<HTMLElement | null>(null);
@@ -56,6 +62,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.mobile-branch { padding: 6px 12px; background: #fff; border-bottom: 1px solid #e2e8f0; }
 .mobile-shell {
   height: 100vh;
   height: 100dvh;

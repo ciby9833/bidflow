@@ -32,6 +32,8 @@ export interface BranchAccessView {
   branchCode: string;
   branchName: string;
   branchType: BranchType;
+  /** Current branch base currency, used only for form defaults. */
+  currency?: string;
   role?: BranchMemberRole;
 }
 
@@ -69,6 +71,7 @@ export class BranchContextService {
         'b.code AS "branchCode"',
         'b.name AS "branchName"',
         'b.type AS "branchType"',
+        `b.settings->>'currency' AS "currency"`,
         'm.role AS "role"',
       ])
       .where('m.auth_user_id = :authUserId', { authUserId })
@@ -95,6 +98,7 @@ export class BranchContextService {
         'b.code AS "branchCode"',
         'b.name AS "branchName"',
         'b.type AS "branchType"',
+        `b.settings->>'currency' AS "currency"`,
       ])
       .from('supplier_branch_profiles', 'p')
       .innerJoin(Branch, 'b', 'b.id = p.branch_id')

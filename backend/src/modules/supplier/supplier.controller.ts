@@ -128,8 +128,8 @@ export class SupplierController {
   @Post('accounts/import')
   @RequireScopes('supplier:create')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
-  async bulkImportAccounts(@UploadedFile() file: any, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.bulkImportSupplierAccounts(file?.buffer, ctx(req)));
+  async bulkImportAccounts(@UploadedFile() file: any, @Req() req: Request, @Body('branchId') branchId?: string) {
+    return ApiResponse.ok(await this.svc.bulkImportSupplierAccounts(scopeOf(req), isHqOf(req), branchId, file?.buffer, ctx(req)));
   }
 
   @Get(':id')
@@ -227,6 +227,7 @@ export class SupplierController {
   @Post(':id/invitations/:invitationId/revoke')
   @RequireScopes('supplier:edit')
   async revokeInvitation(@Param('id') id: string, @Param('invitationId') invitationId: string, @Req() req: Request) {
+    await this.svc.findById(scopeOf(req), id);
     return ApiResponse.ok(await this.svc.revokeInvitation(id, invitationId, ctx(req)));
   }
   /** 按商务编号或税号精确查找全局供应商，用于跨机构授权 */

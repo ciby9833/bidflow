@@ -15,6 +15,9 @@
   >
     <!-- 上传阶段 -->
     <div v-if="stage === 'upload'" class="bid-stage">
+      <el-form v-if="requiresTargetBranch" label-position="top" :disabled="uploading">
+        <TargetBranchSelect v-model="targetBranchId" />
+      </el-form>
       <div class="bid-template">
         <el-button text type="primary" :loading="downloadingTemplate" @click="downloadTemplate">
           <el-icon><Download /></el-icon>
@@ -75,6 +78,8 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import { Download, Loading, UploadFilled } from '@element-plus/icons-vue';
 import { api } from '../composables/useApi';
+import TargetBranchSelect from './TargetBranchSelect.vue';
+import { useAuthStore } from '../stores/auth';
 
 interface ImportError { row: number; value: string; reason: string }
 interface ImportResult {
@@ -94,6 +99,7 @@ const props = defineProps<{
   identifierLabel: string;
   templateHint?: string;
   allOkLabel?: string;
+  requiresTargetBranch?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -102,6 +108,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const auth = useAuthStore();
+const targetBranchId = ref('');
 const fileInput = ref<HTMLInputElement | null>(null);
 const stage = ref<'upload' | 'result'>('upload');
 const dragging = ref(false);
@@ -119,6 +127,7 @@ function updateModelValue(value: boolean) {
 }
 
 function reset() {
+  targetBranchId.value = '';
   stage.value = 'upload';
   dragging.value = false;
   uploading.value = false;
@@ -167,6 +176,11 @@ async function downloadTemplate() {
 }
 
 async function upload(file: File) {
+  if (uploading.value) return;
+  if (props.requiresTargetBranch && auth.isHq && !targetBranchId.value) {
+    ElMessage.warning(t('org.selectTargetBranch'));
+    return;
+  }
   if (!/\.(xlsx|xls)$/i.test(file.name)) {
     ElMessage.warning(t('bulkImport.formatHint'));
     return;
@@ -175,6 +189,7 @@ async function upload(file: File) {
   try {
     const body = new FormData();
     body.append('file', file);
+    if (props.requiresTargetBranch && targetBranchId.value) body.append('branchId', targetBranchId.value);
     const res = await api.post(props.uploadUrl, body, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });

@@ -20,6 +20,7 @@
       </el-button>
     </header>
 
+    <TenderDeadlineChanges v-if="tender" :tender="tender" />
     <section v-if="tender" class="rule-grid">
       <div><span>{{ t('tenderCreate.bidDeadline') }}</span><strong>{{ tender.bidDeadline ? fmtDate(tender.bidDeadline) : t('common.not_set') }}</strong></div>
       <div><span>{{ t('quote.maxRebid') }}</span><strong>{{ t('quote.times', { count: tender.maxRebidCount }) }}</strong></div>
@@ -313,6 +314,7 @@
 </template>
 
 <script setup lang="ts">
+import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import {
   computed, onActivated, onBeforeUnmount, onMounted, reactive, ref,
 } from 'vue';
@@ -381,6 +383,7 @@ const quoteErrorKeys: Record<string, string> = {
   COOLDOWN_ACTIVE: 'error.quote.cooldown_active',
   REBID_LIMIT_REACHED: 'error.quote.rebid_limit_reached',
   MIN_DECREMENT_FAIL: 'error.quote.min_decrement_fail',
+  QUOTE_CURRENCY_LOCKED: 'error.quote.currency_locked',
   LINE_REQUIRED_FIELD_MISSING: 'quote.fillRequired',
   error_quote_cooldown_active: 'error.quote.cooldown_active',
   error_quote_rebid_limit_reached: 'error.quote.rebid_limit_reached',
@@ -388,6 +391,8 @@ const quoteErrorKeys: Record<string, string> = {
   error_quote_deadline_passed: 'error.quote.deadline_passed',
   error_quote_tender_not_open: 'error.quote.tender_not_open',
   error_quote_concurrent_submit: 'error.quote.concurrent_submit',
+  error_quote_currency_locked: 'error.quote.currency_locked',
+  error_quote_currency_history_inconsistent: 'error.quote.currency_history_inconsistent',
 };
 
 function fmtDate(iso: string) { return dayjs(iso).format('YYYY-MM-DD HH:mm'); }

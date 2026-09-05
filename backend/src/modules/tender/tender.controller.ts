@@ -11,6 +11,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { TenderService } from './tender.service';
+import { DeadlineChangeService, DeadlineChangeInput } from './deadline-change.service';
 import { TenderStatus, TenderType } from './tender.entity';
 import { ApiResponse } from '../../shared/dto/response.dto';
 import { RbacGuard, RequireScopes } from '../../shared/rbac/rbac.guard';
@@ -36,7 +37,33 @@ function scopeOf(req: Request): BranchScope {
 @Controller('api/tenders')
 @UseGuards(AuthGuard('jwt'), RbacGuard)
 export class TenderController {
-  constructor(private readonly svc: TenderService) {}
+  constructor(private readonly svc: TenderService, private readonly deadlines: DeadlineChangeService) {}
+
+  @Get(':id/deadline-changes/preview')
+  @RequireScopes('tender:deadline_adjust')
+  async deadlinePreview(@Param('id') id: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.deadlines.preview(scopeOf(req), id));
+  }
+
+  @Get(':id/deadline-changes')
+  @RequireScopes('tender:view')
+  async deadlineHistory(@Param('id') id: string, @Req() req: Request) {
+    const user = req.user as User;
+    await this.svc.findById(scopeOf(req), id, { role: user.role, supplierId: user.supplierId });
+    return ApiResponse.ok(await this.deadlines.history(id, Boolean(user.supplierId)));
+  }
+
+  @Post(':id/deadline-changes')
+  @RequireScopes('tender:deadline_adjust')
+  async changeDeadline(@Param('id') id: string, @Body() body: DeadlineChangeInput, @Req() req: Request) {
+    return ApiResponse.ok(await this.deadlines.change(scopeOf(req), id, body, ctx(req)));
+  }
+
+  @Post(':id/deadline-changes/:changeId/retry')
+  @RequireScopes('tender:deadline_adjust')
+  async retryDeadlineNotice(@Param('id') id: string, @Param('changeId') changeId: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.deadlines.retry(scopeOf(req), id, changeId));
+  }
 
   @Post()
   @RequireScopes('tender:create')

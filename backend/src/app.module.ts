@@ -46,6 +46,8 @@ import { Quote } from './modules/quote/quote.entity';
 import { LineQuote } from './modules/quote/line-quote.entity';
 import { LotQuoteAttachment } from './modules/quote/lot-quote-attachment.entity';
 import { RankingSnapshot } from './modules/quote/ranking-snapshot.entity';
+import { SupplierRoundCurrency } from './modules/quote/supplier-round-currency.entity';
+import { TenderExchangeRate } from './modules/quote/tender-exchange-rate.entity';
 
 @Module({
   imports: [
@@ -62,7 +64,7 @@ import { RankingSnapshot } from './modules/quote/ranking-snapshot.entity';
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres',
         url: cfg.getOrThrow('DB_URL'),
-        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, AuditLog, Branch, BranchMember, SupplierBranchProfile],
+        entities: [User, CompanyUser, SupplierAccount, Supplier, SupplierDocument, SupplierReviewLog, SupplierInvitation, Tender, TenderNotificationLog, Lot, LotLine, Invitation, Quote, LineQuote, LotQuoteAttachment, RankingSnapshot, SupplierRoundCurrency, TenderExchangeRate, AuditLog, Branch, BranchMember, SupplierBranchProfile],
         migrations: ['dist/migrations/*{.ts,.js}'],
         // 必须保持 false：schema 唯一事实来源是 src/migrations。
         // 开启后 TypeORM 会按实体定义「纠正」数据库，把迁移建的部分索引、外键、
