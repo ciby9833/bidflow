@@ -98,7 +98,8 @@ export class UploadService {
     }
     res.setHeader('Content-Disposition', 'inline');
     // 私有缓存 5 分钟，避免短期内反复回源
-    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
 
     const stream = this.s3.getObject({ Bucket: this.bucket, Key: objectKey }).createReadStream();
     stream.on('error', (err) => {

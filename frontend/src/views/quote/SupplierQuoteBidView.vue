@@ -6,6 +6,8 @@
 -->
 <template>
   <div v-loading="loading" class="supplier-quote-page">
+    <el-result v-if="loadError" icon="error" :title="loadError" />
+    <template v-else-if="lot && tender">
     <header v-if="lot && tender" class="quote-head">
       <div>
         <div class="meta-line">
@@ -121,7 +123,7 @@
         <el-table-column :label="t('quote.rank')" width="120" fixed="right">
           <template #default="{ row }">
             <span v-if="lineState[row.id]?.rank?.hasQuote">
-              {{ lineState[row.id].rank.isLeading ? t('quote.leading') : `#${lineState[row.id].rank.myRank} / ${lineState[row.id].rank.total}` }}
+              {{ rankLabel(lineState[row.id].rank) }}
             </span>
             <span v-else class="muted">—</span>
           </template>
@@ -129,9 +131,9 @@
         <el-table-column :label="t('quote.thisQuote')" width="310" fixed="right">
           <template #default="{ row }">
             <div v-if="lineState[row.id]" class="line-submit">
-              <el-input-number
+              <el-input-number v-sync-input-disabled
                 v-model="lineState[row.id].price"
-                :min="0.01"
+                :min="0.01" :step="0.01"
                 :precision="2"
                 controls-position="right"
                 :disabled="tender?.status !== 'open' || lineState[row.id].ability?.canSubmit === false || lineState[row.id].refreshing"
@@ -178,8 +180,8 @@
         <div>
           <span class="rank-label">{{ t('quote.my_rank') }}</span>
           <strong class="rank-value" :class="{ leading: isLeading }">
-            <template v-if="myRank !== null">
-              {{ isLeading ? t('quote.rank_leading') : `#${myRank} / ${total}` }}
+            <template v-if="hasQuote">
+              {{ rankLabel({ isLeading, myRank, total, bucket }) }}
             </template>
             <template v-else>{{ t('quote.noQuote') }}</template>
           </strong>
@@ -237,7 +239,7 @@
       <el-form :model="form" label-position="top" @submit.prevent="submitQuote">
         <div class="form-grid">
           <el-form-item :label="t('quote.total_price')" required>
-            <el-input-number v-model="form.totalPrice" :min="0.01" :precision="2" style="width:100%" controls-position="right" />
+            <el-input-number v-sync-input-disabled v-model="form.totalPrice" :min="0.01" :step="0.01" :precision="2" style="width:100%" controls-position="right" />
           </el-form-item>
           <el-form-item :label="t('quote.currency')" required>
             <el-select v-model="form.currency" style="width:100%">
@@ -310,19 +312,22 @@
         </el-table-column>
       </el-table>
     </el-card>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { currencyCodes } from '../../shared/markets';
 import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import {
   computed, onActivated, onBeforeUnmount, onMounted, reactive, ref,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Refresh } from '@element-plus/icons-vue';
+import { filePreviewUrl, openFilePreview } from '../../composables/useFilePreview';
 import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
 import { useWs } from '../../composables/useWs';
@@ -338,11 +343,13 @@ const myQuote = ref<any | null>(null);
 const quoteAbility = ref<any | null>(null);
 const quoteHistory = ref<any[]>([]);
 const loading = ref(false);
+const loadError = ref('');
 const submitting = ref(false);
 const statusRefreshing = ref(false);
 const submitError = ref('');
 const cooldownSecs = ref(0);
 const idempotencyKey = ref<string | null>(null);
+let lastSubmission = '';
 const editing = ref(false);
 const isRebid = computed(() => !!myQuote.value);
 let cooldownTimer: ReturnType<typeof setInterval> | undefined;
@@ -366,18 +373,19 @@ const lineState = reactive<Record<string, {
   cooldownSecs: number;
 }>>({});
 const lineCooldownTimers: Record<string, ReturnType<typeof setInterval> | undefined> = {};
+// Element Plus currently sets inner aria-disabled only at mount; keep it in sync after async loads.
+function syncInputDisabled(el: HTMLElement) {
+  const input = el.querySelector('input');
+  if (input) input.setAttribute('aria-disabled', String(input.disabled));
+}
+const vSyncInputDisabled = { mounted: syncInputDisabled, updated: syncInputDisabled };
 const supplierId = auth.user?.supplierId ?? '';
-const { myRank, total, isLeading, connected } = useWs(lotId, supplierId);
+const { refreshRank, hasQuote, bucket, myRank, total, isLeading, connected } = useWs(lotId, supplierId);
 const hasLineQuotes = computed(() => Boolean(lot.value?.lines?.length));
 const lineColumns = computed(() => lot.value?.uiSchema?.lineColumns ?? []);
 const supplierRequiredColumns = computed(() => lineColumns.value.filter((col: any) => Boolean(col.required)));
 const procurementLineColumns = computed(() => lineColumns.value.filter((col: any) => !col.required));
-const currencyOptions = computed(() => [
-  { value: 'IDR', label: t('currency.idr') },
-  { value: 'VND', label: t('currency.vnd') },
-  { value: 'USD', label: t('currency.usd') },
-  { value: 'CNY', label: t('currency.cny') },
-]);
+const currencyOptions = computed(() => currencyCodes.map(value => ({ value, label: t(`currency.${value.toLowerCase()}`) })));
 
 const quoteErrorKeys: Record<string, string> = {
   COOLDOWN_ACTIVE: 'error.quote.cooldown_active',
@@ -395,7 +403,12 @@ const quoteErrorKeys: Record<string, string> = {
   error_quote_currency_history_inconsistent: 'error.quote.currency_history_inconsistent',
 };
 
-function fmtDate(iso: string) { return dayjs(iso).format('YYYY-MM-DD HH:mm'); }
+function rankLabel(rank: any) {
+  if (rank.myRank != null) return `#${rank.myRank} / ${rank.total}`;
+  if (rank.bucket != null) return `${(rank.bucket - 1) * 10}–${rank.bucket * 10}%`;
+  return rank.isLeading ? t('quote.rank_leading') : t('quote.rank_not_leading');
+}
+function fmtDate(iso: string) { return institutionWallTime(iso, tender.value?.timezone || 'UTC') + ' (' + (tender.value?.timezone || 'UTC') + ')'; }
 
 function formatSize(size?: number) {
   if (!size) return '';
@@ -456,9 +469,9 @@ async function removeAttachment(index: number) {
   ElMessage.success(t('quote.attachmentSaved'));
 }
 
-function previewAttachment(file: any) {
+async function previewAttachment(file: any) {
   const url = file.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(file.key)}`;
-  window.open(url, '_blank');
+  await openFilePreview(url);
 }
 function formatMoney(value: number, currency: string) {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
@@ -534,6 +547,7 @@ function readableMessageKey(key?: string) {
 function formatQuoteError(e: any, fallback = t('quote.submitFailed')) {
   const err = extractQuoteError(e);
   if (err?.code && quoteErrorKeys[err.code]) return t(quoteErrorKeys[err.code], { label: t('quote.requiredFields') });
+  if (typeof err?.message === 'string') return err.message;
   if (err?.message_key) return readableMessageKey(err.message_key);
   const message = e.response?.data?.message;
   if (typeof message === 'string') return readableMessageKey(message);
@@ -560,6 +574,8 @@ function isLineRebidLimitReached(lineId: string) {
 function getLineQuoteValidationMessage(lineId: string) {
   if (isLineRebidLimitReached(lineId)) return '';
   const state = lineState[lineId];
+  const missing = supplierRequiredColumns.value.find((col: any) => !String(state?.items?.[col.key] ?? '').trim());
+  if (missing) return t('quote.fillRequired', { label: missing.label });
   const nextMax = getLineNextMaxPrice(lineId);
   if (!state?.quote || nextMax === null) return '';
   if (lineCurrency.value !== state.quote.currency) return '';
@@ -726,7 +742,9 @@ async function refreshLineQuoteState(line: any, preserveDraft = true) {
 }
 
 async function load() {
+  void refreshRank();
   loading.value = true;
+  loadError.value = '';
   try {
     const lotRes = await api.get(`/api/tenders/lots/${lotId}`);
     lot.value = lotRes.data.data;
@@ -743,6 +761,12 @@ async function load() {
     }
 
     await refreshQuoteState(false, true);
+  } catch (error: any) {
+    lot.value = null;
+    tender.value = null;
+    myQuote.value = null;
+    quoteHistory.value = [];
+    loadError.value = formatQuoteError(error, t('quote.refreshQuoteFailed'));
   } finally {
     loading.value = false;
   }
@@ -890,14 +914,21 @@ async function submitQuote() {
   try {
     const payload: any = {
       lotId,
+      roundNo: tender.value.currentQuoteRound ?? 1,
       totalPrice: form.totalPrice,
       currency: form.currency,
       remark: form.remark,
     };
-    if (idempotencyKey.value) payload.idempotencyKey = idempotencyKey.value;
+    const signature = JSON.stringify(payload);
+    if (!idempotencyKey.value || lastSubmission !== signature) {
+      idempotencyKey.value = crypto.randomUUID();
+      lastSubmission = signature;
+    }
+    payload.idempotencyKey = idempotencyKey.value;
 
     const res = await api.post('/api/quotes', payload);
-    idempotencyKey.value = res.data.data.idempotencyKey;
+    idempotencyKey.value = null;
+    lastSubmission = '';
     myQuote.value = res.data.data.quote;
     ElMessage.success(t('quote.submitted'));
     editing.value = false;

@@ -14,7 +14,7 @@
       </div>
     </section>
 
-    <section v-if="auth.isLoggedIn" class="supplier-card">
+    <section v-if="auth.isLoggedIn && auth.user?.accountType === 'supplier_account'" class="supplier-card">
       <div>
         <span>{{ t('route.supplierProfile') }}</span>
         <strong>{{ supplierName }}</strong>
@@ -95,6 +95,7 @@ const languageOpen = ref(false);
 const languageOptions: Array<{ value: SupportedLocale; label: string }> = [
   { value: 'id-ID', label: 'Bahasa Indonesia' },
   { value: 'vi-VN', label: 'Tiếng Việt' },
+  { label: 'Português (Brasil)', value: 'pt-BR' },
   { value: 'en', label: 'English' },
   { value: 'zh-CN', label: '中文' },
 ];

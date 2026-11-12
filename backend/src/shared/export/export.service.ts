@@ -4,7 +4,7 @@
  * 交互：读取 quote/tender/lot/supplier 实体；由 export.controller.ts 调用；写入 audit.service.ts 审计；通过 I18nService.t() 取词条。
  * 作者：吴川
  */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import * as ExcelJS from 'exceljs';
@@ -43,6 +43,7 @@ const COLLATION_BY_LOCALE: Record<SupportedLocale, string> = {
   en: 'en-US',
   'id-ID': 'id-ID',
   'vi-VN': 'vi-VN',
+  'pt-BR': 'pt-BR',
 };
 
 // ── 配色（专业、克制）──
@@ -92,6 +93,7 @@ export class ExportService {
     ctx: AuditContext,
     options: ExportOptions = {},
   ): Promise<Buffer> {
+    if (!['full', 'masked'].includes(mode)) throw new BadRequestException('Invalid export mode');
     // 唯一入口锚点：招标归属校验通过后，下游按 tenderId 派生的标包、品目、报价均落在同一机构内。
     // 导出的是完整报价明细，跨机构泄漏后果远重于列表页，因此这里不做"查不到就返回空表"的降级，
     // 而是直接按不存在处理。
@@ -128,20 +130,19 @@ export class ExportService {
       const line = lines.find((item) => item.id === quote.lineId);
       const supplier = supplierMap.get(quote.supplierId);
       const lineColumns = (lot?.uiSchema?.lineColumns ?? []) as Array<{ key: string; label: string; required?: boolean }>;
-      return { quote, lot, line, supplier, lineColumns };
+      return { quote: { ...quote, displayTimezone: tender.timezone ?? 'UTC' }, lot, line, supplier, lineColumns };
     });
-    const lotRows = (!targetRounds || targetRounds.includes(1))
-      ? latestLotQuotes.map((quote) => {
+    const lotRows = latestLotQuotes.filter((quote) => !targetRounds || targetRounds.includes(quote.roundNo))
+      .map((quote) => {
         const lot = lotMap.get(quote.lotId);
         return {
-          quote: { ...quote, roundNo: 1, lineId: null },
+          quote: { ...quote, lineId: null, displayTimezone: tender.timezone ?? 'UTC' },
           lot,
           line: undefined,
           supplier: supplierMap.get(quote.supplierId),
           lineColumns: [] as Array<{ key: string; label: string; required?: boolean }>,
         };
-      })
-      : [];
+      });
 
     const rankedRows = this.rankRows([...lineRows, ...lotRows]);
     const collation = COLLATION_BY_LOCALE[this.i18n.currentLocale()] ?? 'en-US';
@@ -205,7 +206,7 @@ export class ExportService {
       [this.summary('exportMode'), mode === 'full' ? this.summary('modeFull') : this.summary('modeMasked')],
       [this.summary('exportView'), view === 'supplier' ? this.summary('viewSupplier') : this.summary('viewItem')],
       [this.summary('exportRound'), options.round && options.round !== 'all' ? options.round : this.summary('allRounds')],
-      [this.summary('exportedAt'), this.fmtDate(new Date())],
+      [this.summary('exportedAt'), this.fmtDate(new Date(), tender.timezone ?? 'UTC')],
     ];
     let r = 4;
     for (const [k, v] of rows) {
@@ -460,7 +461,7 @@ export class ExportService {
       case 'exchangeRate': return quote.exchangeRate === null || quote.exchangeRate === undefined ? '' : Number(quote.exchangeRate);
       case 'exchangeRateDate': return quote.exchangeRateDate ?? '';
       case 'version': return quote.version;
-      case 'submittedAt': return this.fmtDate(quote.submittedAt);
+      case 'submittedAt': return this.fmtDate(quote.submittedAt, quote.displayTimezone ?? 'UTC');
       case 'remark': return quote.remark ?? '';
       case 'submitIp': return mode === 'masked' ? '' : quote.submitIp ?? '';
       default: return '';
@@ -480,12 +481,11 @@ export class ExportService {
     return supplier?.legalName || supplier?.shortName || fallback;
   }
 
-  private fmtDate(value?: Date | string): string {
+  private fmtDate(value?: Date | string, timezone = 'UTC'): string {
     if (!value) return '';
     const dt = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(dt.getTime())) return String(value);
-    const p = (n: number) => String(n).padStart(2, '0');
-    return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+    return `${new Intl.DateTimeFormat(this.i18n.currentLocale(), { timeZone: timezone, dateStyle: 'short', timeStyle: 'short', hour12: false }).format(dt)} (${timezone})`;
   }
 
   private safeSheetName(name: string) {

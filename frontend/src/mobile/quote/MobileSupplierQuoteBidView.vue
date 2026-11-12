@@ -6,6 +6,7 @@
 -->
 <template>
   <main class="mobile-quote" v-loading="loading">
+    <p v-if="loadError" role="alert" class="error">{{ loadError }}</p>
     <template v-if="lot && tender">
       <section class="hero">
         <div class="meta-line">
@@ -14,6 +15,7 @@
         </div>
         <h1>{{ lot.title }}</h1>
         <p>{{ tender.title }}</p>
+        <p>{{ t('tenderList.roundNo', { round: tender.currentQuoteRound || 1 }) }}</p>
       </section>
 
       <TenderDeadlineChanges :tender="tender" />
@@ -85,10 +87,7 @@
           <label class="field">
             <span>{{ t('quote.currency') }}</span>
             <select v-model="form.currency">
-              <option value="IDR">{{ t('currency.idr') }}</option>
-              <option value="VND">{{ t('currency.vnd') }}</option>
-              <option value="USD">{{ t('currency.usd') }}</option>
-              <option value="CNY">{{ t('currency.cny') }}</option>
+              <option v-for="code in currencyCodes" :key="code" :value="code">{{ t(`currency.${code.toLowerCase()}`) }}</option>
             </select>
           </label>
           <label class="field">
@@ -108,13 +107,14 @@
 </template>
 
 <script setup lang="ts">
+import { currencyCodes } from '../../shared/markets';
 import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import {
   computed, onBeforeUnmount, onMounted, reactive, ref,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api } from '../../composables/useApi';
 
@@ -128,6 +128,7 @@ const tender = ref<any>(null);
 const myQuote = ref<any>(null);
 const quoteAbility = ref<any>(null);
 const submitError = ref('');
+const loadError = ref('');
 const editing = ref(false);
 const cooldownSecs = ref(0);
 let cooldownTimer: ReturnType<typeof setInterval> | undefined;
@@ -141,7 +142,7 @@ const lineColumns = computed(() => lot.value?.uiSchema?.lineColumns ?? []);
 const supplierRequiredColumns = computed(() => lineColumns.value.filter((col: any) => Boolean(col.required)));
 const procurementLineColumns = computed(() => lineColumns.value.filter((col: any) => !col.required));
 
-function fmt(value: string) { return dayjs(value).format('YYYY-MM-DD HH:mm'); }
+function fmt(value: string) { return institutionWallTime(value, tender.value?.timezone || 'UTC') + ' (' + (tender.value?.timezone || 'UTC') + ')'; }
 function formatMoney(value: number, currency: string) { return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`; }
 function statusLabel(status: string) {
   return status ? t(`tender.status.${status}`) : '';
@@ -230,6 +231,7 @@ function stopLineCooldown(lineId: string) {
 }
 
 function applyQuoteState(data: any, preserve = false) {
+  if (tender.value && data?.tenderStatus) tender.value.status = data.tenderStatus;
   myQuote.value = data?.quote ?? null;
   quoteAbility.value = data?.ability ?? null;
   if (quoteAbility.value?.reasonCode === 'COOLDOWN_ACTIVE' && quoteAbility.value?.retryAfterSeconds) startCooldown(Number(quoteAbility.value.retryAfterSeconds));
@@ -249,6 +251,7 @@ async function refreshLineState(line: any, preserve = true) {
   const state = ensureLineState(line);
   const res = await api.get(`/api/quotes/lines/${line.id}/mine`);
   const data = res.data.data;
+  if (tender.value && data?.tenderStatus) tender.value.status = data.tenderStatus;
   state.quote = data?.quote ?? null;
   state.ability = data?.ability ?? null;
   state.currency = state.quote?.currency || lot.value?.budgetCurrency || tender.value?.baseCurrency || 'IDR';
@@ -266,6 +269,8 @@ function lineNextMax(lineId: string) {
 }
 function lineValidation(lineId: string) {
   const state = lineState[lineId];
+  const missing = supplierRequiredColumns.value.find((col: any) => !String(state?.items?.[col.key] ?? '').trim());
+  if (missing) return t('quote.fillRequired', { label: missing.label });
   const max = lineNextMax(lineId);
   if (!state?.quote || max === null) return '';
   return Number(state.price) > max ? t('quote.priceMustNotExceed', { amount: formatMoney(max, state.currency) }) : '';
@@ -294,11 +299,12 @@ function formatQuoteError(e: any) {
   if (err?.code === 'COOLDOWN_ACTIVE') return t('quote.cooldownWait', { seconds: err.detail?.retry_after_seconds ?? 60 });
   if (err?.code === 'MIN_DECREMENT_FAIL') return t('error.quote.min_decrement_fail');
   if (err?.code === 'QUOTE_CURRENCY_LOCKED') return t('error.quote.currency_locked');
-  return e.response?.data?.message || t('quote.submitFailed');
+  return err?.message || e.response?.data?.message || t('quote.submitFailed');
 }
 
 async function load() {
   loading.value = true;
+  loadError.value = '';
   try {
     const lotRes = await api.get(`/api/tenders/lots/${lotId}`);
     lot.value = lotRes.data.data;
@@ -310,6 +316,12 @@ async function load() {
       return;
     }
     await refreshQuoteState(false);
+  } catch (e: any) {
+    lot.value = null;
+    tender.value = null;
+    myQuote.value = null;
+    quoteAbility.value = null;
+    loadError.value = formatQuoteError(e);
   } finally {
     loading.value = false;
   }
@@ -321,8 +333,8 @@ async function startEdit() {
     ElMessage.warning(quoteBlockReason.value || t('quote.cannotContinueRebid'));
     return;
   }
-  form.totalPrice = nextMaxPrice.value ?? Number(myQuote.value.totalPrice);
-  form.currency = myQuote.value.currency;
+  form.totalPrice = nextMaxPrice.value ?? Number(myQuote.value?.totalPrice ?? 0);
+  form.currency = myQuote.value?.currency ?? tender.value?.baseCurrency ?? 'IDR';
   form.remark = '';
   editing.value = true;
 }
@@ -341,11 +353,13 @@ async function submitQuote() {
     submitError.value = quoteBlockReason.value || localValidationMessage.value || t('quote.cannotSubmitNow');
     return;
   }
-  await ElMessageBox.confirm(t('quote.confirmLineQuoteMessage', { amount: formatMoney(Number(form.totalPrice), form.currency) }), t('quote.confirmQuote'), { confirmButtonText: t('quote.confirmSubmit'), cancelButtonText: t('common.cancel') });
+  try {
+    await ElMessageBox.confirm(t('quote.confirmLineQuoteMessage', { amount: formatMoney(Number(form.totalPrice), form.currency) }), t('quote.confirmQuote'), { confirmButtonText: t('quote.confirmSubmit'), cancelButtonText: t('common.cancel') });
+  } catch { return; }
   submitting.value = true;
   submitError.value = '';
   try {
-    const res = await api.post('/api/quotes', { lotId, totalPrice: form.totalPrice, currency: form.currency, remark: form.remark });
+    const res = await api.post('/api/quotes', { lotId, roundNo: tender.value.currentQuoteRound ?? 1, totalPrice: form.totalPrice, currency: form.currency, remark: form.remark });
     myQuote.value = res.data.data.quote;
     ElMessage.success(t('quote.submitted'));
     await refreshQuoteState(false);
@@ -369,7 +383,9 @@ async function submitLineQuote(line: any) {
     ElMessage.warning(t('quote.fillRequired', { label: missing.label }));
     return;
   }
-  await ElMessageBox.confirm(t('quote.confirmLineQuoteMessage', { amount: formatMoney(Number(state.price), state.currency) }), t('quote.confirmLineQuote'), { confirmButtonText: t('quote.confirmSubmit'), cancelButtonText: t('common.cancel') });
+  try {
+    await ElMessageBox.confirm(t('quote.confirmLineQuoteMessage', { amount: formatMoney(Number(state.price), state.currency) }), t('quote.confirmLineQuote'), { confirmButtonText: t('quote.confirmSubmit'), cancelButtonText: t('common.cancel') });
+  } catch { return; }
   state.submitting = true;
   try {
     await api.post(`/api/quotes/lines/${line.id}`, { totalPrice: state.price, currency: state.currency, items: state.items });

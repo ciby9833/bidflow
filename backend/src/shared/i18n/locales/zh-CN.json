@@ -54,7 +54,9 @@
       "self_registration_branch_ambiguous": "存在多个国家机构，无法判断自助注册供应商的归属。请先为公开门户配置机构入口。",
       "registration_branch_required": "请选择要注册的国家机构",
       "lookup_key_required": "请输入商务编号或税号",
-      "invalid_country": "请选择有效的公司注册国家／地区代码"
+      "invalid_country": "请选择有效的公司注册国家／地区代码",
+      "invalid_cnpj": "请输入有效的巴西 CNPJ（支持数字及字母数字格式）。",
+      "cnpj_exists": "该 CNPJ 已属于现有供应商，请为现有供应商增加机构准入，不要重复创建。"
     },
     "tender": {
       "deadline_state": "当前招标状态不允许延期或重新开放",
@@ -88,6 +90,12 @@
       "not_found": "线路/明细不存在"
     },
     "quote": {
+      "frozen_round": "本轮评标已冻结。如需继续报价，请创建下一轮。",
+      "close_before_freeze": "请先结束本轮报价，再冻结评标结果。",
+      "no_quotes_to_freeze": "没有可冻结的报价。",
+      "round_changed": "报价轮次已变更，请刷新后重新核对。",
+      "invalid_freeze_trigger": "不支持的快照类型。",
+      "invalid_round": "报价轮次无效。",
       "tender_not_open": "招标未开放报价",
       "deadline_passed": "已超过报价截止时间",
       "cooldown_active": "冷却中，请稍后再试",
@@ -98,14 +106,16 @@
       "currency_history_inconsistent": "本轮历史报价存在多个币种，请联系管理员处理",
       "version_conflict": "报价版本冲突，请刷新后重试",
       "concurrent_submit": "请勿重复提交",
-      "required_field_missing": "缺少必填字段"
+      "required_field_missing": "缺少必填字段",
+      "invalid_amount": "金额必须为正数，最多 4 位小数，且不超过 100000000000。"
     },
     "upload": {
       "file_required": "请选择上传文件",
       "file_type_not_allowed": "不支持的文件类型",
       "file_too_large": "文件超过大小限制",
       "file_not_found": "文件不存在",
-      "file_too_many": "附件数量超过上限（最多 5 个）"
+      "file_too_many": "附件数量超过上限（最多 5 个）",
+      "invalid_reference": "附件引用无效或无权引用该附件。"
     },
     "export": {
       "full_requires_manager": "仅采购经理可执行完整导出"
@@ -126,7 +136,8 @@
       "no_active_branch": "当前没有激活的机构",
       "hq_membership_requires_admin": "总部成员资格需由总部管理后台分配",
       "not_accessible": "无权访问该机构",
-      "target_required": "请选择目标机构"
+      "target_required": "请选择目标机构",
+      "invalid_settings": "机构币种、时区或语言配置无效。"
     }
   },
   "quote": {

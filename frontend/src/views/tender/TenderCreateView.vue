@@ -62,20 +62,17 @@
           </el-form-item>
           <el-form-item :label="t('tenderCreate.baseCurrency')">
             <el-select v-model="form.baseCurrency" size="large" @change="syncLotCurrency" style="width:100%">
-              <el-option value="IDR" :label="t('currency.idr')" />
-              <el-option value="VND" :label="t('currency.vnd')" />
-              <el-option value="USD" :label="t('currency.usd')" />
-              <el-option value="CNY" :label="t('currency.cny')" />
+              <CurrencyOptions />
             </el-select>
           </el-form-item>
-          <el-form-item :label="t('tenderCreate.bidStartAt')">
-            <el-date-picker v-model="form.bidStartAt" type="datetime" size="large" style="width:100%" :placeholder="t('tenderCreate.startImmediately')" />
+          <el-form-item :label="`${t('tenderCreate.bidStartAt')} (${institutionTimezone})`">
+            <el-date-picker v-model="form.bidStartAt" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" size="large" style="width:100%" :placeholder="t('tenderCreate.startImmediately')" />
           </el-form-item>
-          <el-form-item :label="t('tender.deadline')" required>
-            <el-date-picker v-model="form.bidDeadline" type="datetime" size="large" style="width:100%" :placeholder="t('tenderCreate.deadlinePlaceholder')" />
+          <el-form-item :label="`${t('tender.deadline')} (${institutionTimezone})`" required>
+            <el-date-picker v-model="form.bidDeadline" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" size="large" style="width:100%" :placeholder="t('tenderCreate.deadlinePlaceholder')" />
           </el-form-item>
-          <el-form-item :label="t('tenderCreate.openReviewTime')">
-            <el-date-picker v-model="form.openTime" type="datetime" size="large" style="width:100%" :placeholder="t('tenderCreate.reviewTimePlaceholder')" />
+          <el-form-item :label="`${t('tenderCreate.openReviewTime')} (${institutionTimezone})`">
+            <el-date-picker v-model="form.openTime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" size="large" style="width:100%" :placeholder="t('tenderCreate.reviewTimePlaceholder')" />
           </el-form-item>
           <el-form-item class="col-full" :label="t('tenderCreate.projectDescription')">
             <el-input v-model="form.description" type="textarea" :rows="3" :placeholder="t('tenderCreate.descriptionPlaceholder')" />
@@ -189,6 +186,25 @@
                   <el-button size="small" @click="clearLotLines(i)" :disabled="!lot.lines.length || lockLotEditing">{{ t('common.clear') }}</el-button>
                 </div>
               </div>
+              <section v-if="lot.lines.length" class="mobile-line-editor">
+                <details class="line-fields-config">
+                  <summary>{{ t('tenderCreate.lineConfig') }} · {{ lot.lineColumns.length }}</summary>
+                  <div v-for="col in lot.lineColumns" :key="col.key" class="mobile-column">
+                    <el-button :disabled="lockLotEditing" @click="renameLineColumn(i, col)">{{ col.label }}</el-button>
+                    <el-checkbox v-model="col.required" :disabled="lockLotEditing">{{ t('tenderCreate.supplierRequired') }}</el-checkbox>
+                    <el-button :aria-label="`${t('common.delete')} ${col.label}`" type="danger" text :disabled="lockLotEditing" @click="removeLineColumn(i, col.key)">{{ t('common.delete') }}</el-button>
+                  </div>
+                </details>
+                <el-input v-model="mobileLineSearch[i]" clearable :placeholder="t('common.search')" :aria-label="t('common.search')" />
+                <details v-for="{ row, index } in mobileRows(lot, i)" :key="row.id || index" class="mobile-line-row">
+                  <summary>#{{ index + 1 }} · {{ lot.lineColumns.map((col: any) => row.dataJson[col.key]).filter(Boolean).slice(0, 2).join(' → ') || '—' }}</summary>
+                  <label v-for="col in lot.lineColumns" :key="col.key" class="mobile-line-field">
+                    <span>{{ col.label }}{{ col.required ? ` · ${t('tenderCreate.supplierRequired')}` : '' }}</span>
+                    <input v-model="row.dataJson[col.key]" :disabled="lockLotEditing" />
+                  </label>
+                  <el-button type="danger" plain :disabled="lockLotEditing" @click="removeLineRow(i, index)">{{ t('common.delete') }} #{{ index + 1 }}</el-button>
+                </details>
+              </section>
               <el-table
                 v-if="lot.lines.length"
                 :data="lot.lines"
@@ -513,6 +529,8 @@
 </template>
 
 <script setup lang="ts">
+import CurrencyOptions from '../../components/CurrencyOptions.vue';
+import { institutionInstant, institutionWallTime } from '../../shared/institution-time';
 import {
   computed, onMounted, reactive, ref,
 } from 'vue';
@@ -523,6 +541,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   Check, Close, Plus, Delete, ArrowRight, Document, UploadFilled,
 } from '@element-plus/icons-vue';
+import { filePreviewUrl, openFilePreview } from '../../composables/useFilePreview';
 import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
 
@@ -544,6 +563,12 @@ type TenderLotForm = {
 const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
+const mobileLineSearch = reactive<Record<number, string>>({});
+function mobileRows(lot: any, lotIndex: number) {
+  const term = (mobileLineSearch[lotIndex] || '').trim().toLowerCase();
+  return lot.lines.map((row: any, index: number) => ({ row, index })).filter(({ row, index }: any) =>
+    !term || `${index + 1} ${Object.values(row.dataJson).join(' ')}`.toLowerCase().includes(term));
+}
 
 const loading = ref(false);
 const saving = ref(false);
@@ -571,6 +596,8 @@ const steps = computed(() => [
 ]);
 
 const auth = useAuthStore();
+const loadedTimezone = ref<string>();
+const institutionTimezone = computed(() => loadedTimezone.value || auth.activeBranch?.timezone || 'UTC');
 
 /** 定向公开的候选机构。排除本机构 —— 本机构本来就可见，列出来会让人以为需要勾选。 */
 const otherBranches = ref<{ id: string; code: string; name: string }[]>([]);
@@ -589,9 +616,9 @@ const form = reactive({
   type: 'transport',
   baseCurrency: DEFAULT_CURRENCY,
   rankingMode: 'top_n',
-  bidStartAt: null as Date | null,
-  bidDeadline: null as Date | null,
-  openTime: null as Date | null,
+  bidStartAt: null as string | null,
+  bidDeadline: null as string | null,
+  openTime: null as string | null,
   maxRebidCount: 3,
   minDecrementPct: 1.0,
   cooldownSeconds: 60,
@@ -659,7 +686,7 @@ const notifySuppliersDesc = computed(() => (
 ));
 const selectedSupplierRows = computed(() => selectedSupplierIds.value.map((id) => selectedSupplierMap.value[id] ?? { id }));
 
-function fmtDate(d: Date | string) { return dayjs(d).format('YYYY-MM-DD HH:mm'); }
+function fmtDate(d: Date | string) { return `${String(d).slice(0, 16)} (${institutionTimezone.value})`; }
 
 function canJumpTo(i: number) {
   return i <= maxReached.value;
@@ -672,7 +699,10 @@ function validateStep(i: number): string {
   if (i === 0 && !form.title.trim()) return t('tenderCreate.validationTitleRequired');
   if (i === 0 && !form.bidDeadline) return t('tenderCreate.validationDeadlineRequired');
   if (i === 0 && form.bidStartAt && form.bidDeadline && form.bidStartAt >= form.bidDeadline) return t('tenderCreate.validationStartBeforeDeadline');
-  if (i === 0 && form.bidDeadline && form.bidDeadline <= new Date()) return t('tenderCreate.validationDeadlineFuture');
+  try {
+    if (i === 0 && form.bidDeadline && new Date(institutionInstant(form.bidDeadline, institutionTimezone.value)!) <= new Date()) return t('tenderCreate.validationDeadlineFuture');
+    if (i === 0) { institutionInstant(form.bidStartAt, institutionTimezone.value); institutionInstant(form.openTime, institutionTimezone.value); }
+  } catch { return t('market.invalidTime'); }
   if (i === 2 && form.lots.some((lot) => !lot.title.trim())) return t('tenderCreate.validationLotTitleRequired');
   if (i === 3 && form.participationMode === 'selected' && selectedSupplierIds.value.length === 0) return t('tenderCreate.validationSupplierRequired');
   return '';
@@ -724,11 +754,12 @@ async function loadTender() {
     lockLotEditing.value = false;
     form.title = tender.title ?? '';
     form.type = tender.type ?? 'routine';
+    loadedTimezone.value = tender.timezone;
     form.baseCurrency = tender.baseCurrency ?? DEFAULT_CURRENCY;
     form.rankingMode = tender.rankingMode ?? 'leading_flag';
-    form.bidStartAt = tender.bidStartAt ? new Date(tender.bidStartAt) : null;
-    form.bidDeadline = tender.bidDeadline ? new Date(tender.bidDeadline) : null;
-    form.openTime = tender.openTime ? new Date(tender.openTime) : null;
+    form.bidStartAt = institutionWallTime(tender.bidStartAt, institutionTimezone.value);
+    form.bidDeadline = institutionWallTime(tender.bidDeadline, institutionTimezone.value);
+    form.openTime = institutionWallTime(tender.openTime, institutionTimezone.value);
     form.maxRebidCount = tender.maxRebidCount ?? 3;
     form.minDecrementPct = Number(tender.minDecrementPct ?? 1);
     form.cooldownSeconds = tender.cooldownSeconds ?? 60;
@@ -999,6 +1030,7 @@ async function removeLineColumn(lotIndex: number, key: string) {
 }
 
 function addLineRow(lotIndex: number) {
+  mobileLineSearch[lotIndex] = '';
   const lot = form.lots[lotIndex];
   if (!lot.lineColumns.length) {
     const key = nextLineColumnKey(lot);
@@ -1051,9 +1083,9 @@ function buildPayload() {
     participationMode: form.participationMode,
     participantSupplierIds: form.participationMode === 'selected' ? selectedSupplierIds.value : [],
     participantSource: isNextRoundEdit.value ? roundParticipantMode.value : 'manual',
-    bidStartAt: form.bidStartAt ? new Date(form.bidStartAt).toISOString() : null,
-    bidDeadline: form.bidDeadline ? new Date(form.bidDeadline).toISOString() : undefined,
-    openTime: form.openTime ? new Date(form.openTime).toISOString() : null,
+    bidStartAt: institutionInstant(form.bidStartAt, institutionTimezone.value) ?? null,
+    bidDeadline: institutionInstant(form.bidDeadline, institutionTimezone.value),
+    openTime: institutionInstant(form.openTime, institutionTimezone.value) ?? null,
     lots: form.lots.map((lot) => {
       const payload: any = {
         ...lot,
@@ -1103,9 +1135,9 @@ function closeEditor() {
   }, 0);
 }
 
-function previewAttachment(file: any) {
+async function previewAttachment(file: any) {
   preview.title = file.name || t('tenderCreate.attachmentPreview');
-  preview.url = file.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(file.key)}`;
+  preview.url = await filePreviewUrl(file.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(file.key)}`);
   preview.kind = file.mimeType?.startsWith('image/') || file.mimeType === 'application/pdf' ? 'inline' : 'download';
   preview.visible = true;
 }
@@ -1135,6 +1167,21 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.mobile-line-editor { display: none; }
+@media (max-width: 768px) {
+  .mobile-line-editor { display: grid; gap: 10px; }
+  .line-config .line-table { display: none; }
+  .mobile-line-row, .line-fields-config { padding: 12px; border: 1px solid #dbe1e8; border-radius: 8px; background: white; }
+  .mobile-line-row summary, .line-fields-config summary { min-height: 32px; overflow-wrap: anywhere; cursor: pointer; }
+  .mobile-line-field { display: grid; gap: 6px; margin: 12px 0; color: #475569; }
+  .mobile-line-field input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 16px; }
+  .mobile-column { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  .line-config-head { flex-direction: column; align-items: stretch !important; gap: 10px; }
+  .line-actions { flex-wrap: wrap; }
+}
+.form-grid :deep(.el-form-item) { flex-direction: column; align-items: stretch; }
+.form-grid :deep(.el-form-item__label) { justify-content: flex-start; height: auto; line-height: 1.5; margin-bottom: 8px; white-space: normal; }
+
 .wizard {
   display: flex;
   flex-direction: column;

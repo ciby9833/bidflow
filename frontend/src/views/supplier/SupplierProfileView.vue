@@ -75,7 +75,8 @@
             </el-row>
             <el-row :gutter="12">
               <el-col :span="12"><el-form-item :label="t('common.contact_email')"><el-input v-model="form.contactEmail" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item :label="t('supplierProfile.taxOrCreditCode')"><el-input v-model="form.taxId" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item :label="t('supplierProfile.taxOrCreditCode')"><el-input v-model="form.taxId" />
+              <small v-if="form.countryCode === 'BR'">{{ t('market.cnpjHint') }}</small></el-form-item></el-col>
             </el-row>
 
             <el-divider>{{ t('supplierProfile.certificationDocs') }}</el-divider>
@@ -173,7 +174,8 @@
     </el-row>
 
     <el-dialog v-model="preview.visible" :title="preview.title" width="82vw" class="preview-dialog">
-      <iframe v-if="preview.kind === 'inline'" class="preview-frame" :src="preview.url" :title="t('supplierReviewDetail.docPreview')" />
+      <img v-if="preview.kind === 'image'" :src="preview.url" :alt="preview.title" style="display:block;max-width:100%;max-height:72vh;margin:auto;object-fit:contain" />
+      <iframe v-else-if="preview.kind === 'inline'" class="preview-frame" :src="preview.url" :title="t('supplierReviewDetail.docPreview')" />
       <div v-else class="preview-fallback">
         <p>{{ t('supplierReviewDetail.previewUnsupported') }}</p>
         <el-button type="primary" @click="openPreviewFile">{{ t('supplierReviewDetail.openFile') }}</el-button>
@@ -187,11 +189,12 @@ import {
   computed, onActivated, onMounted, reactive, ref, watch,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { CopyDocument, Delete } from '@element-plus/icons-vue';
 import { buildSupplierDocuments as buildRequiredDocs } from '../../composables/supplierDocuments';
 import SupplierCountrySelect from '../../components/SupplierCountrySelect.vue';
+import { filePreviewUrl, openFilePreview } from '../../composables/useFilePreview';
 import { api } from '../../composables/useApi';
 import { preselectBranch } from '../../composables/useBranchPreselect';
 import { useAuthStore } from '../../stores/auth';
@@ -205,16 +208,12 @@ const registrableBranches = ref<{ id: string; code: string; name: string }[]>([]
 /** 尚未绑定供应商主体时才需要选机构；已绑定的账号归属已定，不再展示 */
 const needsBranchChoice = computed(() => !auth.user?.supplierId);
 
-/**
- * 供应商侧展示国家而非机构名。
- * "Indonesia Branch" 是采购方的内部组织称谓，对供应商没有意义 ——
- * 他关心的是"我要向哪个国家注册"。国别代码用 Intl 转成本地化的国家名。
- */
+/** 同一国家可能有多个机构，必须同时展示机构名称与代码。 */
 function countryLabel(b: { name: string; code: string; countryCode?: string }) {
   if (!b.countryCode) return b.name;
   try {
     const dn = new Intl.DisplayNames([locale.value], { type: 'region' });
-    return dn.of(b.countryCode) ?? b.name;
+    return `${dn.of(b.countryCode) ?? b.countryCode} · ${b.name} (${b.code})`;
   } catch {
     return b.name;
   }
@@ -251,7 +250,7 @@ const preview = reactive({
   visible: false,
   title: '',
   url: '',
-  kind: 'inline' as 'inline' | 'download',
+  kind: 'inline' as 'inline' | 'image' | 'download',
 });
 const form = reactive({
   branchId: '',
@@ -273,7 +272,8 @@ function reviewStatusLabel(status?: string) { return status ? t(`supplierReview.
 function docLabel(doc: any) { return t(`supplierDocs.${doc.docType}`, doc.docLabel || doc.docType); }
 
 function fmt(value: string) {
-  return dayjs(value).format('YYYY-MM-DD HH:mm');
+  const zone = auth.activeBranch?.timezone || 'UTC';
+  return `${institutionWallTime(value, zone)} (${zone})`;
 }
 
 function reviewTag(status?: string) {
@@ -345,11 +345,11 @@ async function uploadDocFile(index: number, event: Event) {
   }
 }
 
-function previewDoc(doc: any) {
+async function previewDoc(doc: any) {
   if (!doc.fileUrl) return;
   preview.title = doc.fileName || docLabel(doc) || t('supplierReviewDetail.docPreview');
-  preview.url = doc.fileUrl;
-  preview.kind = doc.mimeType?.startsWith('image/') || doc.mimeType === 'application/pdf' ? 'inline' : 'download';
+  preview.url = await filePreviewUrl(doc.fileUrl);
+  preview.kind = doc.mimeType?.startsWith('image/') ? 'image' : doc.mimeType === 'application/pdf' ? 'inline' : 'download';
   preview.visible = true;
 }
 
@@ -491,11 +491,12 @@ async function submit() {
     ElMessage.error(t('supplierProfile.validationDocsRequired'));
     return;
   }
-  await ElMessageBox.confirm(
+  const confirmed = await ElMessageBox.confirm(
     t('supplierProfile.submitConfirmMessage'),
     t('common.confirm'),
     { type: 'warning', confirmButtonText: t('supplierProfile.submitProfile'), cancelButtonText: t('common.cancel') },
-  );
+  ).then(() => true, () => false);
+  if (!confirmed) return;
   submitting.value = true;
   try {
     await api.post('/api/supplier/profile/submit', {
@@ -513,6 +514,8 @@ async function submit() {
     await auth.loadMe();
     ElMessage.success(t('supplierProfile.submittedPending'));
     await load();
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.error?.message || error.response?.data?.message || t('quote.submitFailed'));
   } finally {
     submitting.value = false;
   }

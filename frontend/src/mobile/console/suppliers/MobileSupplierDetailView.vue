@@ -6,11 +6,12 @@
 -->
 <template>
   <main class="supplier-detail" v-loading="loading">
+    <p v-if="loadError" role="alert">{{ loadError }}</p>
     <template v-if="detail">
       <el-alert :title="t('supplierCountry.shared')" type="info" :closable="false" show-icon />
       <section class="profile">
         <span class="avatar">{{ supplierInitial(detail.supplier) }}</span>
-        <h1>{{ detail.supplier.legalName || detail.supplier.shortName || '未提交名称' }}</h1>
+        <h1>{{ detail.supplier.legalName || detail.supplier.shortName || t('supplierReviewDetail.noLegalName') }}</h1>
         <p>{{ detail.supplier.businessId }}</p>
         <div class="chips">
           <span :class="['chip', statusTone(detail.supplier.status)]">{{ statusText(detail.supplier.status) }}</span>
@@ -19,22 +20,23 @@
       </section>
 
       <section class="group">
-        <div class="row"><span>简称</span><strong>{{ detail.supplier.shortName || '未设置' }}</strong></div>
-        <div class="row"><span>联系人</span><strong>{{ detail.supplier.contactName || '未设置' }}</strong></div>
-        <div class="row"><span>联系邮箱</span><strong>{{ detail.supplier.contactEmail || '未设置' }}</strong></div>
-        <div class="row"><span>联系电话</span><strong>{{ detail.supplier.contactPhone || '未设置' }}</strong></div>
-        <div class="row"><span>国家/地区</span><strong>{{ detail.supplier.countryCode || '未设置' }}</strong></div>
-        <div class="row"><span>税号</span><strong>{{ detail.supplier.taxId || '未设置' }}</strong></div>
+        <div class="row"><span>{{ t('supplier.short_name') }}</span><strong>{{ detail.supplier.shortName || t('common.not_set') }}</strong></div>
+        <div class="row"><span>{{ t('common.contact_name') }}</span><strong>{{ detail.supplier.contactName || t('common.not_set') }}</strong></div>
+        <div class="row"><span>{{ t('common.contact_email') }}</span><strong>{{ detail.supplier.contactEmail || t('common.not_set') }}</strong></div>
+        <div class="row"><span>{{ t('common.contact_phone') }}</span><strong>{{ detail.supplier.contactPhone || t('common.not_set') }}</strong></div>
+        <div class="row"><span>{{ t('common.country') }}</span><strong>{{ detail.supplier.countryCode || t('common.not_set') }}</strong></div>
+        <div class="row"><span>{{ t('common.tax_id') }}</span><strong>{{ detail.supplier.taxId || t('common.not_set') }}</strong></div>
       </section>
 
       <section class="section">
-        <h2>提交资料</h2>
+        <h2>{{ t('supplierReviewDetail.submittedDocs') }}</h2>
         <div class="group">
           <a
             v-for="doc in detail.documents || []"
             :key="doc.id"
             class="doc-row"
-            :href="doc.fileUrl || undefined"
+            :href="undefined"
+            @click.prevent="previewDoc(doc)"
             target="_blank"
             rel="noreferrer"
           >
@@ -42,16 +44,16 @@
               <strong>{{ doc.docLabel || doc.docType }}</strong>
               <small>{{ doc.textValue || doc.fileName || doc.fileUrl || '无补充说明' }}</small>
             </span>
-            <em v-if="doc.fileUrl" class="preview-link" @click.prevent="previewDoc(doc)">预览</em>
+            <em v-if="doc.fileUrl" class="preview-link">{{ t('supplierReviewDetail.preview') }}</em>
           </a>
-          <div v-if="!detail.documents?.length" class="empty-row">暂无资料</div>
+          <div v-if="!detail.documents?.length" class="empty-row">{{ t('supplierReviewDetail.noDocs') }}</div>
         </div>
       </section>
 
       <section class="section">
-        <h2>成员邀请</h2>
+        <h2>{{ t('supplierReviewDetail.memberInvitations') }}</h2>
         <div class="group">
-          <button v-if="canEdit" class="invite-create" type="button" @click="createInvitation">生成邀请码</button>
+          <button v-if="canEdit" class="invite-create" type="button" @click="createInvitation">{{ t('supplierReviewDetail.createInvitation') }}</button>
           <div v-for="item in invitations" :key="item.id" class="invite-row">
             <span>
               <strong>{{ item.token }}</strong>
@@ -61,19 +63,19 @@
             <em v-if="item.status === 'pending'" @click="copyInvitation(item.token)">复制</em>
             <em v-if="item.status === 'pending' && canEdit" class="danger-link" @click="revokeInvitation(item)">作废</em>
           </div>
-          <div v-if="!invitations.length" class="empty-row">暂无邀请码</div>
+          <div v-if="!invitations.length" class="empty-row">{{ t('supplierReviewDetail.noInvitations') }}</div>
         </div>
       </section>
 
       <section class="section">
-        <h2>审核记录</h2>
+        <h2>{{ t('supplierReviewDetail.reviewLogs') }}</h2>
         <div class="group">
           <div v-for="log in detail.reviewLogs || []" :key="log.id" class="log-row">
             <strong>{{ log.action }}</strong>
-            <small>{{ log.comment || '无备注' }}</small>
+            <small>{{ log.comment || t('supplierReviewDetail.noComment') }}</small>
             <em>{{ fmt(log.createdAt) }}</em>
           </div>
-          <div v-if="!detail.reviewLogs?.length" class="empty-row">暂无记录</div>
+          <div v-if="!detail.reviewLogs?.length" class="empty-row">{{ t('supplierReviewDetail.noRecords') }}</div>
         </div>
       </section>
 
@@ -85,7 +87,7 @@
           :class="{ primary: item.key === 'approve', danger: item.key === 'reject' }"
           type="button"
           @click="runAction(item.key)"
-        >{{ item.label }}</button>
+        >{{ t(`supplierAction.${item.key}`) }}</button>
       </section>
     </template>
 
@@ -94,8 +96,8 @@
         <h3>{{ actionTitle }}</h3>
         <p>{{ t('supplierCountry.shared') }}</p>
         <textarea v-model.trim="comment" :placeholder="actionPlaceholder" />
-        <button class="confirm" type="button" @click="submitAction">确认</button>
-        <button class="cancel" type="button" @click="closeAction">取消</button>
+        <button class="confirm" type="button" @click="submitAction">{{ t('common.confirm') }}</button>
+        <button class="cancel" type="button" @click="closeAction">{{ t('common.cancel') }}</button>
       </section>
     </div>
   </main>
@@ -103,10 +105,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../../shared/institution-time';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { filePreviewUrl, openFilePreview } from '../../../composables/useFilePreview';
 import { api } from '../../../composables/useApi';
 import { useAuthStore } from '../../../stores/auth';
 import { getSupplierActions, type SupplierActionKey } from '../../../shared/supplier-action-rules';
@@ -119,6 +122,7 @@ const router = useRouter();
 const { t } = useI18n();
 const auth = useAuthStore();
 const loading = ref(false);
+const loadError = ref('');
 const detail = ref<any>(null);
 const invitations = ref<any[]>([]);
 const action = ref<'approve' | 'supplement' | 'reject' | 'suspend' | ''>('');
@@ -133,20 +137,28 @@ const actionTitleMap: Record<'approve' | 'supplement' | 'reject' | 'suspend', st
   reject: '驳回申请',
   suspend: '冻结供应商',
 };
-const actionTitle = computed(() => (action.value ? actionTitleMap[action.value] : '处理'));
+const actionTitle = computed(() => (action.value ? t(`supplierAction.${action.value}`) : ''));
 
-const actionPlaceholder = computed(() => (action.value === 'suspend' ? '请输入冻结原因' : '请输入备注说明'));
+const actionPlaceholder = computed(() => t(action.value === 'suspend' ? 'supplierList.suspendReasonPrompt' : 'supplierReviewDetail.commentPrompt'));
 
 function fmt(value: string) {
-  return value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—';
+  const zone = auth.activeBranch?.timezone || 'UTC';
+  return value ? `${institutionWallTime(value, zone)} (${zone})` : '—';
 }
 
 async function load() {
   loading.value = true;
+  detail.value = null;
+  invitations.value = [];
+  loadError.value = '';
   try {
     const res = await api.get(`/api/suppliers/${route.params.id}/review-detail`);
     detail.value = res.data.data;
     await loadInvitations();
+  } catch (e: any) {
+    detail.value = null;
+    invitations.value = [];
+    loadError.value = e.response?.data?.error?.message || t('common.error');
   } finally {
     loading.value = false;
   }
@@ -202,8 +214,12 @@ function invitationMetaText(item: any) {
 }
 
 async function revokeBranch() {
-  await ElMessageBox.confirm(t('supplierCountry.revokeConfirm'), t('supplierCountry.revoke'), { type: 'warning' });
+  try {
+    await ElMessageBox.confirm(t('supplierCountry.revokeConfirm'), t('supplierCountry.revoke'), { type: 'warning' });
+  } catch { return; }
   await api.delete(`/api/suppliers/${route.params.id}/branch-access`);
+  detail.value = null;
+  invitations.value = [];
   ElMessage.success(t('supplierCountry.revoked'));
   router.replace('/m/console/suppliers');
 }
@@ -248,8 +264,8 @@ async function doResume() {
   await load();
 }
 
-function previewDoc(doc: any) {
-  if (doc.fileUrl) window.open(doc.fileUrl, '_blank');
+async function previewDoc(doc: any) {
+  if (doc.fileUrl) await openFilePreview(doc.fileUrl);
 }
 
 onMounted(load);

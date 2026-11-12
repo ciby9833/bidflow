@@ -7,22 +7,24 @@
 <template>
   <main class="mobile-pending">
     <section>
-      <h1>认证审核中</h1>
-      <p>{{ auth.user?.displayName || auth.user?.email }} 的供应商资料已提交，审核通过后可以参与受邀投标。</p>
-      <div class="status">{{ auth.user?.supplierReviewStatus || 'pending_review' }}</div>
-      <el-button type="primary" class="main-action" @click="router.push('/m/supplier/profile')">补充资料</el-button>
-      <button class="secondary-action" type="button" @click="router.push('/m/hall')">返回大厅</button>
+      <h1>{{ t('route.supplierReviewPending') }}</h1>
+      <p>{{ auth.user?.displayName || auth.user?.email }} {{ t(`supplierProfile.statusHint.${auth.user?.supplierReviewStatus || 'pending_review'}`) }}</p>
+      <div class="status">{{ t(`supplierReview.${auth.user?.supplierReviewStatus || 'pending_review'}`) }}</div>
+      <el-button type="primary" class="main-action" @click="router.push('/m/supplier/profile')">{{ t('supplierProfile.supplementProfile') }}</el-button>
+      <button class="secondary-action" type="button" @click="router.push('/m/hall')">{{ t('common.back') }}</button>
     </section>
   </main>
 </template>
 
 <script setup lang="ts">
 import { onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 
 const router = useRouter();
 const auth = useAuthStore();
+const { t } = useI18n();
 
 onMounted(async () => {
   if (!auth.isLoggedIn) return;

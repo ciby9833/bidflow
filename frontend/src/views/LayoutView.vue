@@ -125,6 +125,7 @@ const routeVersions = ref<Record<string, number>>({});
 const localeOptions: Array<{ label: string; value: SupportedLocale }> = [
   { label: 'Bahasa Indonesia', value: 'id-ID' },
   { label: 'Tiếng Việt', value: 'vi-VN' },
+  { label: 'Português (Brasil)', value: 'pt-BR' },
   { label: 'English', value: 'en' },
   { label: '中文', value: 'zh-CN' },
 ];

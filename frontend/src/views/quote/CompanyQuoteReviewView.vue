@@ -10,6 +10,7 @@
       <div>
         <div class="meta-line">
           <span>{{ tender.tenderNo }}</span>
+          <span>{{ t('tenderList.roundNo', { round: tender.currentQuoteRound || 1 }) }}</span>
           <el-tag :type="statusTag(tender.status)" size="small">{{ statusLabel(tender.status) }}</el-tag>
         </div>
         <h2>{{ lot.title }}</h2>
@@ -17,23 +18,44 @@
       </div>
       <div class="head-actions">
         <el-button :loading="loading" @click="load">
-          <el-icon><Refresh /></el-icon>刷新
+          <el-icon><Refresh /></el-icon>{{ t('common.refresh') }}
         </el-button>
-        <el-button :disabled="hasLineMode" @click="rebuildRanking">重建排名</el-button>
-        <el-button type="primary" :disabled="hasLineMode" @click="freezeSnapshot">冻结快照</el-button>
+        <el-button v-if="auth.hasScope('tender:close')" :disabled="hasLineMode" @click="rebuildRanking">{{ t('companyQuoteReview.rebuild') }}</el-button>
+        <el-button v-if="auth.hasScope('eval:freeze')" type="primary" :loading="freezing" :disabled="loading || tender.status !== 'closed' || Boolean(currentSnapshot)" @click="freezeSnapshot">{{ currentSnapshot ? t('evaluationFreeze.done', { round: tender.currentQuoteRound || 1 }) : t('companyQuoteReview.freeze') }}</el-button>
       </div>
     </header>
 
+    <p v-if="auth.hasScope('eval:freeze') && tender?.status !== 'closed'" class="freeze-hint">{{ t('evaluationFreeze.closeFirst') }}</p>
+    <section v-if="snapshots.length" class="freeze-results">
+      <h3>{{ t('evaluationFreeze.history') }}</h3>
+      <details v-for="snapshot in snapshots" :key="snapshot.id" :open="snapshot.id === currentSnapshot?.id">
+        <summary>{{ snapshot.roundNo ? t('evaluationFreeze.done', { round: snapshot.roundNo }) : t('evaluationFreeze.title') }} · {{ fmtDate(snapshot.createdAt) }}</summary>
+        <div v-for="row in snapshot.snapshotData" :key="row.quoteId || `${row.lineId}-${row.supplierId}`" class="frozen-row">
+          <strong>{{ row.lineNo || lot?.title }} · #{{ row.rank }} · {{ row.supplierName || row.supplierId }}</strong>
+          <span v-if="row.lineData">{{ Object.values(row.lineData).filter(Boolean).slice(0, 2).join(' → ') }}</span>
+          <span class="frozen-price">{{ Number(row.totalPrice).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} {{ row.currency }} · V{{ row.version }}</span>
+          <span v-for="(value, key) in (Array.isArray(row.items) ? {} : row.items || {})" :key="key">{{ row.columnLabels?.[key] || key }}: {{ value }}</span>
+          <span>{{ fmtDate(row.submittedAt) }}</span>
+        </div>
+      </details>
+    </section>
+
     <section class="summary-grid">
-      <div><span>报价状态</span><strong>{{ statusLabel(tender?.status) }}</strong></div>
-      <div><span>报价截止</span><strong>{{ tender?.bidDeadline ? fmtDate(tender.bidDeadline) : '未设置' }}</strong></div>
-      <div><span>报价数量</span><strong>{{ quotes.length }}</strong></div>
-      <div><span>预算</span><strong>{{ lot?.budgetAmount ? `${Number(lot.budgetAmount).toLocaleString()} ${lot.budgetCurrency}` : '—' }}</strong></div>
+      <div><span>{{ t('quote.quoteStatus') }}</span><strong>{{ statusLabel(tender?.status) }}</strong></div>
+      <div><span>{{ t('tenderCreate.bidDeadline') }}</span><strong>{{ tender?.bidDeadline ? fmtDate(tender.bidDeadline) : t('common.not_set') }}</strong></div>
+      <div><span>{{ t('companyQuoteReview.quoteCount') }}</span><strong>{{ quotes.length }}</strong></div>
+      <div><span>{{ t('tenderDetail.budget') }}</span><strong>{{ lot?.budgetAmount ? `${Number(lot.budgetAmount).toLocaleString(locale)} ${lot.budgetCurrency}` : '—' }}</strong></div>
     </section>
 
     <el-card v-if="hasLineMode" class="panel">
-      <template #header>线路/明细</template>
-      <el-table :data="lot.lines" border stripe size="small" highlight-current-row @current-change="selectLine">
+      <template #header>{{ t('companyQuoteReview.lines') }}</template>
+      <section class="mobile-line-picker">
+        <button v-for="(line, index) in lot.lines" :key="line.id" type="button" :aria-pressed="selectedLineId === line.id" @click="selectLine(line)">
+          <strong>#{{ index + 1 }}</strong>
+          <span v-for="col in lot.uiSchema?.lineColumns ?? []" :key="col.key">{{ col.label }}: {{ line.dataJson?.[col.key] || '—' }}</span>
+        </button>
+      </section>
+      <el-table :data="lot.lines" border stripe size="small" highlight-current-row @current-change="selectLine" class="desktop-lines">
         <el-table-column label="#" width="58">
           <template #default="{ $index }">{{ $index + 1 }}</template>
         </el-table-column>
@@ -50,13 +72,21 @@
     </el-card>
 
     <el-card class="panel">
-      <template #header>{{ hasLineMode ? '当前线路报价排名' : '报价排名' }}</template>
-      <el-table :data="quotes" stripe>
-        <el-table-column label="排名" width="90">
+      <template #header>{{ hasLineMode ? t('companyQuoteReview.lineRanking') : t('companyQuoteReview.ranking') }}</template>
+      <section class="mobile-ranking">
+        <article v-for="(row, index) in quotes" :key="row.id">
+          <strong>#{{ index + 1 }} · {{ row.supplierName || row.supplierId }}</strong>
+          <p>{{ Number(row.totalPrice).toLocaleString(locale) }} {{ row.currency }} · V{{ row.version }}</p>
+          <p>{{ fmtDate(row.submittedAt) }}</p>
+          <el-button @click="openQuoteDetail(row)">{{ t('common.details') }}</el-button>
+        </article>
+      </section>
+      <el-table :data="quotes" stripe class="desktop-ranking">
+        <el-table-column :label="t('quote.rank')" width="90">
           <template #default="{ $index }">#{{ $index + 1 }}</template>
         </el-table-column>
-        <el-table-column prop="quoteNo" label="报价编号" width="160" />
-        <el-table-column label="供应商" min-width="240" show-overflow-tooltip>
+        <el-table-column prop="quoteNo" :label="t('tenderDetail.field.quoteNo')" width="160" />
+        <el-table-column :label="t('companyQuoteReview.supplier')" min-width="240" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="supplier-cell">
               <strong>{{ row.supplierName || row.supplier?.legalName || row.supplierId }}</strong>
@@ -64,13 +94,13 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="报价" width="180">
-          <template #default="{ row }">{{ Number(row.totalPrice).toLocaleString() }} {{ row.currency }}</template>
+        <el-table-column :label="t('quote.quoteAmount')" width="180">
+          <template #default="{ row }">{{ Number(row.totalPrice).toLocaleString(locale) }} {{ row.currency }}</template>
         </el-table-column>
-        <el-table-column label="折算报价" width="190">
+        <el-table-column :label="t('quote.convertedQuote')" width="190">
           <template #default="{ row }">{{ formatConvertedPrice(row) }}</template>
         </el-table-column>
-        <el-table-column label="汇率" width="190">
+        <el-table-column :label="t('quote.exchangeRate')" width="190">
           <template #default="{ row }">{{ formatExchangeRate(row) }}</template>
         </el-table-column>
         <el-table-column
@@ -82,57 +112,68 @@
         >
           <template #default="{ row }">{{ quoteItemValue(row, col) }}</template>
         </el-table-column>
-        <el-table-column prop="version" label="版本" width="80" />
-        <el-table-column label="提交时间" width="180">
+        <el-table-column prop="version" :label="t('quote.versionColumn')" width="80" />
+        <el-table-column :label="t('quote.submitTime')" width="180">
           <template #default="{ row }">{{ fmtDate(row.submittedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column :label="t('org.actions')" width="100" fixed="right">
           <template #default="{ row }">
-            <el-button text type="primary" @click="openQuoteDetail(row)">详情</el-button>
+            <el-button text type="primary" @click="openQuoteDetail(row)">{{ t('common.details') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
-    <el-drawer v-model="detailVisible" title="报价详情" size="520px">
+    <el-drawer v-model="detailVisible" :title="t('tenderDetail.quoteDetails')" size="520px">
       <template v-if="selectedQuote">
         <el-descriptions :column="1" border>
-          <el-descriptions-item label="供应商">{{ selectedQuote.supplierName || selectedQuote.supplierId }}</el-descriptions-item>
-          <el-descriptions-item label="供应商编号">{{ selectedQuote.supplier?.businessId || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="联系人">{{ selectedQuote.supplier?.contactName || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="联系电话">{{ selectedQuote.supplier?.contactPhone || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="联系邮箱">{{ selectedQuote.supplier?.contactEmail || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="报价编号">{{ selectedQuote.quoteNo }}</el-descriptions-item>
-          <el-descriptions-item label="报价金额">{{ Number(selectedQuote.totalPrice).toLocaleString() }} {{ selectedQuote.currency }}</el-descriptions-item>
-          <el-descriptions-item label="折算报价">{{ formatConvertedPrice(selectedQuote) }}</el-descriptions-item>
-          <el-descriptions-item label="汇率">{{ formatExchangeRate(selectedQuote) }}</el-descriptions-item>
-          <el-descriptions-item label="版本">V{{ selectedQuote.version }}</el-descriptions-item>
-          <el-descriptions-item label="提交时间">{{ fmtDate(selectedQuote.submittedAt) }}</el-descriptions-item>
-          <el-descriptions-item label="备注">{{ selectedQuote.remark || '—' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('companyQuoteReview.supplier')">{{ selectedQuote.supplierName || selectedQuote.supplierId }}</el-descriptions-item>
+          <el-descriptions-item :label="t('supplierList.supplierNo')">{{ selectedQuote.supplier?.businessId || '—' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('common.contact_name')">{{ selectedQuote.supplier?.contactName || '—' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('common.contact_phone')">{{ selectedQuote.supplier?.contactPhone || '—' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('common.contact_email')">{{ selectedQuote.supplier?.contactEmail || '—' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('tenderDetail.field.quoteNo')">{{ selectedQuote.quoteNo }}</el-descriptions-item>
+          <el-descriptions-item :label="t('tenderDetail.quoteAmount')">{{ Number(selectedQuote.totalPrice).toLocaleString(locale) }} {{ selectedQuote.currency }}</el-descriptions-item>
+          <el-descriptions-item :label="t('quote.convertedQuote')">{{ formatConvertedPrice(selectedQuote) }}</el-descriptions-item>
+          <el-descriptions-item :label="t('quote.exchangeRate')">{{ formatExchangeRate(selectedQuote) }}</el-descriptions-item>
+          <el-descriptions-item :label="t('quote.versionColumn')">V{{ selectedQuote.version }}</el-descriptions-item>
+          <el-descriptions-item :label="t('quote.submitTime')">{{ fmtDate(selectedQuote.submittedAt) }}</el-descriptions-item>
+          <el-descriptions-item :label="t('quote.remark')">{{ selectedQuote.remark || '—' }}</el-descriptions-item>
         </el-descriptions>
 
         <section class="detail-section">
-          <h3>供应商填写项</h3>
-          <el-table v-if="filledQuoteItems(selectedQuote).length" :data="filledQuoteItems(selectedQuote)" stripe size="small">
-            <el-table-column prop="label" label="字段" min-width="160" />
-            <el-table-column prop="value" label="填写内容" min-width="220" show-overflow-tooltip />
+          <h3>{{ t('tenderDetail.supplierInputs') }}</h3>
+          <div class="mobile-quote-fields"><p v-for="item in filledQuoteItems(selectedQuote)" :key="item.key">{{ item.label }}: {{ item.value }}</p></div>
+          <el-table v-if="filledQuoteItems(selectedQuote).length" class="desktop-quote-fields" :data="filledQuoteItems(selectedQuote)" stripe size="small">
+            <el-table-column prop="label" :label="t('tenderDetail.fieldName')" min-width="160" />
+            <el-table-column prop="value" :label="t('tenderDetail.filledValue')" min-width="220" show-overflow-tooltip />
           </el-table>
-          <el-empty v-else description="暂无供应商填写项" />
+          <el-empty v-else :description="t('tenderDetail.noSupplierInputs')" />
         </section>
 
         <section class="detail-section">
-          <h3>历史报价</h3>
-          <el-table v-if="quoteHistory.length" :data="quoteHistory" stripe size="small">
-            <el-table-column label="版本" width="80">
+          <h3>{{ t('tenderDetail.quoteHistory') }}</h3>
+          <div class="mobile-quote-history">
+            <article v-for="row in quoteHistory" :key="row.id || row.version">
+              <strong>V{{ row.version }} · {{ Number(row.totalPrice).toLocaleString(locale) }} {{ row.currency }}</strong>
+              <p>{{ t('quote.current') }}: {{ row.isLatest ? t('companyQuoteReview.yes') : t('companyQuoteReview.no') }}</p>
+              <p>{{ t('quote.convertedQuote') }}: {{ formatConvertedPrice(row) }}</p>
+              <p>{{ formatExchangeRate(row) }}</p>
+              <p v-for="col in selectedLineRequiredColumns" :key="col.key">{{ col.label }}: {{ quoteItemValue(row, col) }}</p>
+              <p>{{ fmtDate(row.submittedAt) }}</p>
+            </article>
+          </div>
+          <el-table v-if="quoteHistory.length" class="desktop-quote-history" :data="quoteHistory" stripe size="small">
+            <el-table-column :label="t('quote.versionColumn')" width="80">
               <template #default="{ row }">V{{ row.version }}</template>
             </el-table-column>
-            <el-table-column label="报价" width="160">
-              <template #default="{ row }">{{ Number(row.totalPrice).toLocaleString() }} {{ row.currency }}</template>
+            <el-table-column :label="t('quote.quoteAmount')" width="160">
+              <template #default="{ row }">{{ Number(row.totalPrice).toLocaleString(locale) }} {{ row.currency }}</template>
             </el-table-column>
-            <el-table-column label="折算报价" width="170">
+            <el-table-column :label="t('quote.convertedQuote')" width="170">
               <template #default="{ row }">{{ formatConvertedPrice(row) }}</template>
             </el-table-column>
-            <el-table-column label="汇率" width="180">
+            <el-table-column :label="t('quote.exchangeRate')" width="180">
               <template #default="{ row }">{{ formatExchangeRate(row) }}</template>
             </el-table-column>
             <el-table-column
@@ -144,27 +185,27 @@
             >
               <template #default="{ row }">{{ quoteItemValue(row, col) }}</template>
             </el-table-column>
-            <el-table-column label="当前" width="80">
+            <el-table-column :label="t('quote.current')" width="80">
               <template #default="{ row }">
-                <el-tag :type="row.isLatest ? 'success' : 'info'" size="small">{{ row.isLatest ? '是' : '否' }}</el-tag>
+                <el-tag :type="row.isLatest ? 'success' : 'info'" size="small">{{ row.isLatest ? t('companyQuoteReview.yes') : t('companyQuoteReview.no') }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="提交时间" min-width="150">
+            <el-table-column :label="t('quote.submitTime')" min-width="150">
               <template #default="{ row }">{{ fmtDate(row.submittedAt) }}</template>
             </el-table-column>
           </el-table>
-          <el-empty v-else description="暂无历史报价" />
+          <el-empty v-else :description="t('tenderDetail.noQuoteHistory')" />
         </section>
 
         <section class="detail-section">
-          <h3>附件</h3>
+          <h3>{{ t('tenderCreate.attachments') }}</h3>
           <div v-if="selectedQuote.attachments?.length" class="attachment-list">
             <div v-for="file in selectedQuote.attachments" :key="file.key" class="attachment-item">
               <span>{{ file.name }}</span>
               <small>{{ file.size ? `${Math.round(file.size / 1024)} KB` : '' }}</small>
             </div>
           </div>
-          <el-empty v-else description="暂无附件" />
+          <el-empty v-else :description="t('companyQuoteReview.noAttachments')" />
         </section>
       </template>
     </el-drawer>
@@ -176,17 +217,24 @@ import {
   computed, onActivated, onMounted, ref,
 } from 'vue';
 import { useRoute } from 'vue-router';
-import dayjs from 'dayjs';
-import { ElMessage } from 'element-plus';
+import { institutionWallTime } from '../../shared/institution-time';
+import { useI18n } from 'vue-i18n';
+import { useAuthStore } from '../../stores/auth';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { Refresh } from '@element-plus/icons-vue';
 import { api } from '../../composables/useApi';
 
+const { t, locale } = useI18n();
+const auth = useAuthStore();
 const route = useRoute();
 const lotId = route.params.lotId as string;
 const lot = ref<any>(null);
 const tender = ref<any>(null);
 const quotes = ref<any[]>([]);
 const loading = ref(false);
+const freezing = ref(false);
+const snapshots = ref<any[]>([]);
+const currentSnapshot = computed(() => snapshots.value.find(s => s.roundNo === (tender.value?.currentQuoteRound || 1)));
 const detailVisible = ref(false);
 const selectedQuote = ref<any>(null);
 const selectedLineId = ref<string>('');
@@ -197,9 +245,9 @@ const selectedLineRequiredColumns = computed(() => {
   return (lot.value?.uiSchema?.lineColumns ?? []).filter((col: any) => Boolean(col.required));
 });
 
-function fmtDate(iso: string) { return dayjs(iso).format('YYYY-MM-DD HH:mm'); }
+function fmtDate(iso: string) { return institutionWallTime(iso, tender.value?.timezone || 'UTC') + ' (' + (tender.value?.timezone || 'UTC') + ')'; }
 function statusLabel(status?: string) {
-  return { draft: '草稿', published: '已发布', open: '报价中', closed: '已关标', awarded: '已定标', cancelled: '已取消' }[status ?? ''] ?? status ?? '—';
+  return status ? t(`tender.status.${status}`) : '—';
 }
 function statusTag(status?: string) {
   return { draft: 'info', published: '', open: 'success', closed: 'info', awarded: 'warning', cancelled: 'danger' }[status ?? ''] ?? '';
@@ -213,7 +261,7 @@ function quoteRankPrice(quote: any) {
 
 function formatConvertedPrice(quote: any) {
   const currency = quote?.baseCurrency || tender.value?.baseCurrency || quote?.currency || 'IDR';
-  return `${quoteRankPrice(quote).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
+  return `${quoteRankPrice(quote).toLocaleString(locale.value, { maximumFractionDigits: 2 })} ${currency}`;
 }
 
 function formatExchangeRate(quote: any) {
@@ -222,7 +270,7 @@ function formatExchangeRate(quote: any) {
   const rate = Number(quote?.exchangeRate ?? (from && to && from === to ? 1 : NaN));
   if (!from || !to || !Number.isFinite(rate)) return '—';
   const suffix = quote?.exchangeRateDate ? ` · ${quote.exchangeRateDate}` : '';
-  return `1 ${from} = ${rate.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${to}${suffix}`;
+  return `1 ${from} = ${rate.toLocaleString(locale.value, { maximumFractionDigits: 6 })} ${to}${suffix}`;
 }
 
 async function load() {
@@ -231,8 +279,9 @@ async function load() {
     const lotRes = await api.get(`/api/tenders/lots/${lotId}`);
     lot.value = lotRes.data.data;
     tender.value = lotRes.data.data.tender;
+    snapshots.value = (await api.get(`/api/quotes/lots/${lotId}/snapshots`)).data.data ?? [];
     if (lot.value?.lines?.length) {
-      selectedLineId.value ||= lot.value.lines[0].id;
+      if (!lot.value.lines.some((line: any) => line.id === selectedLineId.value)) selectedLineId.value = lot.value.lines[0].id;
       await loadLineRanking();
     } else {
       const quoteRes = await api.get(`/api/quotes/lots/${lotId}/ranking`);
@@ -260,13 +309,21 @@ async function loadLineRanking() {
 
 async function rebuildRanking() {
   await api.post(`/api/quotes/lots/${lotId}/rebuild-ranking`);
-  ElMessage.success('排名已重建');
+  ElMessage.success(t('companyQuoteReview.rebuilt'));
   await load();
 }
 
 async function freezeSnapshot() {
-  await api.post(`/api/quotes/lots/${lotId}/snapshot`, { trigger: 'EVAL_FREEZE' });
-  ElMessage.success('快照已生成');
+  if (freezing.value || currentSnapshot.value || tender.value?.status !== 'closed') return;
+  const roundNo = tender.value.currentQuoteRound || 1;
+  try { await ElMessageBox.confirm(t('evaluationFreeze.confirm', { round: roundNo }), t('evaluationFreeze.title'), { confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel'), type: 'warning' }); }
+  catch { return; }
+  freezing.value = true;
+  try {
+    await api.post(`/api/quotes/lots/${lotId}/snapshot`, { trigger: 'EVAL_FREEZE', roundNo });
+    await load();
+    ElMessage.success(t('companyQuoteReview.frozen'));
+  } finally { freezing.value = false; }
 }
 
 function quoteItemValue(quote: any, col: any) {
@@ -296,6 +353,31 @@ onActivated(load);
 </script>
 
 <style scoped>
+.freeze-hint { margin: 0; color: #64748b; font-size: 13px; }
+.freeze-results { padding: 14px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; }
+.freeze-results h3 { margin: 0 0 8px; font-size: 15px; }
+.freeze-results summary { padding: 12px 0; cursor: pointer; line-height: 1.5; overflow-wrap: anywhere; }
+.frozen-row { display: grid; gap: 6px; padding: 12px 0; border-top: 1px solid #e2e8f0; overflow-wrap: anywhere; font-size: 14px; }
+.frozen-price { font-weight: 600; color: #0f172a; }
+.mobile-line-picker, .mobile-quote-fields, .mobile-quote-history { display: none; }
+@media (max-width: 768px) {
+  .desktop-quote-fields, .desktop-quote-history { display: none; }
+  .mobile-quote-fields, .mobile-quote-history { display: grid; gap: 8px; overflow-wrap: anywhere; }
+  .mobile-quote-history article { border-bottom: 1px solid #e2e8f0; padding: 8px 0; }
+  .mobile-quote-history p, .mobile-quote-fields p { margin: 4px 0; }
+  :deep(.el-descriptions__table) { table-layout: fixed; overflow-wrap: anywhere; }
+  .desktop-lines { display: none; }
+  .mobile-line-picker { display: grid; gap: 8px; max-height: 320px; overflow: auto; }
+  .mobile-line-picker button { display: grid; gap: 6px; padding: 12px; text-align: left; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; color: #334155; overflow-wrap: anywhere; }
+  .mobile-line-picker button[aria-pressed="true"] { border: 2px solid #2563eb; background: #eff6ff; }
+}
+.mobile-ranking { display: none; }
+@media (max-width: 768px) {
+  .mobile-ranking { display: grid; gap: 12px; }
+  .mobile-ranking article { padding: 14px; border: 1px solid #e2e8f0; border-radius: 10px; overflow-wrap: anywhere; }
+  .mobile-ranking p { color: #475569; }
+  .desktop-ranking { display: none; }
+}
 .company-quote-page { display: grid; gap: 16px; }
 .review-head {
   display: flex;
@@ -349,7 +431,11 @@ onActivated(load);
 }
 .attachment-item small { color: #64748b; }
 @media (max-width: 768px) {
-  .review-head { flex-direction: column; }
+  .review-head { flex-direction: column; padding: 14px; gap: 12px; border-radius: 8px; }
+  .review-head h2 { font-size: 20px; overflow-wrap: anywhere; }
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .summary-grid div { padding: 10px; border-radius: 8px; overflow-wrap: anywhere; }
+  .summary-grid strong { font-size: 13px; }
   .head-actions { justify-content: flex-start; }
 }
 </style>

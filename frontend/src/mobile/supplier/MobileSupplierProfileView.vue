@@ -159,6 +159,7 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { CopyDocument, Delete } from '@element-plus/icons-vue';
 import { buildSupplierDocuments as buildRequiredDocs } from '../../composables/supplierDocuments';
+import { filePreviewUrl, openFilePreview } from '../../composables/useFilePreview';
 import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -235,9 +236,9 @@ async function load() {
   }
 }
 
-function previewDoc(item: any) {
+async function previewDoc(item: any) {
   const url = item.objectKey ? `/api/uploads/preview/${encodeURIComponent(item.objectKey)}` : item.fileUrl;
-  if (url) window.open(url, '_blank');
+  if (url) await openFilePreview(url);
 }
 
 async function joinByToken() {

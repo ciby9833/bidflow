@@ -10,8 +10,20 @@
       <button class="search-entry" type="button" @click="router.push({ path: '/m/console/suppliers/search', query: route.query })">
         <span>{{ searchEntryText }}</span>
       </button>
-      <button v-if="auth.hasScope('supplier:create')" class="add-button" type="button" aria-label="新增供应商" @click="router.push('/m/console/suppliers/new')">＋</button>
+      <button v-if="auth.hasScope('supplier:create')" class="add-button" type="button" :aria-label="t('route.supplierCreate')" @click="router.push('/m/console/suppliers/new')">＋</button>
     </div>
+    <el-button v-if="auth.hasScope('supplier:edit') && !auth.isHq" @click="accessOpen = true">{{ t('supplierAccess.importExisting') }}</el-button>
+    <el-dialog v-model="accessOpen" :title="t('supplierAccess.importExisting')" width="520px" @closed="lookupResult = null; lookupKey = ''; lookupError = ''">
+      <p>{{ t('supplierAccess.lookupDesc') }}</p>
+      <el-input v-model.trim="lookupKey" :placeholder="t('supplierAccess.lookupPlaceholder')" @keyup.enter="lookup" />
+      <el-button :loading="accessBusy" @click="lookup">{{ t('common.search') }}</el-button>
+      <p v-if="lookupError" role="alert">{{ lookupError }}</p>
+      <template v-if="lookupResult">
+        <h3>{{ lookupResult.legalName }}</h3><p>{{ lookupResult.businessId }} · {{ lookupResult.countryCode }}</p>
+        <p v-if="lookupResult.alreadyInScope">{{ t('supplierAccess.alreadyGranted') }}</p>
+        <el-button v-else type="primary" :loading="accessBusy" @click="grant">{{ t('supplierAccess.grant') }}</el-button>
+      </template>
+    </el-dialog>
 
     <section class="group">
       <button
@@ -25,7 +37,7 @@
         <span class="content">
           <strong>{{ row.legalName || row.shortName || row.businessId }}</strong>
           <small>{{ row.businessId }} · {{ row.countryCode || '—' }}</small>
-          <em>{{ row.contactName || '未设置联系人' }}</em>
+          <em>{{ row.contactName || t('common.not_set') }}</em>
           <span class="chips">
             <i :class="['chip', statusTone(row.status)]">{{ statusText(row.status) }}</i>
             <i :class="['chip', reviewTone(row.reviewStatus)]">{{ reviewText(row.reviewStatus) }}</i>
@@ -33,7 +45,7 @@
         </span>
       </button>
     </section>
-    <div v-if="!loading && suppliers.length === 0" class="empty">暂无供应商</div>
+    <div v-if="!loading && suppliers.length === 0" class="empty">{{ t('supplierList.noSuppliers') }}</div>
     <button v-if="hasMore" class="more" type="button" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中' : '加载更多' }}</button>
 
   </main>
@@ -44,6 +56,8 @@ import {
   computed, onMounted, reactive, ref, watch,
 } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import { ElMessage } from 'element-plus';
 import { api } from '../../../composables/useApi';
 import { useAuthStore } from '../../../stores/auth';
 import {
@@ -53,6 +67,25 @@ import {
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
+const { t } = useI18n();
+const accessOpen = ref(false), accessBusy = ref(false), lookupKey = ref(''), lookupError = ref('');
+const lookupResult = ref<any>(null);
+async function lookup() {
+  if (!lookupKey.value || accessBusy.value) return;
+  accessBusy.value = true; lookupResult.value = null; lookupError.value = '';
+  try { lookupResult.value = (await api.get('/api/suppliers/lookup/global', { params: { businessId: lookupKey.value } })).data.data; }
+  catch (e: any) { lookupError.value = e.response?.data?.error?.message || t('supplierAccess.notFound'); }
+  finally { accessBusy.value = false; }
+}
+async function grant() {
+  if (!lookupResult.value || accessBusy.value) return;
+  accessBusy.value = true;
+  try {
+    await api.post(`/api/suppliers/${lookupResult.value.id}/branch-access`);
+    ElMessage.success(t('supplierAccess.granted')); accessOpen.value = false; await load();
+  } catch (e: any) { lookupError.value = e.response?.data?.error?.message || t('supplierAccess.grantFailed'); }
+  finally { accessBusy.value = false; }
+}
 const loading = ref(false);
 const loadingMore = ref(false);
 const suppliers = ref<any[]>([]);
@@ -81,7 +114,7 @@ const searchEntryText = computed(() => {
     filters.status ? statusFilterText.value : '',
     filters.reviewStatus ? reviewFilterText.value : '',
   ].filter(Boolean);
-  return parts.length ? parts.join(' · ') : '搜索供应商名称 / 编号';
+  return parts.length ? parts.join(' · ') : t('supplierList.searchPlaceholder');
 });
 
 function syncFiltersFromQuery() {

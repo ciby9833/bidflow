@@ -55,7 +55,7 @@
           <p>{{ item.hallSummary || item.description || t('supplierTenderHall.noSummary') }}</p>
           <dl>
             <div><dt>{{ t('common.type') }}</dt><dd>{{ typeLabel(item.type) }}</dd></div>
-            <div><dt>{{ t('hall.deadline_short') }}</dt><dd>{{ fmtDate(item.bidDeadline) }}</dd></div>
+            <div><dt>{{ t('hall.deadline_short') }}</dt><dd>{{ fmtDate(item.bidDeadline, item.timezone ?? 'UTC') }}</dd></div>
             <div><dt>{{ t('hall.lots') }}</dt><dd>{{ t('supplierTenderHall.lotCount', { count: item.lots?.length ?? 0 }) }}</dd></div>
             <div><dt>{{ t('hall.start') }}</dt><dd>{{ startTimeText(item) }}</dd></div>
           </dl>
@@ -76,7 +76,7 @@ import {
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { api } from '../../composables/useApi';
 import { participationClass, participationLabelKey, resolveParticipationScope } from '../../utils/participation';
 
@@ -108,11 +108,11 @@ const scopeOptions = computed(() => [
   { label: t('supplierTenderHall.invitedMe'), value: 'invited' },
   { label: t('supplierTenderHall.publicTender'), value: 'public' },
 ]);
-function fmtDate(value?: string) {
-  return value ? dayjs(value).format('MM-DD HH:mm') : t('common.not_set');
+function fmtDate(value?: string, zone = 'UTC') {
+  return value ? `${institutionWallTime(value, zone)?.slice(0, 16)} (${zone})` : t('common.not_set');
 }
 function startTimeText(item: any) {
-  return item.bidStartAt ? fmtDate(item.bidStartAt) : t('hall.start_after_publish');
+  return item.bidStartAt ? fmtDate(item.bidStartAt, item.timezone ?? 'UTC') : t('hall.start_after_publish');
 }
 function typeLabel(type: string) {
   return type ? t(`tender.${type}`) : '';

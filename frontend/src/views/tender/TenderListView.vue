@@ -70,10 +70,7 @@
           <div class="advanced-item">
             <label>{{ t('common.currency') }}</label>
             <el-select v-model="filters.baseCurrency" clearable :placeholder="t('common.allCurrencies')">
-              <el-option value="IDR" :label="t('currency.idr')" />
-              <el-option value="VND" :label="t('currency.vnd')" />
-              <el-option value="USD" :label="t('currency.usd')" />
-              <el-option value="CNY" :label="t('currency.cny')" />
+              <CurrencyOptions />
             </el-select>
           </div>
           <div class="advanced-item">
@@ -101,6 +98,17 @@
       <el-button text type="primary" size="small" @click="clearAll">{{ t('common.clearFilters') }}</el-button>
     </div>
 
+    <section class="mobile-tender-cards" v-loading="loading">
+      <article v-for="row in tenders" :key="row.id" class="mobile-tender-card">
+        <div>{{ row.tenderNo }} · {{ t(`tender.status.${row.status}`) }}</div>
+        <h3>{{ row.title }}</h3>
+        <p>{{ row.baseCurrency }} · {{ t('tenderList.roundNo', { round: row.currentQuoteRound ?? 1 }) }}</p>
+        <p>{{ t('tenderCreate.bidDeadline') }}: {{ row.bidDeadline ? fmtDate(row.bidDeadline, row.timezone ?? 'UTC') : '—' }}</p>
+        <el-button type="primary" @click="router.push(`/m/console/tenders/${row.id}`)">{{ t('common.view') }}</el-button>
+        <el-button v-if="row.status === 'draft' && auth.hasScope('tender:edit')" @click="router.push(`/m/console/tenders/${row.id}/edit`)">{{ t('common.edit') }}</el-button>
+      </article>
+      <el-empty v-if="!loading && !tenders.length" />
+    </section>
     <!-- 表格 -->
     <el-table :data="tenders" v-loading="loading" stripe class="tender-table">
       <el-table-column prop="tenderNo" :label="t('common.number')" width="155">
@@ -129,13 +137,13 @@
       </el-table-column>
       <el-table-column prop="baseCurrency" :label="t('common.currency')" width="80" />
       <el-table-column prop="bidStartAt" :label="t('hall.start_time')" width="165">
-        <template #default="{ row }">{{ row.bidStartAt ? fmtDate(row.bidStartAt) : t('hall.start_after_publish') }}</template>
+        <template #default="{ row }">{{ row.bidStartAt ? fmtDate(row.bidStartAt, row.timezone ?? 'UTC') : t('hall.start_after_publish') }}</template>
       </el-table-column>
       <el-table-column prop="bidDeadline" :label="t('hall.deadline')" width="165">
-        <template #default="{ row }">{{ row.bidDeadline ? fmtDate(row.bidDeadline) : '—' }}</template>
+        <template #default="{ row }">{{ row.bidDeadline ? fmtDate(row.bidDeadline, row.timezone ?? 'UTC') : '—' }}</template>
       </el-table-column>
       <el-table-column :label="t('common.createdAt')" width="165">
-        <template #default="{ row }">{{ row.createdAt ? fmtDate(row.createdAt) : '—' }}</template>
+        <template #default="{ row }">{{ row.createdAt ? fmtDate(row.createdAt, row.timezone ?? 'UTC') : '—' }}</template>
       </el-table-column>
       <el-table-column :label="t('common.creator')" width="130" show-overflow-tooltip>
         <template #default="{ row }">{{ userName(row.creator, row.createdBy) }}</template>
@@ -144,7 +152,7 @@
         <template #default="{ row }">{{ userName(row.updater, row.updatedBy) }}</template>
       </el-table-column>
       <el-table-column :label="t('common.updatedAt')" width="165">
-        <template #default="{ row }">{{ row.updatedAt ? fmtDate(row.updatedAt) : '—' }}</template>
+        <template #default="{ row }">{{ row.updatedAt ? fmtDate(row.updatedAt, row.timezone ?? 'UTC') : '—' }}</template>
       </el-table-column>
       <el-table-column :label="t('common.actions')" width="240" fixed="right">
         <template #default="{ row }">
@@ -187,12 +195,13 @@
 </template>
 
 <script setup lang="ts">
+import CurrencyOptions from '../../components/CurrencyOptions.vue';
 import {
   computed, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   Search, Filter, Plus, Refresh,
@@ -263,7 +272,7 @@ function clearAll() {
   quickStatus.value = '';
 }
 
-function fmtDate(iso: string) { return dayjs(iso).format('YYYY-MM-DD HH:mm'); }
+function fmtDate(iso: string, zone = 'UTC') { return `${institutionWallTime(iso, zone)?.slice(0, 16)} (${zone})`; }
 function userName(user?: any, fallback?: string) {
   return user?.displayName || user?.loginName || user?.email || fallback || '—';
 }
@@ -358,6 +367,15 @@ onBeforeUnmount(() => { if (queryTimer) clearTimeout(queryTimer); });
 </script>
 
 <style scoped>
+.mobile-tender-cards { display: none; }
+@media (max-width: 768px) {
+  .mobile-tender-cards { display: grid; gap: 12px; }
+  .mobile-tender-card { padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow-wrap: anywhere; }
+  .mobile-tender-card h3 { margin: 10px 0; }
+  .mobile-tender-card p { color: #475569; line-height: 1.5; }
+  .tender-table { display: none; }
+  .quick-filters { max-width: 100%; overflow-x: auto; }
+}
 .tender-list { display: grid; gap: 16px; }
 
 /* ── Header ── */
@@ -431,8 +449,12 @@ onBeforeUnmount(() => { if (queryTimer) clearTimeout(queryTimer); });
 .pagination { margin-top: 4px; justify-content: flex-end; display: flex; }
 
 @media (max-width: 768px) {
+  .tender-list { grid-template-columns: minmax(0, 1fr); width: 100%; box-sizing: border-box; }
+  .page-header { flex-direction: column; gap: 12px; }
+  .header-actions { width: 100%; justify-content: flex-start; }
   .search-bar { flex-direction: column; align-items: stretch; }
-  .search-input { max-width: none; }
+  .search-input { max-width: none; min-width: 0; }
   .quick-filters { width: 100%; justify-content: space-between; }
+  .quick-filters :deep(.el-segmented) { max-width: 100%; overflow-x: auto; }
 }
 </style>

@@ -11,20 +11,22 @@
       <SupplierCountrySelect v-model="form.countryCode" :branch-id="form.branchId" :auto-default="!isEdit" />
     </el-form>
     <section class="group">
-      <label><span>公司全称</span><input v-model.trim="form.legalName" placeholder="请输入" /></label>
-      <label><span>简称</span><input v-model.trim="form.shortName" placeholder="请输入" /></label>
-      <label><span>区域</span><input v-model.trim="form.region" placeholder="可选" /></label>
-      <label><span>联系人</span><input v-model.trim="form.contactName" placeholder="可选" /></label>
-      <label><span>联系邮箱</span><input v-model.trim="form.contactEmail" inputmode="email" placeholder="可选" /></label>
-      <label><span>联系电话</span><input v-model.trim="form.contactPhone" inputmode="tel" placeholder="可选" /></label>
-      <label><span>税号</span><input v-model.trim="form.taxId" placeholder="可选" /></label>
+      <label><span>{{ t('supplier.legal_name') }}</span><input v-model.trim="form.legalName"  /></label>
+      <label><span>{{ t('supplier.short_name') }}</span><input v-model.trim="form.shortName"  /></label>
+      <label><span>{{ t('common.region') }}</span><input v-model.trim="form.region" :placeholder="t('common.optional')" /></label>
+      <label><span>{{ t('common.contact_name') }}</span><input v-model.trim="form.contactName" :placeholder="t('common.optional')" /></label>
+      <label><span>{{ t('common.contact_email') }}</span><input v-model.trim="form.contactEmail" inputmode="email" :placeholder="t('common.optional')" /></label>
+      <label><span>{{ t('common.contact_phone') }}</span><input v-model.trim="form.contactPhone" inputmode="tel" :placeholder="t('common.optional')" /></label>
+      <label><span>{{ form.countryCode === 'BR' ? 'CNPJ' : t('common.tax_id') }}</span><input v-model.trim="form.taxId" :placeholder="t('common.optional')" /></label>
+      <p v-if="form.countryCode === 'BR'" class="tax-hint">{{ t('market.cnpjHint') }}</p>
     </section>
 
-    <button class="save" type="button" :disabled="saving" @click="save">{{ saving ? '保存中' : '保存' }}</button>
+    <button class="save" type="button" :disabled="saving" @click="save">{{ saving ? t('supplierProfile.submitting') : t('common.save') }}</button>
   </main>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -32,6 +34,7 @@ import { api } from '../../../composables/useApi';
 import TargetBranchSelect from '../../../components/TargetBranchSelect.vue';
 import SupplierCountrySelect from '../../../components/SupplierCountrySelect.vue';
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const isEdit = computed(() => route.path.endsWith('/edit'));
@@ -70,7 +73,7 @@ async function load() {
 
 async function save() {
   if (!form.legalName || !form.shortName) {
-    ElMessage.error('请填写公司全称和简称');
+    ElMessage.error(t('supplierCreate.validationNameRequired'));
     return;
   }
   saving.value = true;
@@ -121,7 +124,7 @@ input {
   width: 100%;
   min-width: 0;
   border: 0;
-  outline: none;
+  outline-offset: 2px;
   background: transparent;
   color: #111827;
   font-size: 15px;

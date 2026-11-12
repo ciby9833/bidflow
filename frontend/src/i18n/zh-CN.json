@@ -1,4 +1,5 @@
 {
+  "evaluationFreeze": {"title":"评标冻结结果","confirm":"确认冻结第 {round} 轮所有线路的排名？须先结束报价，保存后不可覆盖。","closeFirst":"请先结束本轮报价，再冻结评标结果。","done":"第 {round} 轮已冻结","history":"历史冻结结果"},
   "app": {
     "title": "BidFlow 采购招标系统"
   },
@@ -16,7 +17,8 @@
     "zh": "中文",
     "en": "English",
     "id": "Bahasa Indonesia",
-    "vi": "Tiếng Việt"
+    "vi": "Tiếng Việt",
+    "pt": "葡萄牙语（巴西）"
   },
   "common": {
     "add": "新增",
@@ -66,7 +68,8 @@
     "remove": "移除",
     "confirmDelete": "确认删除",
     "saved": "已保存",
-    "search": "查找"
+    "search": "查找",
+    "region": "区域"
   },
   "bulkImport": {
     "downloadTemplate": "下载模板",
@@ -85,7 +88,8 @@
     "idr": "IDR 印尼盾",
     "vnd": "VND 越南盾",
     "usd": "USD 美元",
-    "cny": "CNY 人民币"
+    "cny": "CNY 人民币",
+    "brl": "BRL 巴西雷亚尔"
   },
   "mobile": {
     "mainNav": "移动端主导航"
@@ -369,7 +373,8 @@
       "suspend": "冻结供应商",
       "resume": "恢复供应商"
     },
-    "countryUpdated": "国别已更新"
+    "countryUpdated": "国别已更新",
+    "previewFailed": "无法打开附件：文件可能已删除或访问权限已变更。"
   },
   "supplierMembers": {
     "title": "成员账号",
@@ -869,7 +874,9 @@
     "supplier": {
       "certification_required": "供应商认证未通过，暂不可查看受邀项目或提交报价",
       "documents_required": "请至少填写一项认证资料说明或附件链接",
-      "invalid_country": "请选择有效的公司注册国家／地区代码"
+      "invalid_country": "请选择有效的公司注册国家／地区代码",
+      "invalid_cnpj": "请输入有效的巴西 CNPJ（支持数字及字母数字格式）。",
+      "cnpj_exists": "该 CNPJ 已属于现有供应商，请为现有供应商增加机构准入，不要重复创建。"
     },
     "quote": {
       "cooldown_active": "改价冷却中",
@@ -879,7 +886,8 @@
       "tender_not_open": "招标未开标",
       "concurrent_submit": "请勿重复提交",
       "currency_locked": "本轮报价币种已锁定，请使用首次报价选择的币种",
-      "currency_history_inconsistent": "本轮历史报价存在多个币种，请联系管理员处理"
+      "currency_history_inconsistent": "本轮历史报价存在多个币种，请联系管理员处理",
+      "invalid_amount": "金额必须为正数，最多 4 位小数，且不超过 100000000000。"
     }
   },
   "branch": {
@@ -962,5 +970,23 @@
     "revoke": "撤销本机构准入",
     "revokeConfirm": "仅撤销该供应商在当前机构的准入，保留公司主档及其他机构的准入。关联账号需重新登录。是否继续？",
     "revoked": "已撤销本机构准入"
+  },
+  "market": {
+    "invalidTime": "机构时间无效或存在夏令时歧义，请重新选择。",
+    "cnpjHint": "请输入有效的巴西 CNPJ（支持数字及字母数字格式）。"
+  },
+  "companyQuoteReview": {
+    "rebuild": "重建排名",
+    "freeze": "冻结快照",
+    "quoteCount": "报价数量",
+    "lines": "线路/明细",
+    "lineRanking": "当前线路报价排名",
+    "ranking": "报价排名",
+    "supplier": "供应商",
+    "noAttachments": "暂无附件",
+    "rebuilt": "排名已重建",
+    "frozen": "快照已生成",
+    "yes": "是",
+    "no": "否"
   }
 }

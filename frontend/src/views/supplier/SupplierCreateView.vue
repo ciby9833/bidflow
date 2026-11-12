@@ -42,6 +42,7 @@
           <el-col :span="12">
             <el-form-item :label="t('common.tax_id')">
               <el-input v-model="form.taxId" size="large" />
+              <small v-if="form.countryCode === 'BR'">{{ t('market.cnpjHint') }}</small>
             </el-form-item>
           </el-col>
         </el-row>

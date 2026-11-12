@@ -111,7 +111,8 @@ import {
   onMounted, reactive, ref, watch,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
+import { useAuthStore } from '../../stores/auth';
 import { ElMessage } from 'element-plus';
 import { Key, Refresh } from '@element-plus/icons-vue';
 import { api } from '../../composables/useApi';
@@ -122,6 +123,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const auth = useAuthStore();
 const loading = ref(false);
 const resetting = ref(false);
 const members = ref<any[]>([]);
@@ -134,7 +136,8 @@ const resetDialog = reactive({
 });
 
 function fmt(value: string) {
-  return value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—';
+  const zone = auth.activeBranch?.timezone || 'UTC';
+  return value ? `${institutionWallTime(value, zone)} (${zone})` : '—';
 }
 
 function roleText(role?: string) {

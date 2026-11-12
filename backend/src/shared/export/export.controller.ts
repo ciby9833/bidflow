@@ -4,11 +4,12 @@
  * 交互：调用 export.service.ts 生成文件；被 TenderDetailView.vue 触发下载；依赖 rbac.guard.ts 与 auth 用户信息。
  * 作者：吴川
  */
-import { Controller, Get, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request, Response } from 'express';
 import { ExportService, ExportMode, ExportView } from './export.service';
 import { RbacGuard, RequireScopes } from '../rbac/rbac.guard';
+import { scopesForAccount } from '../rbac/scope-map';
 import { User } from '../../modules/auth/user.entity';
 import { AuthenticatedUser } from '../../modules/auth/jwt.strategy';
 import { BranchScope, emptyBranchScope } from '../tenant/branch-scope';
@@ -38,7 +39,11 @@ export class ExportController {
     const exportMode = mode ?? 'masked';
     const exportView = view ?? 'item';
     const exportRound = round ?? 'all';
-    if (exportMode === 'full' && !user.role.includes('manager') && user.role !== 'super_admin') {
+    if (!['full', 'masked'].includes(exportMode) || !['item', 'supplier'].includes(exportView)) {
+      throw new BadRequestException('Invalid export mode or view');
+    }
+    const scopes = scopesForAccount(req.user as AuthenticatedUser);
+    if (exportMode === 'full' && !scopes.includes('export:full') && !scopes.includes('*')) {
       return res.status(403).json({ success: false, data: null, error: { code: 'FORBIDDEN', message_key: 'error.export.full_requires_manager' } });
     }
 

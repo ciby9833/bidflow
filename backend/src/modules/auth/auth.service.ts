@@ -1,3 +1,4 @@
+import { LocaleContext } from '../../shared/i18n/locale.context';
 /**
  * 文件：backend/src/modules/auth/auth.service.ts
  * 功能：处理登录、OTP 校验、JWT 能力映射与用户创建，是认证域的核心服务。
@@ -188,6 +189,7 @@ export class AuthService {
       this.logger.log(`[DEV ONLY][supplier-register] email=${normalizedEmail} code=${code} expiresIn=${ttlSeconds}s (SMTP skipped)`);
     } else {
       await this.mail.send(buildVerificationCodeEmail({
+      locale: LocaleContext.current(),
         to: normalizedEmail,
         code,
         expiresInMinutes: Math.floor(ttlSeconds / 60),
@@ -476,6 +478,7 @@ export class AuthService {
     const user = await this.userRepo.save(this.userRepo.create({
       email,
       loginName: email,
+      locale: LocaleContext.current(),
       passwordHash,
       accountType: AccountType.SUPPLIER_ACCOUNT,
       registerSource: RegisterSource.EXTERNAL_SIGNUP,
@@ -533,6 +536,7 @@ export class AuthService {
       user = await this.userRepo.save(this.userRepo.create({
         email,
         loginName: email,
+      locale: LocaleContext.current(),
         passwordHash: await argon2.hash(randomBytes(32).toString('hex')),
         accountType: AccountType.SUPPLIER_ACCOUNT,
         registerSource: RegisterSource.GOOGLE,
@@ -737,6 +741,8 @@ export class AuthService {
       await this.userRepo.update(user.id, { lastBranchId: branch.activeBranchId });
     }
 
+    profile.scopes = scopesForAccount({ ...user, branch });
+    if (user.accountType === AccountType.COMPANY_USER && !branch.isHq && branch.activeRole) profile.user.role = String(branch.activeRole) as UserRole;
     const payload: JwtPayload = {
       sub: user.id,
       accountType: user.accountType,

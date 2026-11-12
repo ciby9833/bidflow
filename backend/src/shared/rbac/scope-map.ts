@@ -17,6 +17,8 @@ export const HQ_SCOPES = [
   'org:member_manage', // 分配各机构成员与角色
   'tender:view', 'supplier:view', 'quote:view_all', // 汇总查看
   'export:masked',
+  // Delegated supplier administration still requires an explicit, validated target institution.
+  'supplier:create', 'supplier:edit', 'user:view',
 ];
 
 export const SCOPE_MAP: Record<UserRole, string[]> = {
@@ -44,7 +46,11 @@ export function scopesForRole(role: UserRole): string[] {
  * 按账号类型取能力集。
  * 供应商账号不走 users.role，统一落到 supplier 角色的能力集，避免供应商被赋予公司侧角色时越权。
  */
-export function scopesForAccount(account: { role: UserRole; accountType: AccountType }): string[] {
-  if (account.accountType === AccountType.COMPANY_USER) return scopesForRole(account.role);
+export function scopesForAccount(account: { role: UserRole; accountType: AccountType; branch?: { isHq: boolean; activeRole?: string } }): string[] {
+  if (account.accountType === AccountType.COMPANY_USER) {
+    if (account.branch?.isHq) return HQ_SCOPES;
+    if (account.branch) return scopesForRole(account.branch.activeRole as UserRole);
+    return scopesForRole(account.role);
+  }
   return SCOPE_MAP[UserRole.SUPPLIER];
 }

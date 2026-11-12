@@ -1,4 +1,5 @@
 {
+  "evaluationFreeze": {"title":"Frozen evaluation","confirm":"Freeze all line rankings for round {round}? Close bidding first. The saved result cannot be overwritten.","closeFirst":"Close bidding before freezing this round.","done":"Round {round} frozen","history":"Frozen results"},
   "app": {
     "title": "BidFlow Procurement System"
   },
@@ -16,7 +17,8 @@
     "zh": "Chinese",
     "en": "English",
     "id": "Indonesian",
-    "vi": "Vietnamese"
+    "vi": "Vietnamese",
+    "pt": "Portuguese (Brazil)"
   },
   "common": {
     "add": "Add",
@@ -66,7 +68,8 @@
     "remove": "Remove",
     "confirmDelete": "Delete",
     "saved": "Saved",
-    "search": "Search"
+    "search": "Search",
+    "region": "Region"
   },
   "bulkImport": {
     "downloadTemplate": "Download Template",
@@ -85,7 +88,8 @@
     "idr": "IDR Indonesian Rupiah",
     "vnd": "VND Vietnamese Dong",
     "usd": "USD US Dollar",
-    "cny": "CNY Chinese Yuan"
+    "cny": "CNY Chinese Yuan",
+    "brl": "BRL Brazilian Real"
   },
   "mobile": {
     "mainNav": "Mobile main navigation"
@@ -369,7 +373,8 @@
       "suspend": "Suspended Supplier",
       "resume": "Resumed Supplier"
     },
-    "countryUpdated": "Country updated"
+    "countryUpdated": "Country updated",
+    "previewFailed": "Cannot open the attachment. It may no longer exist or your access may have changed."
   },
   "supplierMembers": {
     "title": "Member Accounts",
@@ -862,7 +867,9 @@
     "supplier": {
       "certification_required": "Supplier certification is not approved yet, so invited tenders and bidding are unavailable",
       "documents_required": "Please provide at least one certification note or attachment link",
-      "invalid_country": "Select a valid company registration country / region code"
+      "invalid_country": "Select a valid company registration country / region code",
+      "invalid_cnpj": "Enter a valid Brazilian CNPJ (numeric or alphanumeric).",
+      "cnpj_exists": "This CNPJ already belongs to a supplier. Ask an administrator to grant institution access instead of creating a duplicate."
     },
     "quote": {
       "cooldown_active": "Re-bid cooldown active",
@@ -872,7 +879,8 @@
       "tender_not_open": "Tender is not open",
       "concurrent_submit": "Concurrent submission detected",
       "currency_locked": "The quote currency is locked for this round. Use the currency selected for the first quote.",
-      "currency_history_inconsistent": "Historical quotes in this round use multiple currencies. Contact an administrator."
+      "currency_history_inconsistent": "Historical quotes in this round use multiple currencies. Contact an administrator.",
+      "invalid_amount": "Enter a positive amount with at most 4 decimals, not exceeding 100000000000."
     }
   },
   "branch": {
@@ -955,5 +963,23 @@
     "revoke": "Revoke access here",
     "revokeConfirm": "Revoke access only to the current institution? The company and its other institutional access remain. Linked accounts will need to sign in again.",
     "revoked": "Access to this institution revoked"
+  },
+  "market": {
+    "invalidTime": "Invalid or ambiguous institution time. Choose another time.",
+    "cnpjHint": "Enter a valid Brazilian CNPJ (numeric or alphanumeric)."
+  },
+  "companyQuoteReview": {
+    "rebuild": "Rebuild ranking",
+    "freeze": "Freeze snapshot",
+    "quoteCount": "Quote count",
+    "lines": "Lines / items",
+    "lineRanking": "Current line ranking",
+    "ranking": "Quote ranking",
+    "supplier": "Supplier",
+    "noAttachments": "No attachments",
+    "rebuilt": "Ranking rebuilt",
+    "frozen": "Snapshot created",
+    "yes": "Yes",
+    "no": "No"
   }
 }

@@ -17,9 +17,21 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import en from 'element-plus/es/locale/lang/en';
 import id from 'element-plus/es/locale/lang/id';
 import vi from 'element-plus/es/locale/lang/vi';
+import ptBr from 'element-plus/es/locale/lang/pt-br';
 import type { SupportedLocale } from './i18n';
 
 const { locale } = useI18n();
-const elementLocales = { 'zh-CN': zhCn, en, 'id-ID': id, 'vi-VN': vi };
+const elementLocales = { 'zh-CN': zhCn, en, 'id-ID': id, 'vi-VN': vi, 'pt-BR': ptBr };
 const elementLocale = computed(() => elementLocales[locale.value as SupportedLocale] ?? en);
 </script>
+
+<style>
+@media (max-width: 768px) {
+  .el-dialog { width: calc(100vw - 24px) !important; max-width: calc(100vw - 24px); margin-top: 5vh; }
+  .el-drawer { max-width: 100vw; }
+  .el-message-box { max-width: calc(100vw - 24px); }
+  .el-dialog__body { overflow-wrap: anywhere; }
+  .el-dialog .el-form-item { flex-wrap: wrap; }
+  .el-dialog .el-form-item__label { height: auto; }
+}
+</style>

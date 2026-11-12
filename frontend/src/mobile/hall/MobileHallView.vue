@@ -54,7 +54,7 @@
         <div class="tender-meta">
           <em>{{ t(`tender.${item.type}`, item.type) }}</em>
           <em>{{ t('hall.lot_count', { count: item.lots?.length || 0 }) }}</em>
-          <em>{{ t('hall.deadline_short') }} {{ item.bidDeadline ? fmt(item.bidDeadline) : t('hall.long_term_valid') }}</em>
+          <em>{{ t('hall.deadline_short') }} {{ item.bidDeadline ? fmt(item.bidDeadline, item.timezone ?? 'UTC') : t('hall.long_term_valid') }}</em>
         </div>
       </button>
       <div v-if="!tenders.length" class="empty">{{ t('hall.no_public_tenders') }}</div>
@@ -64,7 +64,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { api } from '../../composables/useApi';
@@ -120,8 +120,8 @@ const summaryCards = computed(() => [
   },
 ]);
 
-function fmt(value: string) {
-  return dayjs(value).format('MM-DD HH:mm');
+function fmt(value: string, zone = 'UTC') {
+  return `${institutionWallTime(value, zone)?.slice(0, 16)} (${zone})`;
 }
 
 async function load() {

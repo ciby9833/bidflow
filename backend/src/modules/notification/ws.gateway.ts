@@ -1,125 +1,97 @@
-/**
- * 文件：backend/src/modules/notification/ws.gateway.ts
- * 功能：处理报价排名的 WebSocket 连接、订阅、心跳保活与 Redis Pub/Sub 转发。
- * 交互：依赖 redis.config.ts 订阅 lot 排名频道；与 frontend/src/composables/useWs.ts 配套；使用 JWT 校验 socket 身份。
- * 作者：吴川
- */
-import {
-  ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect,
-  SubscribeMessage, WebSocketGateway, WebSocketServer,
-} from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage, WebSocketGateway } from '@nestjs/websockets';
+import { Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { RedisService } from '../../shared/config/redis.config';
+import { JwtStrategy } from '../auth/jwt.strategy';
+import { AccountType } from '../auth/user.entity';
+import { QuoteService } from '../quote/quote.service';
 import Redis from 'ioredis';
 
-const PING_INTERVAL_MS = 30_000;
-const PONG_TIMEOUT_MS = 5_000;
-
 @Injectable()
-@WebSocketGateway({
-  cors: {
-    origin: process.env.FRONTEND_ORIGIN ?? '*',
-    credentials: true,
-  },
-  path: '/ws',
-})
-export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  @WebSocketServer() server!: Server;
-
-  private readonly logger = new Logger(WsGateway.name);
+@WebSocketGateway({ cors: { origin: process.env.FRONTEND_ORIGIN ?? '*', credentials: true }, path: '/ws' })
+export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy {
   private readonly subscriber: Redis;
-  private readonly pingTimers = new Map<string, NodeJS.Timeout>();
-  private readonly pongTimers = new Map<string, NodeJS.Timeout>();
-
-  constructor(
-    private readonly jwt: JwtService,
-    private readonly redis: RedisService,
-  ) {
-    // Dedicated subscriber connection (not the shared client)
+  private readonly clients = new Map<string, { socket: Socket; token: string; lots: Set<string>; timer: ReturnType<typeof setInterval> }>();
+  constructor(private readonly jwt: JwtService, private readonly redis: RedisService,
+    private readonly strategy: JwtStrategy, private readonly quotes: QuoteService) {
     this.subscriber = this.redis.raw.duplicate();
-    this.subscriber.on('message', (channel, message) => this.onPubSubMessage(channel, message));
+    this.subscriber.on('message', (channel) => {
+      const lotId = channel.split(':')[1];
+      for (const client of this.clients.values()) if (client.lots.has(lotId)) void this.snapshot(client.socket, lotId);
+    });
   }
-
-  // ── Connection lifecycle ─────────────────────────────────────────────────
+  private async principal(token: string) {
+    const payload = this.jwt.verify(token);
+    if (payload.purpose) throw new Error('restricted token');
+    const user = await this.strategy.validate(payload);
+    if (user.accountType !== AccountType.SUPPLIER_ACCOUNT || !user.supplierId
+      || !payload.activeBranchId || user.branch.activeBranchId !== payload.activeBranchId) throw new Error('invalid branch');
+    return user;
+  }
   async handleConnection(socket: Socket) {
-    const token = socket.handshake.query['token'] as string;
-
-    if (!token) {
-      socket.disconnect();
-      return;
-    }
-
+    const token = socket.handshake.auth?.token;
     try {
-      const payload = this.jwt.verify(token);
-      socket.data.userId = payload.sub;
-      socket.data.role = payload.role;
-      socket.data.supplierId = payload.supplierId;
-      this.startPing(socket);
-    } catch {
-      socket.disconnect();
-      socket.emit('error', { code: 4401, message: 'UNAUTHORIZED' });
-    }
+      if (typeof token !== 'string') throw new Error('missing token');
+      const ready = this.principal(token);
+      socket.data ??= {};
+      socket.data.authReady = ready;
+      await ready;
+      if (socket.disconnected === true) return;
+      const timer = setInterval(async () => {
+        try { await this.principal(token); socket.emit('ping'); } catch { this.deny(socket); }
+      }, 15000);
+      this.clients.set(socket.id, { socket, token, lots: new Set(), timer });
+    } catch { this.deny(socket); }
   }
-
-  handleDisconnect(socket: Socket) {
-    this.clearTimers(socket.id);
+  private deny(socket: Socket) {
+    socket.emit('error', { code: 4403, message: 'FORBIDDEN' });
+    socket.disconnect(true);
+    this.handleDisconnect(socket);
   }
-
-  // ── Client subscribes to a lot's ranking channel ─────────────────────────
+  private async snapshot(socket: Socket, lotId: string) {
+    const client = this.clients.get(socket.id);
+    if (!client) return false;
+    try {
+      const user = await this.principal(client.token);
+      const state = await this.quotes.getMyRankForSupplier(user.branch.scope, lotId, user.supplierId!);
+      // Never broadcast other suppliers' identities/prices. Honor the same ranking mode as HTTP.
+      if (this.clients.has(socket.id)) socket.emit('rank_snapshot', { lotId, ...state });
+      return true;
+    } catch { this.deny(socket); return false; }
+  }
   @SubscribeMessage('subscribe_lot')
-  async subscribeLot(@ConnectedSocket() socket: Socket, @MessageBody() data: { lotId: string }) {
-    await socket.join(`lot:${data.lotId}`);
-    await this.subscriber.subscribe(`lot:${data.lotId}:channel`);
-
-    // Send immediate snapshot
-    const rank = await this.redis.zrank(`lot:${data.lotId}:rank`, socket.data.supplierId);
-    const total = await this.redis.zcard(`lot:${data.lotId}:rank`);
-    socket.emit('rank_snapshot', { lotId: data.lotId, myRank: rank !== null ? rank + 1 : null, total });
+  async subscribeLot(@ConnectedSocket() socket: Socket, @MessageBody() data: { lotId?: string }) {
+    try { await socket.data?.authReady; } catch { return this.deny(socket); }
+    const client = this.clients.get(socket.id);
+    if (!client || !/^[0-9a-f-]{36}$/i.test(data?.lotId ?? '') || client.lots.size >= 20) return this.deny(socket);
+    const lotId = data.lotId!;
+    if (!await this.snapshot(socket, lotId) || !this.clients.has(socket.id)) return;
+    client.lots.add(lotId);
+    await this.subscriber.subscribe(`lot:${lotId}:channel`);
   }
-
   @SubscribeMessage('unsubscribe_lot')
-  async unsubscribeLot(@ConnectedSocket() socket: Socket, @MessageBody() data: { lotId: string }) {
-    await socket.leave(`lot:${data.lotId}`);
+  async unsubscribeLot(@ConnectedSocket() socket: Socket, @MessageBody() data: { lotId?: string }) {
+    const client = this.clients.get(socket.id);
+    if (!data?.lotId) return;
+    client?.lots.delete(data.lotId);
+    await this.release(data.lotId);
   }
-
   @SubscribeMessage('pong')
-  handlePong(@ConnectedSocket() socket: Socket) {
-    const t = this.pongTimers.get(socket.id);
-    if (t) clearTimeout(t);
+  handlePong() {}
+  private async release(lotId: string) {
+    if (![...this.clients.values()].some(c => c.lots.has(lotId))) await this.subscriber.unsubscribe(`lot:${lotId}:channel`);
   }
-
-  // ── Pub/Sub → WS broadcast ───────────────────────────────────────────────
-  private onPubSubMessage(channel: string, message: string) {
-    // channel = "lot:{lotId}:channel"
-    const lotId = channel.split(':')[1];
-    const event = JSON.parse(message);
-
-    // Broadcast to all subscribers of this lot room
-    this.server.to(`lot:${lotId}`).emit('rank_update', event);
+  handleDisconnect(socket: Socket) {
+    const client = this.clients.get(socket.id);
+    if (!client) return;
+    clearInterval(client.timer);
+    this.clients.delete(socket.id);
+    for (const lotId of client.lots) void this.release(lotId);
   }
-
-  // ── Ping/pong keepalive ──────────────────────────────────────────────────
-  private startPing(socket: Socket) {
-    const timer = setInterval(() => {
-      socket.emit('ping');
-      const pongTimeout = setTimeout(() => {
-        socket.disconnect();
-        this.clearTimers(socket.id);
-      }, PONG_TIMEOUT_MS);
-      this.pongTimers.set(socket.id, pongTimeout);
-    }, PING_INTERVAL_MS);
-
-    this.pingTimers.set(socket.id, timer);
-  }
-
-  private clearTimers(socketId: string) {
-    const ping = this.pingTimers.get(socketId);
-    const pong = this.pongTimers.get(socketId);
-    if (ping) clearInterval(ping);
-    if (pong) clearTimeout(pong);
-    this.pingTimers.delete(socketId);
-    this.pongTimers.delete(socketId);
+  onModuleDestroy() {
+    for (const c of this.clients.values()) { clearInterval(c.timer); c.socket.disconnect(true); }
+    this.clients.clear();
+    this.subscriber.disconnect();
   }
 }

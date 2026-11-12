@@ -6,10 +6,13 @@
  */
 import { ref, onUnmounted } from 'vue';
 import { io, Socket } from 'socket.io-client';
+import { api } from './useApi';
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
 
 export function useWs(lotId: string, supplierId: string) {
+  const hasQuote = ref(false);
+  const bucket = ref<number | null>(null);
   const myRank = ref<number | null>(null);
   const total = ref<number>(0);
   const isLeading = ref<boolean>(false);
@@ -17,18 +20,23 @@ export function useWs(lotId: string, supplierId: string) {
   let socket: Socket | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectAttempt = 0;
+  let stopped = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   function fallbackPoll() {
-    if (pollTimer) return;
-    pollTimer = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/quotes/lots/${lotId}/my-rank`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-        const data = await res.json();
-        if (data.success) applyRankData(data.data);
-      } catch { /* ignore */ }
-    }, 7000);
+    if (pollTimer || stopped) return;
+    void refreshRank();
+    pollTimer = setInterval(refreshRank, 7000);
+  }
+
+  async function refreshRank() {
+    if (stopped) return;
+    try {
+      const res = await api.get(`/api/quotes/lots/${lotId}/my-rank`);
+      if (res.data.success) applyRankData(res.data.data);
+    } catch (error: any) {
+      if ([401, 403, 404].includes(error.response?.status)) { stopped = true; stopPoll(); socket?.disconnect(); }
+    }
   }
 
   function stopPoll() {
@@ -36,16 +44,19 @@ export function useWs(lotId: string, supplierId: string) {
   }
 
   function applyRankData(data: any) {
-    if (data.myRank !== undefined) myRank.value = data.myRank;
-    if (data.total !== undefined) total.value = data.total;
-    if (data.isLeading !== undefined) isLeading.value = data.isLeading;
+    hasQuote.value = data.hasQuote ?? data.myRank != null;
+    bucket.value = data.bucket ?? null;
+    myRank.value = data.myRank ?? null;
+    total.value = data.total ?? 0;
+    isLeading.value = data.isLeading ?? false;
   }
 
   function connect() {
+    if (stopped) return;
     const token = localStorage.getItem('token');
-    socket = io('/', {
+    socket = io(import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_BASE_URL || '/', {
       path: '/ws',
-      query: { token },
+      auth: { token },
       transports: ['websocket'],
       reconnection: false,
     });
@@ -57,6 +68,7 @@ export function useWs(lotId: string, supplierId: string) {
       socket!.emit('subscribe_lot', { lotId });
     });
 
+    socket.on('connect_error', () => { connected.value = false; fallbackPoll(); });
     socket.on('rank_snapshot', applyRankData);
     socket.on('rank_update', (event: any) => {
       if (event.supplierId === supplierId) {
@@ -68,26 +80,33 @@ export function useWs(lotId: string, supplierId: string) {
 
     socket.on('disconnect', () => {
       connected.value = false;
+      if (stopped) return;
       fallbackPoll();
       const delay = RECONNECT_DELAYS[Math.min(reconnectAttempt, RECONNECT_DELAYS.length - 1)];
       reconnectAttempt++;
-      setTimeout(connect, delay);
+      reconnectTimer = setTimeout(connect, delay);
     });
 
     socket.on('error', (err: any) => {
       if (err?.code === 4401 || err?.code === 4403) {
-        // Token issue — stop reconnecting, let auth layer handle
+        stopped = true;
+        stopPoll();
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        // Stop reconnecting after denial.
         socket?.disconnect();
       }
     });
   }
 
+  void refreshRank();
   connect();
 
   onUnmounted(() => {
+    stopped = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
     socket?.disconnect();
     stopPoll();
   });
 
-  return { myRank, total, isLeading, connected };
+  return { refreshRank, hasQuote, bucket, myRank, total, isLeading, connected };
 }

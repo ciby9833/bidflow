@@ -38,6 +38,7 @@ export interface BidRecordItem {
   participationScope?: 'invited' | 'public';
   currentQuoteRound?: number;
   bidDeadline?: Date;
+  timezone?: string;
   openTime?: Date;
   lotId: string;
   lotNo: string;
@@ -136,6 +137,7 @@ export class BidRecordService {
         participationScope: quote.lot.tender.participationMode === ParticipationMode.SELECTED ? 'invited' : 'public',
         currentQuoteRound: quote.lot.tender.currentQuoteRound,
         bidDeadline: quote.lot.tender.bidDeadline,
+        timezone: quote.lot.tender.timezone,
         openTime: quote.lot.tender.openTime,
         lotId: quote.lotId,
         lotNo: quote.lot.lotNo,
@@ -165,10 +167,14 @@ export class BidRecordService {
       }),
       this.lineRepo.find({
         where: { lotId: In(lotIds), isActive: true },
-        select: ['id', 'lotId'],
+        select: ['id', 'lotId', 'roundNo'],
       }),
     ]);
-    const lineCountMap = this.countBy(lines, 'lotId');
+    const lineCountMap = new Map<string, number>();
+    for (const line of lines) {
+      const key = `${line.lotId}:${line.roundNo}`;
+      lineCountMap.set(key, (lineCountMap.get(key) ?? 0) + 1);
+    }
 
     const grouped = new Map<string, LineQuote[]>();
     for (const quote of latestQuotes) {
@@ -207,6 +213,7 @@ export class BidRecordService {
         participationScope: tender.participationMode === ParticipationMode.SELECTED ? 'invited' : 'public',
         currentQuoteRound: tender.currentQuoteRound,
         bidDeadline: tender.bidDeadline,
+        timezone: tender.timezone,
         openTime: tender.openTime,
         lotId,
         lotNo: lot.lotNo,
@@ -219,14 +226,18 @@ export class BidRecordService {
         quoteCount: allLineQuotes.filter((quote) => quote.lotId === lotId && quote.roundNo === latest.roundNo).length,
         roundNo: latest.roundNo,
         submittedLineCount: quotes.length,
-        totalLineCount: lineCountMap.get(lotId) ?? quotes.length,
+        totalLineCount: lineCountMap.get(key) ?? quotes.length,
         lineSummaries,
       };
     });
   }
 
   private getLineSummaryTitle(line: LotLine) {
-    const values = Object.values(line.dataJson ?? {})
+    const schemaColumns = line.lot?.uiSchema?.lineColumns;
+    const columns: Array<{ key: string; required?: boolean }> = Array.isArray(schemaColumns)
+      ? schemaColumns.filter((column) => column && typeof column.key === 'string' && !column.required)
+      : [];
+    const values = (columns.length ? columns.map((column) => line.dataJson?.[column.key]) : Object.values(line.dataJson ?? {}))
       .map((value) => String(value ?? '').trim())
       .filter(Boolean);
     return values.slice(0, 3).join(' / ') || line.lineNo || `#${line.rowNo}`;

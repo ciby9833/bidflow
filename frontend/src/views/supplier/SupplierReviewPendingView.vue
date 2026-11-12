@@ -7,19 +7,19 @@
 <template>
   <div class="pending-wrap">
     <el-card class="pending-card">
-      <h2>供应商审核中</h2>
+      <h2>{{ t('route.supplierReviewPending') }}</h2>
       <p class="desc">
-        {{ auth.user?.displayName || auth.user?.fullName || auth.user?.email }} 已完成供应商认证资料提交，
-        当前正等待公司审核。审核通过后才可以查看受邀项目并参与投标。
+        {{ auth.user?.displayName || auth.user?.fullName || auth.user?.email }}
+        {{ t(`supplierProfile.statusHint.${auth.user?.supplierReviewStatus || 'pending_review'}`) }}
       </p>
       <div class="status-row">
-        <span class="label">审核状态</span>
-        <el-tag type="warning">{{ auth.user?.supplierReviewStatus ?? 'pending_review' }}</el-tag>
+        <span class="label">{{ t('supplierProfile.currentReviewStatus') }}</span>
+        <el-tag type="warning">{{ t(`supplierReview.${auth.user?.supplierReviewStatus || 'pending_review'}`) }}</el-tag>
       </div>
       <div class="actions">
-        <el-button @click="router.push('/supplier/profile')">提交 / 补交资料</el-button>
-        <el-button @click="router.push('/tenders')">刷新权限</el-button>
-        <el-button type="primary" @click="auth.logout()">退出登录</el-button>
+        <el-button @click="router.push('/supplier/profile')">{{ t('supplierProfile.supplementProfile') }}</el-button>
+        <el-button @click="syncStatus">{{ t('common.refresh') }}</el-button>
+        <el-button type="primary" @click="auth.logout()">{{ t('auth.logout') }}</el-button>
       </div>
     </el-card>
   </div>
@@ -27,16 +27,18 @@
 
 <script setup lang="ts">
 import { onActivated, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 
 const auth = useAuthStore();
 const router = useRouter();
+const { t } = useI18n();
 
 async function syncStatus() {
   if (!auth.isLoggedIn) return;
   await auth.loadMe();
-  if (auth.user?.supplierReviewStatus === 'approved') router.replace('/supplier/profile');
+  if (auth.user?.supplierReviewStatus === 'approved') router.replace('/supplier/tenders');
 }
 
 onMounted(syncStatus);

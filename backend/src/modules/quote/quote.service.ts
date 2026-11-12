@@ -1,3 +1,5 @@
+import { checkedAmount, convertAmount, decreaseLimit, originalCurrencyLimit } from './money';
+import { validateAttachmentReferences } from '../../shared/upload/attachment-reference';
 /**
  * 文件：backend/src/modules/quote/quote.service.ts
  * 功能：实现报价提交、改价频控、Redis 排名、排名读取、快照生成与重建。
@@ -29,6 +31,7 @@ import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
 import { I18nService } from '../../shared/i18n/i18n.service';
+import { currencyCode } from '../../shared/config/market-policy';
 import { SupplierRoundCurrency } from './supplier-round-currency.entity';
 import { TenderExchangeRate } from './tender-exchange-rate.entity';
 
@@ -54,9 +57,10 @@ async function nextQuoteSeq(
   branchId: string,
 ): Promise<number> {
   const ym = new Date().toISOString().slice(0, 7).replace('-', '');
+  await em.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`quote-number:${branchId}:${prefix}:${ym}`]);
   const row = await em
     .createQueryBuilder(entity, 'q')
-    .select('MAX(CAST(RIGHT(q.quoteNo, 6) AS INT))', 'max')
+    .select("MAX(CAST(SPLIT_PART(q.quoteNo, '-', 3) AS BIGINT))", 'max')
     .where('q.quoteNo LIKE :p', { p: `${prefix}-${ym}-%` })
     .andWhere('q.branchId = :branchId', { branchId })
     .getRawOne<{ max: string | null }>();
@@ -73,10 +77,10 @@ function isoDate(value: Date): string {
 
 // Redis key schema per §4.1
 const KEYS = {
-  rank: (lotId: string) => `lot:${lotId}:rank`,
-  latest: (lotId: string) => `lot:${lotId}:latest`,
-  rebid: (lotId: string, sup: string) => `lot:${lotId}:rebid:${sup}`,
-  cooldown: (lotId: string, sup: string) => `lot:${lotId}:cooldown:${sup}`,
+  rank: (lotId: string, roundNo: number) => `lot:${lotId}:round:${roundNo}:rank`,
+  latest: (lotId: string, roundNo: number) => `lot:${lotId}:round:${roundNo}:latest`,
+  rebid: (lotId: string, roundNo: number, sup: string) => `lot:${lotId}:round:${roundNo}:rebid:${sup}`,
+  cooldown: (lotId: string, roundNo: number, sup: string) => `lot:${lotId}:round:${roundNo}:cooldown:${sup}`,
   lineRank: (lineId: string, roundNo: number) => `line:${lineId}:round:${roundNo}:rank`,
   lineLatest: (lineId: string, roundNo: number) => `line:${lineId}:round:${roundNo}:latest`,
   lineCooldown: (lineId: string, roundNo: number, sup: string) => `line:${lineId}:round:${roundNo}:cooldown:${sup}`,
@@ -148,7 +152,7 @@ export class QuoteService {
   }
 
   /** 供应商保存某标包当前轮的投标附件（整份覆盖）。 */
-  async saveLotAttachments(scope: BranchScope, lotId: string, supplierId: string, attachments: QuoteAttachmentItem[]) {
+  async saveLotAttachments(scope: BranchScope, lotId: string, supplierId: string, attachments: QuoteAttachmentItem[], userId?: string) {
     const list = (attachments ?? []).slice(0, QuoteService.MAX_QUOTE_ATTACHMENTS).map((a) => ({
       key: String(a.key),
       name: String(a.name ?? '附件'),
@@ -160,7 +164,11 @@ export class QuoteService {
       throw new BadRequestException('error.upload.file_too_many');
     }
     const { tenderId, roundNo, branchId } = await this.resolveLotContext(scope, lotId);
+    await this.ensureSupplierApproved(supplierId);
+    const tender = await this.requireTender(scope, tenderId);
+    await this.ensureCanParticipate(tender, supplierId);
     const existing = await this.lotAttachmentRepo.findOne({ where: { tenderId, lotId, supplierId, roundNo } });
+    validateAttachmentReferences(list, existing?.attachments ?? [], userId, 'quote-attachments');
     if (existing) {
       existing.attachments = list;
       await this.lotAttachmentRepo.save(existing);
@@ -204,8 +212,9 @@ export class QuoteService {
   }
 
   private async resolveConversion(totalPrice: number, currency: string, tender: Tender, at: Date) {
-    const fromCurrency = this.normalizeCurrency(currency);
-    const toCurrency = this.normalizeCurrency(tender.baseCurrency);
+    checkedAmount(totalPrice);
+    const fromCurrency = currencyCode(currency);
+    const toCurrency = currencyCode(tender.baseCurrency);
 
     if (!/^[A-Z]{3}$/.test(fromCurrency) || !/^[A-Z]{3}$/.test(toCurrency)) {
       throw new BadRequestException('error.quote.currency_required');
@@ -226,7 +235,7 @@ export class QuoteService {
       exchangeRate: rate,
       exchangeRateDate: lockedRate.rateDate,
       exchangeRateSource: lockedRate.source,
-      priceInBase: Math.round(Number(totalPrice) * rate * 10000) / 10000,
+      priceInBase: convertAmount(totalPrice, rate),
     };
   }
 
@@ -265,9 +274,9 @@ export class QuoteService {
 
       const url = `${QuoteService.FRANKFURTER_API}/v2/rate/${encodeURIComponent(fromCurrency)}/${encodeURIComponent(toCurrency)}?date=${requestedDate}`;
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
         const data = await res.json().catch(() => null) as { rate?: number; date?: string; message?: string } | null;
-        if (!res.ok || !data?.rate) {
+        if (!data || !res.ok || !Number.isFinite(Number(data?.rate)) || Number(data?.rate) <= 0) {
           throw new BadRequestException({
             code: 'EXCHANGE_RATE_UNAVAILABLE',
             message_key: 'error.quote.exchange_rate_unavailable',
@@ -348,6 +357,7 @@ export class QuoteService {
   // ── §4.2 Write Path ─────────────────────────────────────────────────────
   async submit(scope: BranchScope, data: {
     lotId: string;
+    roundNo?: number;
     supplierId: string;
     totalPrice: number;
     currency: string;
@@ -361,18 +371,20 @@ export class QuoteService {
 
     const lot = await this.requireLot(scope, lotId);
     const tenderId = lot.tenderId;
+    const tender = await this.requireTender(scope, tenderId);
+    const roundNo = tender.currentQuoteRound ?? 1;
+    await this.ensureCanParticipate(tender, supplierId);
+    if (data.roundNo !== undefined && data.roundNo !== roundNo) throw new ConflictException('error.quote.version_conflict');
 
     // ① Idempotency check (if rebid supplies a key)
     if (data.idempotencyKey) {
       const existing = await this.quoteRepo.findOne({
-        where: { tenderId, lotId, supplierId, idempotencyKey: data.idempotencyKey },
+        where: { tenderId, lotId, roundNo, supplierId, idempotencyKey: data.idempotencyKey },
       });
       if (existing) return { quote: existing, idempotent: true };
     }
 
     // ② Deadline check
-    const tender = await this.requireTender(scope, tenderId);
-    await this.ensureCanParticipate(tender, supplierId);
     const now = new Date();
     if (tender.status === TenderStatus.PUBLISHED && (!tender.bidStartAt || tender.bidStartAt <= now) && (!tender.bidDeadline || tender.bidDeadline > now)) {
       await this.tenderRepo.createQueryBuilder().update(Tender).set({ status: TenderStatus.OPEN })
@@ -396,10 +408,9 @@ export class QuoteService {
 
     try {
       // ④ Cooldown check
-      const cooldownKey = KEYS.cooldown(lotId, supplierId);
-      const onCooldown = await this.redis.exists(cooldownKey);
-      if (onCooldown) {
-        const ttl = await this.redis.raw.ttl(cooldownKey);
+      const cooldownKey = KEYS.cooldown(lotId, roundNo, supplierId);
+      const ttl = tender.cooldownSeconds > 0 ? await this.redis.raw.ttl(cooldownKey) : 0;
+      if (ttl > 0) {
         throw new BadRequestException({
           code: 'COOLDOWN_ACTIVE',
           message_key: 'error.quote.cooldown_active',
@@ -408,12 +419,12 @@ export class QuoteService {
       }
 
       // ⑤ Rebid count check
-      const existing = await this.quoteRepo.findOne({ where: { lotId, supplierId, isLatest: true } });
+      const existing = await this.quoteRepo.findOne({ where: { lotId, roundNo, supplierId, isLatest: true } });
       const isRebid = !!existing;
       const conversion = await this.resolveConversion(data.totalPrice, data.currency, tender, now);
 
       if (isRebid) {
-        const quoteCount = await this.quoteRepo.count({ where: { lotId, supplierId } });
+        const quoteCount = await this.quoteRepo.count({ where: { lotId, roundNo, supplierId } });
         const rebidCount = rebidCountFromQuoteCount(quoteCount);
         if (rebidCount >= tender.maxRebidCount) {
           throw new BadRequestException({
@@ -426,13 +437,13 @@ export class QuoteService {
         // ⑥ Min decrement check
         const minPct = Number(tender.minDecrementPct);
         const lastPrice = this.quoteRankPrice(existing);
-        const maxAllowed = lastPrice * (1 - minPct / 100);
+        const maxAllowed = decreaseLimit(lastPrice, minPct);
         if (conversion.priceInBase > maxAllowed) {
           throw new BadRequestException({
             code: 'MIN_DECREMENT_FAIL',
             message_key: 'error.quote.min_decrement_fail',
             detail: {
-              required_price: Math.floor((maxAllowed / conversion.exchangeRate) * 100) / 100,
+              required_price: originalCurrencyLimit(maxAllowed, conversion.exchangeRate),
               required_price_base: maxAllowed,
               base_currency: conversion.baseCurrency,
               exchange_rate: conversion.exchangeRate,
@@ -448,7 +459,7 @@ export class QuoteService {
         await this.lockSupplierRoundCurrency(em, tender, supplierId, conversion.currency);
         if (existing) {
           const updateResult = await em.update(Quote,
-            { lotId, supplierId, isLatest: true, version: existing.version },
+            { lotId, roundNo, supplierId, isLatest: true, version: existing.version },
             { isLatest: false },
           );
           if (updateResult.affected === 0) {
@@ -462,6 +473,7 @@ export class QuoteService {
           quoteNo: quoteNo(nextSeq),
           tenderId,
           lotId,
+          roundNo,
           supplierId,
           version: existing ? existing.version + 1 : 1,
           isLatest: true,
@@ -483,8 +495,8 @@ export class QuoteService {
 
       // ⑧ Redis write
       const price = Number(conversion.priceInBase);
-      await this.redis.zadd(KEYS.rank(lotId), price, supplierId);
-      await this.redis.hset(KEYS.latest(lotId), supplierId, JSON.stringify({
+      await this.redis.zadd(KEYS.rank(lotId, roundNo), price, supplierId);
+      await this.redis.hset(KEYS.latest(lotId, roundNo), supplierId, JSON.stringify({
         version: newQuote.version,
         totalPrice: Number(data.totalPrice),
         currency: conversion.currency,
@@ -494,17 +506,19 @@ export class QuoteService {
         priceInBase: price,
         submittedAt: newQuote.submittedAt,
       }));
-      await this.redis.set(KEYS.cooldown(lotId, supplierId), '1', tender.cooldownSeconds);
+      // A zero-second cooldown must not create a persistent Redis key.
+      if (tender.cooldownSeconds > 0) await this.redis.set(cooldownKey, '1', tender.cooldownSeconds);
+      else await this.redis.del(cooldownKey);
 
       if (isRebid) {
-        const rebidKey = KEYS.rebid(lotId, supplierId);
-        const quoteCount = await this.quoteRepo.count({ where: { lotId, supplierId } });
+        const rebidKey = KEYS.rebid(lotId, roundNo, supplierId);
+        const quoteCount = await this.quoteRepo.count({ where: { lotId, roundNo, supplierId } });
         await this.redis.set(rebidKey, String(rebidCountFromQuoteCount(quoteCount)));
       }
 
       // ⑨ Publish ranking event
-      const rank = await this.redis.zrank(KEYS.rank(lotId), supplierId);
-      const total = await this.redis.zcard(KEYS.rank(lotId));
+      const rank = await this.redis.zrank(KEYS.rank(lotId, roundNo), supplierId);
+      const total = await this.redis.zcard(KEYS.rank(lotId, roundNo));
       await this.redis.publish(KEYS.channel(lotId), JSON.stringify({
         type: 'rank_update', supplierId, rank, total, price, baseCurrency: conversion.baseCurrency,
       }));
@@ -539,6 +553,7 @@ export class QuoteService {
     const lot = await this.lots.findById(scope, line.lotId);
     if (!lot) throw new NotFoundException('error.lot.not_found');
     const roundNo = tender.currentQuoteRound ?? 1;
+    if (!line.isActive || line.roundNo !== roundNo) throw new NotFoundException('error.line.not_found');
     await this.ensureCanParticipate(tender, supplierId);
 
     const now = new Date();
@@ -582,9 +597,8 @@ export class QuoteService {
 
     try {
       const cooldownKey = KEYS.lineCooldown(lineId, roundNo, supplierId);
-      const onCooldown = await this.redis.exists(cooldownKey);
-      if (onCooldown) {
-        const ttl = await this.redis.raw.ttl(cooldownKey);
+      const ttl = tender.cooldownSeconds > 0 ? await this.redis.raw.ttl(cooldownKey) : 0;
+      if (ttl > 0) {
         throw new BadRequestException({
           code: 'COOLDOWN_ACTIVE',
           message_key: 'error.quote.cooldown_active',
@@ -609,13 +623,13 @@ export class QuoteService {
 
         const minPct = Number(tender.minDecrementPct);
         const lastPrice = this.quoteRankPrice(existing);
-        const maxAllowed = lastPrice * (1 - minPct / 100);
+        const maxAllowed = decreaseLimit(lastPrice, minPct);
         if (conversion.priceInBase > maxAllowed) {
           throw new BadRequestException({
             code: 'MIN_DECREMENT_FAIL',
             message_key: 'error.quote.min_decrement_fail',
             detail: {
-              required_price: Math.floor((maxAllowed / conversion.exchangeRate) * 100) / 100,
+              required_price: originalCurrencyLimit(maxAllowed, conversion.exchangeRate),
               required_price_base: maxAllowed,
               base_currency: conversion.baseCurrency,
               exchange_rate: conversion.exchangeRate,
@@ -675,7 +689,9 @@ export class QuoteService {
         priceInBase: price,
         submittedAt: newQuote.submittedAt,
       }));
-      await this.redis.set(KEYS.lineCooldown(lineId, roundNo, supplierId), '1', tender.cooldownSeconds);
+      // A zero-second cooldown must not create a persistent Redis key.
+      if (tender.cooldownSeconds > 0) await this.redis.set(cooldownKey, '1', tender.cooldownSeconds);
+      else await this.redis.del(cooldownKey);
       if (isRebid) {
         const quoteCount = await this.lineQuoteRepo.count({ where: { lineId, roundNo, supplierId } });
         await this.redis.set(KEYS.lineRebid(lineId, roundNo, supplierId), String(rebidCountFromQuoteCount(quoteCount)));
@@ -696,7 +712,8 @@ export class QuoteService {
   async getLineQuotes(scope: BranchScope, lineId: string, supplierId?: string, roundNo?: number) {
     const line = await this.requireLine(scope, lineId);
     const tender = await this.requireTender(scope, line.tenderId);
-    const targetRound = roundNo ?? tender.currentQuoteRound ?? 1;
+    // Line IDs are round-specific; reading an earlier line must not silently query the current round.
+    const targetRound = roundNo ?? line.roundNo ?? tender.currentQuoteRound ?? 1;
 
     const where: any = { lineId, roundNo: targetRound, isLatest: true };
     if (supplierId) where.supplierId = supplierId;
@@ -710,7 +727,8 @@ export class QuoteService {
   async getLineQuoteHistory(scope: BranchScope, lineId: string, supplierId: string, roundNo?: number) {
     const line = await this.requireLine(scope, lineId);
     const tender = await this.requireTender(scope, line.tenderId);
-    const targetRound = roundNo ?? tender.currentQuoteRound ?? 1;
+    // Line IDs are round-specific; reading an earlier line must not silently query the current round.
+    const targetRound = roundNo ?? line.roundNo ?? tender.currentQuoteRound ?? 1;
     const quotes = await this.lineQuoteRepo.find({
       where: { lineId, supplierId, roundNo: targetRound },
       order: { version: 'DESC' },
@@ -721,7 +739,8 @@ export class QuoteService {
   async getLineQuoteHistoryForReview(scope: BranchScope, lineId: string, supplierId: string, roundNo?: number) {
     const line = await this.requireLine(scope, lineId);
     const tender = await this.requireTender(scope, line.tenderId);
-    const targetRound = roundNo ?? tender.currentQuoteRound ?? 1;
+    // Line IDs are round-specific; reading an earlier line must not silently query the current round.
+    const targetRound = roundNo ?? line.roundNo ?? tender.currentQuoteRound ?? 1;
     const quotes = await this.lineQuoteRepo.find({
       where: { lineId, supplierId, roundNo: targetRound },
       order: { version: 'DESC', submittedAt: 'DESC' },
@@ -733,14 +752,16 @@ export class QuoteService {
     await this.ensureSupplierApproved(supplierId);
     const line = await this.requireLine(scope, lineId);
     const tender = await this.requireTender(scope, line.tenderId);
-    const targetRound = roundNo ?? tender.currentQuoteRound ?? 1;
+    await this.ensureCanParticipate(tender, supplierId);
+    // Line IDs are round-specific; reading an earlier line must not silently query the current round.
+    const targetRound = roundNo ?? line.roundNo ?? tender.currentQuoteRound ?? 1;
     const quotes = await this.getLineQuotes(scope, lineId, undefined, targetRound);
     const index = quotes.findIndex((quote) => quote.supplierId === supplierId);
     if (index < 0) return { hasQuote: false, rankingMode: tender.rankingMode, roundNo: targetRound };
     return {
       hasQuote: true,
       rankingMode: tender.rankingMode,
-      myRank: index + 1,
+      ...(tender.rankingMode === 'top_n' ? { myRank: index + 1 } : tender.rankingMode === 'interval' ? { bucket: Math.floor(index / Math.max(quotes.length, 1) * 10) + 1 } : {}),
       total: quotes.length,
       isLeading: index === 0,
       roundNo: targetRound,
@@ -821,15 +842,16 @@ export class QuoteService {
         roundNo: tender.currentQuoteRound ?? 1,
       },
     });
-    if (!scope) throw new ForbiddenException('error.tender.not_invited');
+    if (!scope || !['pending', 'accepted'].includes(scope.status) || (scope.visibleAt && scope.visibleAt > new Date())) throw new ForbiddenException('error.tender.not_invited');
   }
 
   // ── §4.3 Read Path ──────────────────────────────────────────────────────
   async getMyRank(scope: BranchScope, lotId: string, supplierId: string, rankingMode: string, topN?: number) {
     // 排名存放在 Redis，其 key 只含 lotId 而无机构信息，
     // 因此必须先用数据库校验标包归属，否则跨机构可凭 lotId 直接读到排名。
-    await this.requireLot(scope, lotId);
-    const rankKey = KEYS.rank(lotId);
+    const { roundNo } = await this.resolveLotContext(scope, lotId);
+    const rankKey = KEYS.rank(lotId, roundNo);
+    if (!await this.redis.exists(rankKey)) await this.rebuildRankingFromDb(scope, lotId);
     const myRank = await this.redis.zrank(rankKey, supplierId);
     const total = await this.redis.zcard(rankKey);
 
@@ -853,7 +875,7 @@ export class QuoteService {
       }
       case 'leading_flag':
       default:
-        return { hasQuote: true, rankingMode, isLeading, total, myRank: myRank + 1 };
+        return { hasQuote: true, rankingMode, isLeading, total };
     }
   }
 
@@ -862,6 +884,7 @@ export class QuoteService {
     const lot = await this.requireLot(scope, lotId);
 
     const tender = await this.requireTender(scope, lot.tenderId);
+    await this.ensureCanParticipate(tender, supplierId);
 
     return this.getMyRank(scope, lotId, supplierId, tender.rankingMode, tender.rankingTopN);
   }
@@ -870,16 +893,20 @@ export class QuoteService {
     await this.ensureSupplierApproved(supplierId);
     const lot = await this.requireLot(scope, lotId);
     const tender = await this.requireTender(scope, lot.tenderId);
+    const roundNo = tender.currentQuoteRound ?? 1;
+    await this.ensureCanParticipate(tender, supplierId);
     const quotes = await this.quoteRepo.find({
-      where: { lotId, supplierId },
+      where: { lotId, roundNo, supplierId },
       order: { version: 'DESC', submittedAt: 'DESC' },
     });
     const latest = quotes.find((quote) => quote.isLatest) ?? quotes[0] ?? null;
-    const cooldownKey = KEYS.cooldown(lotId, supplierId);
+    const cooldownKey = KEYS.cooldown(lotId, roundNo, supplierId);
     const cooldownTtl = latest && await this.redis.exists(cooldownKey) ? await this.redis.raw.ttl(cooldownKey) : null;
     const [quote] = latest ? await this.withSupplierSummary([latest]) : [null];
     return {
       quote,
+      roundNo,
+      tenderStatus: tender.status,
       ability: this.buildQuoteAbility({
         tender,
         quoteCount: quotes.length,
@@ -893,6 +920,7 @@ export class QuoteService {
     await this.ensureSupplierApproved(supplierId);
     const line = await this.requireLine(scope, lineId);
     const tender = await this.requireTender(scope, line.tenderId);
+    await this.ensureCanParticipate(tender, supplierId);
     const roundNo = tender.currentQuoteRound ?? 1;
     const quotes = await this.lineQuoteRepo.find({
       where: { lineId, roundNo, supplierId },
@@ -904,6 +932,7 @@ export class QuoteService {
     const [quote] = latest ? await this.withSupplierSummary([latest]) : [null];
     return {
       quote,
+      tenderStatus: tender.status,
       ability: {
         ...this.buildQuoteAbility({
           tender,
@@ -917,60 +946,77 @@ export class QuoteService {
   }
 
   async rebuildRankingFromDb(scope: BranchScope, lotId: string) {
-    await this.requireLot(scope, lotId);
+    const { roundNo } = await this.resolveLotContext(scope, lotId);
     const quotes = await this.quoteRepo.find({
-      where: { lotId, isLatest: true, isValid: true },
+      where: { lotId, roundNo, isLatest: true, isValid: true },
       order: { submittedAt: 'ASC' },
     });
     await this.redis.rebuildLotRanking(lotId, quotes.map((q) => ({
       supplierId: q.supplierId,
       price: this.quoteRankPrice(q),
-    })));
+    })), roundNo);
     return quotes.length;
   }
 
   // ── Snapshot generation (key moments only) ──────────────────────────────
-  async generateSnapshot(scope: BranchScope, lotId: string, trigger: SnapshotTrigger, triggeredBy?: string) {
+  async getSnapshots(scope: BranchScope, lotId: string) {
     const lot = await this.requireLot(scope, lotId);
+    return this.snapshotRepo.find({ where: { lotId, branchId: lot.branchId, triggerReason: SnapshotTrigger.EVAL_FREEZE }, order: { createdAt: 'DESC' } });
+  }
 
-    const quotes = await this.quoteRepo.find({
-      where: { lotId, isLatest: true, isValid: true },
-      order: { submittedAt: 'ASC' },
+  async generateSnapshot(scope: BranchScope, lotId: string, trigger: SnapshotTrigger, triggeredBy?: string, expectedRound?: number) {
+    const lot = await this.requireLot(scope, lotId);
+    if (!Object.values(SnapshotTrigger).includes(trigger)) throw new BadRequestException('error.quote.invalid_freeze_trigger');
+    if (expectedRound !== undefined && (!Number.isInteger(expectedRound) || expectedRound < 1)) throw new BadRequestException('error.quote.invalid_round');
+    return this.ds.transaction(async (em) => {
+      // Same tender lock as round advancement; waits for in-flight quote admission.
+      const tender = await em.findOne(Tender, { where: { id: lot.tenderId, branchId: lot.branchId }, lock: { mode: 'pessimistic_write' } });
+      if (!tender) throw new NotFoundException('error.tender.not_found');
+      const roundNo = tender.currentQuoteRound ?? 1;
+      if (expectedRound !== undefined && expectedRound !== roundNo) throw new ConflictException('error.quote.round_changed');
+      // A freeze records an immutable point-in-time result, not a lifecycle transition.
+      // Preserve the existing ability to save later snapshots and reopen this round.
+      const lines = await em.find(LotLine, { where: { lotId, roundNo }, order: { rowNo: 'ASC' } });
+      const where = { lotId, roundNo, isLatest: true, isValid: true };
+      const quotes: (Quote | LineQuote)[] = lines.length ? await em.find(LineQuote, { where }) : await em.find(Quote, { where });
+      quotes.sort((a, b) => {
+        const lineA = 'lineId' in a ? a.lineId : '';
+        const lineB = 'lineId' in b ? b.lineId : '';
+        const orderA = lines.findIndex(l => l.id === lineA);
+        const orderB = lines.findIndex(l => l.id === lineB);
+        return orderA - orderB || this.quoteRankPrice(a) - this.quoteRankPrice(b) || a.submittedAt.getTime() - b.submittedAt.getTime() || a.id.localeCompare(b.id);
+      });
+      const ranks = new Map<string, number>();
+      const suppliers = await em.find(Supplier, { where: { id: In([...new Set(quotes.map(q => q.supplierId))]) } });
+      const snapshotData = quotes.map(q => {
+        const line = 'lineId' in q ? lines.find(l => l.id === q.lineId) : undefined;
+        const key = line?.id || lotId;
+        const rank = (ranks.get(key) || 0) + 1;
+        ranks.set(key, rank);
+        const columnLabels = Object.fromEntries(((lot.uiSchema as any)?.lineColumns || []).map((c: any) => [c.key, c.label]));
+        return { roundNo, rank, lineId: line?.id, lineNo: line?.lineNo, lineData: line?.dataJson, columnLabels, quoteId: q.id, quoteNo: q.quoteNo,
+          items: q.items, supplierId: q.supplierId, supplierName: suppliers.find(s => s.id === q.supplierId)?.legalName, totalPrice: Number(q.totalPrice), currency: q.currency,
+          baseCurrency: q.baseCurrency, exchangeRate: q.exchangeRate == null ? undefined : Number(q.exchangeRate),
+          exchangeRateDate: q.exchangeRateDate, priceInBase: this.quoteRankPrice(q), version: q.version, submittedAt: q.submittedAt.toISOString() };
+      });
+      return em.save(RankingSnapshot, em.create(RankingSnapshot, { branchId: lot.branchId, tenderId: lot.tenderId, lotId, roundNo, snapshotData, triggerReason: trigger, triggeredBy }));
     });
-    const rankedQuotes = quotes.sort((a, b) => this.quoteRankPrice(a) - this.quoteRankPrice(b));
-
-    const snapshotData = rankedQuotes.map((q, i) => ({
-      rank: i + 1,
-      supplierId: q.supplierId,
-      totalPrice: Number(q.totalPrice),
-      currency: q.currency,
-      baseCurrency: q.baseCurrency,
-      exchangeRate: q.exchangeRate === undefined || q.exchangeRate === null ? undefined : Number(q.exchangeRate),
-      exchangeRateDate: q.exchangeRateDate,
-      priceInBase: this.quoteRankPrice(q),
-      version: q.version,
-      submittedAt: q.submittedAt.toISOString(),
-    }));
-
-    return this.snapshotRepo.save(
-      this.snapshotRepo.create({ branchId: lot.branchId, tenderId: lot.tenderId, lotId, snapshotData, triggerReason: trigger, triggeredBy }),
-    );
   }
 
   async getQuotes(scope: BranchScope, lotId: string, supplierId?: string) {
-    await this.requireLot(scope, lotId);
+    const { roundNo } = await this.resolveLotContext(scope, lotId);
     if (supplierId) await this.ensureSupplierApproved(supplierId);
-    const where: any = { lotId, isLatest: true };
+    const where: any = { lotId, roundNo, isLatest: true };
     if (supplierId) where.supplierId = supplierId;
     const quotes = await this.quoteRepo.find({ where, order: { submittedAt: 'ASC' } });
     return this.withSupplierSummary(quotes.sort((a, b) => this.quoteRankPrice(a) - this.quoteRankPrice(b)));
   }
 
   async getQuoteHistory(scope: BranchScope, lotId: string, supplierId: string) {
-    await this.requireLot(scope, lotId);
+    const { roundNo } = await this.resolveLotContext(scope, lotId);
     await this.ensureSupplierApproved(supplierId);
     const quotes = await this.quoteRepo.find({
-      where: { lotId, supplierId },
+      where: { lotId, roundNo, supplierId },
       order: { version: 'DESC', submittedAt: 'DESC' },
     });
     return this.withSupplierSummary(quotes);

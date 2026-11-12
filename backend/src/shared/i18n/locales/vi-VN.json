@@ -49,7 +49,9 @@
       "self_registration_branch_ambiguous": "Tồn tại nhiều chi nhánh quốc gia; không thể xác định chi nhánh cho các nhà cung cấp tự đăng ký. Trước tiên, hãy định cấu hình điểm vào chi nhánh cho cổng thông tin công cộng.",
       "registration_branch_required": "Vui lòng chọn chi nhánh quốc gia để đăng ký",
       "lookup_key_required": "Nhập ID doanh nghiệp hoặc ID thuế",
-      "invalid_country": "Vui lòng chọn mã quốc gia / vùng đăng ký doanh nghiệp hợp lệ"
+      "invalid_country": "Vui lòng chọn mã quốc gia / vùng đăng ký doanh nghiệp hợp lệ",
+      "invalid_cnpj": "Nhập CNPJ Brazil hợp lệ (chữ số hoặc chữ và số).",
+      "cnpj_exists": "CNPJ đã được đăng ký. Hãy cấp quyền đơn vị cho nhà cung cấp hiện có."
     },
     "tender": {
       "deadline_state": "Trạng thái hiện tại không cho phép gia hạn hoặc mở lại.",
@@ -83,6 +85,12 @@
       "not_found": "Không tìm thấy dòng/mục."
     },
     "quote": {
+      "frozen_round": "Vòng này đã chốt. Tạo vòng mới để nhận thêm báo giá.",
+      "close_before_freeze": "Đóng báo giá trước khi chốt vòng này.",
+      "no_quotes_to_freeze": "Không có báo giá để chốt.",
+      "round_changed": "Vòng báo giá đã thay đổi. Hãy tải lại.",
+      "invalid_freeze_trigger": "Loại bản chụp không hợp lệ.",
+      "invalid_round": "Vòng báo giá không hợp lệ.",
       "tender_not_open": "Gói thầu chưa mở nhận báo giá.",
       "deadline_passed": "Hạn chót đấu thầu đã qua.",
       "cooldown_active": "Đang chờ đợi. Vui lòng thử lại sau.",
@@ -93,14 +101,16 @@
       "currency_history_inconsistent": "Lịch sử báo giá trong vòng này có nhiều đơn vị tiền tệ. Vui lòng liên hệ quản trị viên.",
       "version_conflict": "Xung đột phiên bản báo giá. Vui lòng làm mới và thử lại.",
       "concurrent_submit": "Gửi trùng lặp.",
-      "required_field_missing": "Thiếu trường bắt buộc."
+      "required_field_missing": "Thiếu trường bắt buộc.",
+      "invalid_amount": "Nhập số dương có tối đa 4 chữ số thập phân, không vượt quá 100000000000."
     },
     "upload": {
       "file_required": "Vui lòng chọn tệp để tải lên.",
       "file_type_not_allowed": "Không cho phép loại tệp.",
       "file_too_large": "Tệp vượt quá giới hạn kích thước.",
       "file_not_found": "Không tìm thấy tệp.",
-      "file_too_many": "Quá nhiều tệp đính kèm (tối đa 5)."
+      "file_too_many": "Quá nhiều tệp đính kèm (tối đa 5).",
+      "invalid_reference": "Tham chiếu tệp đính kèm không hợp lệ."
     },
     "export": {
       "full_requires_manager": "Chỉ người quản lý mua hàng mới có thể thực hiện xuất toàn bộ."
@@ -121,7 +131,8 @@
       "no_active_branch": "Không có chi nhánh hoạt động nào",
       "hq_membership_requires_admin": "Thành viên trụ sở chính phải được cấp từ bảng điều khiển của tổ chức",
       "not_accessible": "Bạn không có quyền truy cập vào chi nhánh này",
-      "target_required": "Vui lòng chọn chi nhánh mục tiêu"
+      "target_required": "Vui lòng chọn chi nhánh mục tiêu",
+      "invalid_settings": "Tiền tệ, múi giờ hoặc ngôn ngữ của đơn vị không hợp lệ."
     }
   },
   "quote": {

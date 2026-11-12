@@ -12,8 +12,8 @@
       <div class="meta">
         <span>{{ tender.type }}</span>
         <span>{{ tender.status }}</span>
-        <span>{{ t('hall.start') }} {{ tender.bidStartAt ? fmt(tender.bidStartAt) : t('hall.start_after_publish') }}</span>
-        <span>{{ tender.bidDeadline ? fmt(tender.bidDeadline) : t('hall.deadline_not_set') }}</span>
+        <span>{{ t('hall.start') }} {{ tender.bidStartAt ? fmt(tender.bidStartAt, tender.timezone ?? 'UTC') : t('hall.start_after_publish') }}</span>
+        <span>{{ tender.bidDeadline ? fmt(tender.bidDeadline, tender.timezone ?? 'UTC') : t('hall.deadline_not_set') }}</span>
       </div>
       <h2>{{ t('hall.lots') }}</h2>
       <TenderDeadlineChanges :tender="tender" :notices="tender.deadlineChanges || []" />
@@ -28,7 +28,7 @@
 <script setup lang="ts">
 import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import { onMounted, ref } from 'vue';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 import { api } from '../../composables/useApi';
@@ -38,8 +38,8 @@ const route = useRoute();
 const loading = ref(false);
 const tender = ref<any>(null);
 
-function fmt(value: string) {
-  return dayjs(value).format('YYYY-MM-DD HH:mm');
+function fmt(value: string, zone = 'UTC') {
+  return `${institutionWallTime(value, zone)?.slice(0, 16)} (${zone})`;
 }
 
 async function load() {

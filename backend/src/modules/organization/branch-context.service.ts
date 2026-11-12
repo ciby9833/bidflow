@@ -34,6 +34,8 @@ export interface BranchAccessView {
   branchType: BranchType;
   /** Current branch base currency, used only for form defaults. */
   currency?: string;
+  timezone?: string;
+  defaultLocale?: string;
   role?: BranchMemberRole;
 }
 
@@ -72,6 +74,8 @@ export class BranchContextService {
         'b.name AS "branchName"',
         'b.type AS "branchType"',
         `b.settings->>'currency' AS "currency"`,
+        `b.settings->>'timezone' AS "timezone"`,
+        `b.settings->>'defaultLocale' AS "defaultLocale"`,
         'm.role AS "role"',
       ])
       .where('m.auth_user_id = :authUserId', { authUserId })
@@ -99,6 +103,8 @@ export class BranchContextService {
         'b.name AS "branchName"',
         'b.type AS "branchType"',
         `b.settings->>'currency' AS "currency"`,
+        `b.settings->>'timezone' AS "timezone"`,
+        `b.settings->>'defaultLocale' AS "defaultLocale"`,
       ])
       .from('supplier_branch_profiles', 'p')
       .innerJoin(Branch, 'b', 'b.id = p.branch_id')

@@ -13,10 +13,13 @@ import { Request, Response } from 'express';
 import { ApiResponse } from '../dto/response.dto';
 import { UploadService } from './upload.service';
 import { User } from '../../modules/auth/user.entity';
+import { AuthenticatedUser } from '../../modules/auth/jwt.strategy';
+import { UploadAccessService } from './upload-access.service';
+import { OptionalUploadAuthGuard } from './optional-upload-auth.guard';
 
 @Controller('api/uploads')
 export class UploadController {
-  constructor(private readonly uploadService: UploadService) {}
+  constructor(private readonly uploadService: UploadService, private readonly access: UploadAccessService) {}
 
   @Post('supplier-documents')
   @UseGuards(AuthGuard('jwt'))
@@ -47,7 +50,10 @@ export class UploadController {
    * objectKey 由前端 URL-encode 后传入，这里解码后传给 S3 SDK。
    */
   @Get('preview/:objectKey')
-  async preview(@Param('objectKey') objectKey: string, @Res() res: Response) {
-    await this.uploadService.streamObjectTo(decodeURIComponent(objectKey), res);
+  @UseGuards(OptionalUploadAuthGuard)
+  async preview(@Param('objectKey') objectKey: string, @Req() req: Request, @Res() res: Response) {
+    // Express has already decoded this parameter.
+    await this.access.authorize(objectKey, req.user as AuthenticatedUser | undefined);
+    await this.uploadService.streamObjectTo(objectKey, res);
   }
 }

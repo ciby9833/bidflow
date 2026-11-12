@@ -6,8 +6,7 @@
  */
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from '../../modules/auth/user.entity';
-import { scopesForRole } from './scope-map';
+import { scopesForAccount } from './scope-map';
 
 export const SCOPES_KEY = 'required_scopes';
 export const RequireScopes = (...scopes: string[]) => SetMetadata(SCOPES_KEY, scopes);
@@ -25,7 +24,7 @@ export class RbacGuard implements CanActivate {
     const { user } = ctx.switchToHttp().getRequest();
     if (!user) throw new ForbiddenException('error.auth.unauthenticated');
 
-    const granted = scopesForRole(user.role as UserRole);
+    const granted = scopesForAccount(user);
     if (granted.includes('*')) return true;
 
     const allowed = required.every((s) => granted.includes(s));

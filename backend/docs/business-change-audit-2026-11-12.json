@@ -1,0 +1,127 @@
+{
+  "title": "BidFlow 业务对照审计与恢复记录",
+  "date": "2026-11-12",
+  "baseline": {
+    "commit": "b8484e888d2ab097a67fdfa563d0e29a8aef8fc0",
+    "scope": "当前未提交改动与既有代码、业务文档对照；不能仅凭工作区 diff 判定改动作者。已提交的多机构、越南语和关标后延期恢复功能不做整体回滚。",
+    "documents": ["backend/docs/supplier-multi-institution.md", "backend/docs/tender-deadline-changes.md", "0419版本.md", "初始版本v1.md"],
+    "priority": "现有实现及最新专项规则优先于早期规划；没有把规划中的授标、审批当作当前必须新增的流程。"
+  },
+  "boundary": {
+    "frontendModifiedByThisAudit": false,
+    "note": "前端由其他人并行修改，本次只读检查及内置浏览器操作，不修改前端源码、交互、样式、配置或测试。",
+    "workflowFullyRestoredEndToEnd": false,
+    "reason": "仍有前端新增必填限制，按用户边界留给前端负责人处理；不能宣称所有页面业务判断均已恢复。"
+  },
+  "restoredInThisAudit": [
+    {
+      "area": "供应商税号",
+      "before": "新增巴西 CNPJ 格式/校验位校验、认证提交和批准必填、规范化及唯一性限制。",
+      "after": "恢复原有可选文本字段，创建/编辑/导入/认证/批准不新增国家专属判断；重复税号不自动合并或拒绝。",
+      "files": ["backend/src/modules/supplier/supplier.service.ts", "backend/src/migrations/1713750000036-BrazilTaxIdentity.ts", "backend/src/migrations/1713810000042-RestoreOptionalTaxIdentity.ts"],
+      "migration": "42 已在本地执行，只移除 uq_supplier_br_cnpj；不删除供应商。36 对新安装不再创建该索引，避免存量重复数据在到达 42 前升级失败。"
+    },
+    {
+      "area": "市场配置",
+      "before": "只允许五个币种及五个语言；未知国家缺省配置被拒绝。",
+      "after": "恢复三位字母币种代码，不新增语言白名单；未知国家可沿用配置及原有回退。保留已授权的巴西默认值与非法时区校验。",
+      "files": ["backend/src/shared/config/market-policy.ts", "backend/src/modules/tender/tender.service.ts"]
+    },
+    {
+      "area": "机构设置更新",
+      "before": "可能隐式重写设置或将完整替换变为部分合并。",
+      "after": "只有显式传 settings 才更新；保持原有替换语义，名称或状态更新不隐式重写设置。已知国家新配置仍补默认值。",
+      "files": ["backend/src/modules/organization/organization.service.ts"]
+    },
+    {
+      "area": "投标附件维护",
+      "before": "新增 published/open/截止时间限制，关闭后不能维护标包附件。",
+      "after": "移除新增生命周期门槛，恢复原附件维护能力；供应商准入、参与资格及文件引用所有权校验保留。",
+      "files": ["backend/src/modules/quote/quote.service.ts"]
+    },
+    {
+      "area": "快照触发类型",
+      "before": "仅接受 EVAL_FREEZE。",
+      "after": "恢复既有 BID_CLOSE、CANCEL、EVAL_FREEZE、MANUAL_EXPORT 枚举；未知值拒绝。生成快照不隐式关标、授标或审批。",
+      "files": ["backend/src/modules/quote/quote.service.ts"]
+    },
+    {
+      "area": "准备下一轮权限",
+      "before": "接口从 tender:edit 改为 tender:publish，剥夺采购专员原有准备能力。",
+      "after": "恢复 tender:edit；采购专员可准备下一轮，但仍不能发布。",
+      "files": ["backend/src/modules/tender/tender.controller.ts"]
+    },
+    {
+      "area": "报价金额上限",
+      "before": "新增 100000000000 固定上限。",
+      "after": "移除另定业务额度，边界匹配原 numeric(20,4) 数据库容量；保留有限正数、四位小数及十进制换算。",
+      "files": ["backend/src/modules/quote/money.ts"],
+      "remainingRisk": "极大金额的 JavaScript/Redis double 精度问题未根治，不能把数据库容量等同于四位小数端到端精度保证。"
+    }
+  ],
+  "previousRestorationsRechecked": [
+    "冻结不是新增状态流转：不要求先关标，不阻止原有延期重新开放。",
+    "同轮可重复生成快照，追加历史而非覆盖旧快照；迁移 41 移除单次快照唯一限制。",
+    "没有新增授标、审批、付款、结算流程。"
+  ],
+  "retainedFixesAndTheirBehavioralEffects": [
+    {"area":"机构授权", "effect":"按当前机构有效成员角色和账号类型授权，不沿用全局管理员角色。切换后的旧会话及被撤权会话拒绝。属于实际权限判断修复，不宣称权限代码没有变化。"},
+    {"area":"总部边界", "effect":"保持招标/报价业务只读；明确目标机构的供应商代建/导入管理能力按既有多机构文档保留，不额外开放总部招标写入。"},
+    {"area":"供应商身份", "effect":"一个共享公司主档、多机构独立准入；实际注册国与机构默认国区分，编辑和切换不自动改国别或编号。全局认证/挂起模型不改为各机构独立审批。"},
+    {"area":"私有文件", "effect":"预览与引用增加身份、机构、所属业务和参与资格验证；公开大厅可见附件仍可匿名读，已有合法引用保留。"},
+    {"area":"实时排名", "effect":"WS 实时校验有效会话与参与资格；不广播他人身份/价格，leading_flag 不返回精确名次。"},
+    {"area":"报价轮次", "effect":"常规标包和运输线路按轮隔离报价、版本、排名、历史及导出；旧线路禁止跨轮写入；零冷却允许立即改价。原改价次数、降幅及参与范围不另定。"},
+    {"area":"机构内编号", "effect":"报价编号唯一性与既有按机构编号语义一致，事务分配避免并发冲突；不重编供应商编号。"},
+    {"area":"巴西及国际化", "effect":"BRL、pt-BR、机构时区默认值与招标时区快照；汇率失败不默认为 1，沿用轮次锁汇率。没有增加税务或当地合规审核流程。"},
+    {"area":"导出", "effect":"保留原导出模式和轮次；拒绝非法 mode/view 绕过，完整导出检查当前机构能力，评标员/采购专员仅脱敏。"},
+    {"area":"大厅与前端支撑", "effect":"保留搜索、分页、统计与既有可见范围一致的修复；未撤销并行 UI 工作。"},
+    {"area":"工程与开发环境", "effect":"保留 Decimal 依赖、构建增量修复、Redis 清理、开发专用验证码控制台模式及非开发环境 SMTP 边界。"}
+  ],
+  "frontendFindingsNotModified": [
+    {
+      "file": "frontend/src/views/supplier/SupplierProfileView.vue",
+      "locations": [83,512],
+      "finding": "巴西税号 required 标记及空税号提交拦截仍在，与原可选字段及恢复后的后端不一致。",
+      "handoff": "前端负责人移除新增必填拦截并调整 CNPJ 提示；不得移除原认证材料和公司资料要求。"
+    },
+    {
+      "file": "frontend/src/views/supplier/SupplierReviewDetailView.vue",
+      "locations": [300],
+      "finding": "驳回/补件时新增 reviewComment 为空则 return，原流程及后端允许可选意见。",
+      "handoff": "前端负责人恢复原可选口径，保留现有 UI 布局；是否改为必填需业务确认。"
+    },
+    {
+      "file": "frontend/uat/brazil-real.spec.ts",
+      "finding": "历史 UAT 包含无效/重复 CNPJ 应拒绝的旧断言；本次未修改或运行这套前端 UAT，不能沿用旧 12 passed 宣称当前全部通过。"
+    }
+  ],
+  "verification": {
+    "backend": [
+      "npx tsc：通过",
+      "migration:run：42 本地应用成功",
+      "test-brazil-readiness.js：11 通过（包含未接入业务的 CNPJ 工具函数单测，不代表强制税号政策）",
+      "test-brazil-http.js：通过；含可选/重复税号、无税号批准、关标后附件、原快照枚举、重复冻结、旧结果不变、原准备下一轮权限、普通/运输多轮、供应商/专员拒绝冻结、跨机构及撤权",
+      "test-deadline-changes.js：通过（并发、幂等、回滚、通知、报价规则不变及重新开放）",
+      "test-supplier-multibranch.js：16 通过",
+      "test-register-email-mode.js：7 通过",
+      "check:tenant：通过基线检查，仍有 23 处既有裸仓储注入，不代表形式化隔离证明",
+      "check:anchor：通过",
+      "git diff --check：通过"
+    ],
+    "inAppBrowserThisAudit": [
+      "供应商：第二轮历史显示 800.25 BRL V2 与 820.25 BRL V1，项目时间 America/Sao_Paulo。",
+      "巴西采购经理：通过移动页面创建 Audit BR Optional Tax 1112，税号不填，保存成功；S-BR-00063，国家 BR，税号 Not set。",
+      "采购经理：T-202611-0004 第二轮再冻结一次成功，07:31:49 Sao Paulo 新快照追加；原 07:03:21、03:39:25 及第一轮快照保留，状态仍 Closed。",
+      "390x844 窄屏展开第一轮快照，850.25/1750.50 BRL 仍在；没有修改前端交互。",
+      "窄屏从既有导出弹窗选择当前 Round 2 / Full / By Item，真实 Excel 下载完成；本轮未重新解析下载文件内容。"
+    ],
+    "evidence": ["backend/docs/audit-evidence/optional-tax-supplier.png", "backend/docs/audit-evidence/repeat-freeze-history-mobile.png", "backend/docs/audit-evidence/review-export-mobile.png"],
+    "browserCoverageLimit": "本轮浏览器复测供应商和巴西采购经理关键恢复路径；其他角色、跨机构及旧会话通过真实 HTTP/DB/WS 回归，未声称本轮逐角色重新跑完整 UI。"
+  },
+  "remainingRisks": [
+    "前端并行修改仍在继续，本记录不是后续新增改动的批准或无差异保证。",
+    "两处前端业务限制未恢复，旧前端 UAT 断言未同步；因此业务审计尚不能整体签字为全部完成。",
+    "超大金额精度、依赖安全升级、生产 SMTP/存储/CDN、真实 Safari/Firefox 与巴西网络未在本次验证。",
+    "本地 migration 42 已生效；其他部署环境需要执行迁移，不能只更新应用代码。"
+  ]
+}

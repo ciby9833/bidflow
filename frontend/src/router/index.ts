@@ -22,6 +22,12 @@ const routes = [
       { path: 'supplier/bids', component: () => import('../mobile/bid/MobileSupplierBidRecordView.vue'), meta: { mobile: true, title: 'supplierBids', back: true } },
       { path: 'supplier/bids/search', component: () => import('../mobile/bid/MobileSupplierBidSearchView.vue'), meta: { mobile: true, title: 'supplierBidSearch', back: true } },
       { path: 'console', component: () => import('../mobile/console/MobileConsoleView.vue'), meta: { mobile: true, title: 'console' } },
+      { path: 'console/tenders', component: () => import('../views/tender/TenderListView.vue'), meta: { mobile: true, title: 'tenders' } },
+      { path: 'console/tenders/new', component: () => import('../views/tender/TenderCreateView.vue'), meta: { mobile: true, title: 'tenderCreate', back: true } },
+      { path: 'console/tenders/:id/edit', component: () => import('../views/tender/TenderCreateView.vue'), meta: { mobile: true, title: 'tenderEdit', back: true } },
+      { path: 'console/tenders/:id', component: () => import('../views/tender/TenderDetailView.vue'), meta: { mobile: true, title: 'tenderDetail', back: true } },
+      { path: 'console/quotes/lots/:lotId', component: () => import('../views/quote/CompanyQuoteReviewView.vue'), meta: { mobile: true, title: 'quoteReview', back: true } },
+      { path: 'console/organization/branches', component: () => import('../views/organization/BranchManageView.vue'), meta: { mobile: true, title: 'organization', back: true } },
       { path: 'console/users', component: () => import('../mobile/console/users/MobileCompanyUserListView.vue'), meta: { mobile: true, title: 'users', back: true } },
       { path: 'console/users/new', component: () => import('../mobile/console/users/MobileCompanyUserFormView.vue'), meta: { mobile: true, title: 'userCreate', back: true } },
       { path: 'console/users/:id', component: () => import('../mobile/console/users/MobileCompanyUserDetailView.vue'), meta: { mobile: true, title: 'userDetail', back: true } },
@@ -85,7 +91,7 @@ function isMobileExperience() {
   const isTouch = window.matchMedia('(pointer: coarse)').matches;
   const hasHover = window.matchMedia('(hover: hover)').matches;
 
-  return isTouch && !hasHover;
+  return window.matchMedia('(max-width: 768px)').matches || (isTouch && !hasHover);
 }
 
 function mobileEquivalent(path: string) {
@@ -98,7 +104,13 @@ function mobileEquivalent(path: string) {
   if (path === '/supplier/tenders') return '/m/tenders';
   if (path.startsWith('/supplier/tenders/')) return path.replace('/supplier/tenders/', '/m/tenders/');
   if (path.startsWith('/supplier/quotes/lots/')) return path.replace('/supplier/quotes/lots/', '/m/quotes/lots/');
-  if (path === '/tenders') return '/m/tenders';
+  if (path === '/tenders' || path.startsWith('/tenders/')) {
+    const quote = path.match(/^\/tenders\/[^/]+\/lots\/([^/]+)\/quotes$/);
+    if (quote) return `/m/console/quotes/lots/${quote[1]}`;
+    return path.replace('/tenders', '/m/console/tenders');
+  }
+  if (path.startsWith('/quotes/lots/')) return path.replace('/quotes/lots/', '/m/console/quotes/lots/');
+  if (path === '/organization/branches') return '/m/console/organization/branches';
   if (path === '/users') return '/m/console/users';
   if (path === '/suppliers') return '/m/console/suppliers';
   if (path === '/suppliers/new') return '/m/console/suppliers/new';
@@ -133,8 +145,9 @@ function desktopEquivalent(path: string) {
 
 function expectedExperiencePath(path: string) {
   const isMobilePath = path.startsWith('/m');
-  if (isMobileExperience()) return isMobilePath ? '' : mobileEquivalent(path);
-  return isMobilePath ? desktopEquivalent(path) : '';
+  // Explicit mobile URLs remain usable on any device (including resized windows).
+  if (isMobilePath) return '';
+  return isMobileExperience() ? mobileEquivalent(path) : '';
 }
 
 export function syncExperienceRoute() {
@@ -150,6 +163,7 @@ export function installExperienceRouteSync() {
   const mediaQueries = [
     window.matchMedia('(pointer: coarse)'),
     window.matchMedia('(hover: hover)'),
+    window.matchMedia('(max-width: 768px)'),
   ];
   const sync = () => syncExperienceRoute();
 
@@ -185,6 +199,25 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true;
   if (!auth.isLoggedIn) return loginPath;
   if (!auth.user) await auth.loadMe();
+
+  if (!auth.user?.supplierId && to.path === '/m/tenders') return '/m/console/tenders';
+  if (!auth.user?.supplierId && /^\/m\/tenders\/[^/]+$/.test(to.path) && !to.path.endsWith('/search')) return to.path.replace('/m/tenders/', '/m/console/tenders/');
+  if (auth.user?.supplierId && to.path.startsWith('/m/console/tenders')) {
+    return to.path === '/m/console/tenders' ? '/m/tenders' : to.path.replace('/m/console/tenders/', '/m/tenders/');
+  }
+  const companyPath = to.path.replace(/^\/m\/console/, '');
+  if (auth.user?.supplierId && companyPath.startsWith('/quotes/lots/')) {
+    return companyPath.replace('/quotes/lots/', isMobile ? '/m/quotes/lots/' : '/supplier/quotes/lots/');
+  }
+  const requiredScope = companyPath === '/tenders/new' ? 'tender:create'
+    : /^\/tenders\/[^/]+\/edit$/.test(companyPath) ? 'tender:edit'
+    : companyPath.startsWith('/quotes/lots/') ? 'quote:view_all'
+    : companyPath === '/suppliers/new' ? 'supplier:create'
+    : companyPath.startsWith('/suppliers/') && companyPath.endsWith('/edit') ? 'supplier:edit'
+    : companyPath === '/suppliers' || companyPath.startsWith('/suppliers/') ? 'supplier:view'
+    : companyPath === '/users' || companyPath.startsWith('/users/') ? 'user:view'
+    : companyPath.startsWith('/organization/') ? 'org:manage' : '';
+  if (requiredScope && !auth.hasScope(requiredScope)) return hallPath;
 
   // 供应商审核状态会被公司端异步修改；导航时刷新一次，避免移动端仍按旧的 pending_review 拦截。
   if (auth.user?.accountType === 'supplier_account' || auth.user?.supplierId) {

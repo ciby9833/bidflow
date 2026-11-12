@@ -6,6 +6,9 @@
 -->
 <template>
   <div class="review-page" v-loading="loading">
+    <el-result v-if="loadError" icon="error" :title="loadError">
+      <template #extra><el-button @click="router.push(backPath)">{{ t('supplierReviewDetail.backList') }}</el-button></template>
+    </el-result>
     <div class="page-header" v-if="detail">
       <div>
         <el-button text @click="router.push(backPath)">{{ t('supplierReviewDetail.backList') }}</el-button>
@@ -116,7 +119,8 @@
     </el-row>
 
     <el-dialog v-model="preview.visible" :title="preview.title" width="82vw">
-      <iframe v-if="preview.kind === 'inline'" class="preview-frame" :src="preview.url" :title="t('supplierReviewDetail.docPreview')" />
+      <img v-if="preview.kind === 'image'" :src="preview.url" :alt="preview.title" style="display:block;max-width:100%;max-height:72vh;margin:auto;object-fit:contain" />
+      <iframe v-else-if="preview.kind === 'inline'" class="preview-frame" :src="preview.url" :title="t('supplierReviewDetail.docPreview')" />
       <div v-else class="preview-fallback">
         <p>{{ t('supplierReviewDetail.previewUnsupported') }}</p>
         <el-button type="primary" @click="openPreviewFile">{{ t('supplierReviewDetail.openFile') }}</el-button>
@@ -126,11 +130,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onActivated, onDeactivated, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
+import { filePreviewUrl, openFilePreview } from '../../composables/useFilePreview';
 import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
 import { getSupplierActions, type SupplierActionKey } from '../../shared/supplier-action-rules';
@@ -175,15 +180,17 @@ const preview = ref({
   visible: false,
   title: '',
   url: '',
-  kind: 'inline' as 'inline' | 'download',
+  kind: 'inline' as 'inline' | 'image' | 'download',
 });
 const supplierActions = computed(() => (detail.value ? getSupplierActions(detail.value.supplier) : []));
+const loadError = ref('');
 function reviewStatusLabel(status?: string) { return status ? t(`supplierReview.${status}`) : ''; }
 function supplierStatusLabel(status?: string) { return status ? t(`supplier.status.${status}`) : ''; }
 function docLabel(doc: any) { return t(`supplierDocs.${doc.docType}`, doc.docLabel || doc.docType); }
 
 function fmt(value: string) {
-  return dayjs(value).format('YYYY-MM-DD HH:mm');
+  const zone = auth.activeBranch?.timezone || 'UTC';
+  return `${institutionWallTime(value, zone)} (${zone})`;
 }
 function reviewTag(status?: string) {
   return {
@@ -204,11 +211,17 @@ function statusTag(status?: string) {
 }
 
 async function load() {
+  if (loading.value) return;
   loading.value = true;
+  loadError.value = '';
+  detail.value = null;
   try {
     const res = await api.get(`/api/suppliers/${route.params.id}/review-detail`);
     detail.value = res.data.data;
     await loadInvitations();
+  } catch (error: any) {
+    detail.value = null;
+    loadError.value = error.response?.data?.error?.message || t('supplierAccess.notFound');
   } finally {
     loading.value = false;
   }
@@ -280,6 +293,10 @@ async function doReject() { await withComment(t('supplierReviewDetail.rejectAppl
 async function revokeBranch() {
   await ElMessageBox.confirm(t('supplierCountry.revokeConfirm'), t('supplierCountry.revoke'), { type: 'warning' });
   await api.delete(`/api/suppliers/${route.params.id}/branch-access`);
+  detail.value = null;
+  invitations.value = [];
+  preview.value.visible = false;
+  preview.value.url = '';
   ElMessage.success(t('supplierCountry.revoked'));
   router.replace(backPath.value);
 }
@@ -307,12 +324,12 @@ async function runAction(action: SupplierActionKey) {
   await handlers[action]();
 }
 
-function previewDoc(doc: any) {
+async function previewDoc(doc: any) {
   preview.value = {
     visible: true,
     title: doc.fileName || docLabel(doc) || t('supplierReviewDetail.docPreview'),
-    url: doc.fileUrl,
-    kind: doc.mimeType?.startsWith('image/') || doc.mimeType === 'application/pdf' ? 'inline' : 'download',
+    url: await filePreviewUrl(doc.fileUrl),
+    kind: doc.mimeType?.startsWith('image/') ? 'image' : doc.mimeType === 'application/pdf' ? 'inline' : 'download',
   };
 }
 
@@ -334,6 +351,13 @@ function openPreviewFile() {
 }
 
 onMounted(load);
+onActivated(load);
+onDeactivated(() => {
+  detail.value = null;
+  invitations.value = [];
+  preview.value.visible = false;
+  preview.value.url = '';
+});
 </script>
 
 <style scoped>

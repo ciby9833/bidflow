@@ -55,11 +55,11 @@
           </div>
           <div>
             <dt>{{ t('hall.start_time') }}</dt>
-            <dd>{{ item.bidStartAt ? fmtDate(item.bidStartAt) : t('hall.start_after_publish') }}</dd>
+            <dd>{{ item.bidStartAt ? fmtDate(item.bidStartAt, item.timezone ?? 'UTC') : t('hall.start_after_publish') }}</dd>
           </div>
           <div>
             <dt>{{ t('hall.deadline') }}</dt>
-            <dd>{{ item.bidDeadline ? fmtDate(item.bidDeadline) : t('common.not_set') }}</dd>
+            <dd>{{ item.bidDeadline ? fmtDate(item.bidDeadline, item.timezone ?? 'UTC') : t('common.not_set') }}</dd>
           </div>
           <div>
             <dt>{{ t('hall.lots') }}</dt>
@@ -98,7 +98,7 @@ import {
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { Search } from '@element-plus/icons-vue';
 import { api } from '../../composables/useApi';
 import { participationLabelKey, participationTagType, resolveParticipationScope } from '../../utils/participation';
@@ -126,8 +126,8 @@ const statusOptions = computed(() => [
   { label: t('tender.status.closed'), value: 'closed' },
 ]);
 
-function fmtDate(iso: string) {
-  return dayjs(iso).format('YYYY-MM-DD HH:mm');
+function fmtDate(iso: string, zone = 'UTC') {
+  return `${institutionWallTime(iso, zone)?.slice(0, 16)} (${zone})`;
 }
 
 function typeLabel(type: string) { return type ? t(`tender.${type}`) : ''; }

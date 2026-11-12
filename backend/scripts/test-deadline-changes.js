@@ -22,7 +22,7 @@ async function main() {
     await ds.initialize();
     await ds.query(`CREATE TABLE branches(id uuid PRIMARY KEY,settings jsonb,country_code text);
       CREATE TABLE tenders(id uuid PRIMARY KEY,branch_id uuid,tender_no text,title text,status text,
-        bid_deadline timestamptz,bid_start_at timestamptz,current_quote_round int,participation_mode text,
+        timezone text,bid_deadline timestamptz,bid_start_at timestamptz,current_quote_round int,participation_mode text,
         updated_at timestamptz DEFAULT now(),updated_by uuid,max_rebid_count int DEFAULT 10,min_decrement_pct numeric DEFAULT 0.5,cooldown_seconds int DEFAULT 60);
       CREATE TABLE users(id uuid PRIMARY KEY,display_name text,email text,locale text,status text DEFAULT 'active');
       CREATE TABLE suppliers(id uuid PRIMARY KEY,status text,review_status text,country_code text);

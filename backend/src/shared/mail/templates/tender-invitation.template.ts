@@ -10,11 +10,12 @@ import type { SendMailInput } from '../mail.service';
 
 const LOGO_CID = 'bidflow-jnt-logo';
 
-type Locale = 'zh-CN' | 'en' | 'id-ID' | 'vi-VN';
+type Locale = 'zh-CN' | 'en' | 'id-ID' | 'vi-VN' | 'pt-BR';
 
 export interface TenderInvitationEmailInput {
   to: string;
   locale?: string;
+  timezone?: string;
   supplierName?: string;
   tenderNo: string;
   tenderTitle: string;
@@ -67,6 +68,17 @@ const STRINGS: Record<Locale, {
     cta: 'Masuk untuk melihat & menawar',
     footer: 'Jika tender ini tidak relevan bagi Anda, abaikan email ini.',
   },
+  'pt-BR': {
+    subject: (t) => `[J&T Cargo Convite para licitação] ${t}`,
+    greeting: (name) => `Olá, ${name},`,
+    intro: (product) => `Você recebeu um convite para uma nova licitação no ${product}. Confira os detalhes:`,
+    labelTenderNo: 'Nº da licitação',
+    labelTenderTitle: 'Título da licitação',
+    labelDeadline: 'Prazo das propostas',
+    noDeadline: 'Não definido',
+    cta: 'Entrar para consultar',
+    footer: 'Em caso de dúvidas, entre em contato com o comprador.',
+  },
   'vi-VN': {
     subject: (t) => `[J&T Cargo - Thư mời thầu] ${t}`,
     greeting: (name) => `Kính gửi ${name},`,
@@ -83,18 +95,18 @@ const STRINGS: Record<Locale, {
 function normalizeLocale(value?: string): Locale {
   if (!value) return 'en';
   const v = value.replace('_', '-').toLowerCase();
+  if (v === 'pt' || v.startsWith('pt-')) return 'pt-BR';
   if (v === 'id' || v.startsWith('id-')) return 'id-ID';
   if (v === 'vi' || v.startsWith('vi-')) return 'vi-VN';
   if (v === 'zh' || v.startsWith('zh-')) return 'zh-CN';
   return 'en';
 }
 
-function formatDeadline(value: Date | string | null | undefined): string | null {
+function formatDeadline(value: Date | string | null | undefined, timezone = 'UTC', locale = 'en'): string | null {
   if (!value) return null;
   const dt = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(dt.getTime())) return null;
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  return `${new Intl.DateTimeFormat(locale, { timeZone: timezone, dateStyle: 'short', timeStyle: 'short', hour12: false }).format(dt)} (${timezone})`;
 }
 
 export function buildTenderInvitationEmail(input: TenderInvitationEmailInput): SendMailInput {
@@ -102,8 +114,8 @@ export function buildTenderInvitationEmail(input: TenderInvitationEmailInput): S
   const locale = normalizeLocale(input.locale);
   const s = STRINGS[locale];
   const supplierName = input.supplierName?.trim()
-    || (locale === 'zh-CN' ? '供应商' : locale === 'id-ID' ? 'Pemasok' : locale === 'vi-VN' ? 'Nhà cung cấp' : 'Supplier');
-  const deadline = formatDeadline(input.bidDeadline) ?? s.noDeadline;
+    || (locale === 'pt-BR' ? 'Fornecedor' : locale === 'zh-CN' ? '供应商' : locale === 'id-ID' ? 'Pemasok' : locale === 'vi-VN' ? 'Nhà cung cấp' : 'Supplier');
+  const deadline = formatDeadline(input.bidDeadline, input.timezone, locale) ?? s.noDeadline;
   const logoPath = resolve(process.cwd(), 'src/public/jnt-Logo.png');
   const subject = s.subject(input.tenderTitle);
 

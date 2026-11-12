@@ -5,20 +5,21 @@
  * 作者：吴川
  */
 import {
-  Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn,
+  Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Lot } from '../tender/lot.entity';
 
 @Entity('quotes')
+@Index('uq_quotes_branch_quote_no', ['branchId', 'quoteNo'], { unique: true })
 export class Quote {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   /** 机构归属。租户隔离的依据，由 TenantRepository 在写入时强制填充。 */
-  @Column({ name: 'branch_id', type: 'uuid', nullable: true })
+  @Column({ name: 'branch_id', type: 'uuid' })
   branchId: string;
 
-  @Column({ name: 'quote_no', type: 'varchar', length: 30, unique: true })
+  @Column({ name: 'quote_no', type: 'varchar', length: 30 })
   quoteNo: string; // Q-202604-000123
 
   @Column({ name: 'tender_id', type: 'uuid' })
@@ -26,6 +27,9 @@ export class Quote {
 
   @Column({ name: 'lot_id', type: 'uuid' })
   lotId: string;
+
+  @Column({ name: 'round_no', type: 'int', default: 1 })
+  roundNo: number;
 
   @ManyToOne(() => Lot, (l) => l.quotes)
   @JoinColumn({ name: 'lot_id' })

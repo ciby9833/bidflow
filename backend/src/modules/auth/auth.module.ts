@@ -41,6 +41,6 @@ import { MailModule } from '../../shared/mail/mail.module';
   ],
   controllers: [AuthController, CompanyUserController],
   providers: [AuthService, JwtStrategy, AuditService, RedisService, BranchContextService],
-  exports: [AuthService, JwtModule, PassportModule, BranchContextService],
+  exports: [AuthService, JwtModule, PassportModule, BranchContextService, JwtStrategy],
 })
 export class AuthModule {}

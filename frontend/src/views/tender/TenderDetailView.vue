@@ -50,7 +50,7 @@
             @click="doClose"
           >{{ t('tender.close_bidding') }}</el-button>
           <el-button
-            v-if="['closed', 'open', 'published'].includes(tender.status) && auth.hasScope('tender:edit')"
+            v-if="['closed', 'open', 'published'].includes(tender.status) && auth.hasScope('tender:publish')"
             @click="startNextRound"
           >{{ t('tenderDetail.nextRound') }}</el-button>
           <el-button
@@ -151,7 +151,14 @@
       <!-- Lots -->
       <el-card class="panel">
         <template #header>{{ t('hall.lots') }}</template>
-        <el-table :data="tender.lots ?? []" stripe>
+        <section class="mobile-detail-cards">
+          <article v-for="lot in tender.lots ?? []" :key="lot.id">
+            <strong>{{ lot.title }}</strong><p>{{ lot.lotNo }}</p>
+            <p v-if="lot.description">{{ lot.description }}</p>
+            <el-button @click="router.push(`/m/console/quotes/lots/${lot.id}`)">{{ t('route.quoteReview') }}</el-button>
+          </article>
+        </section>
+        <el-table :data="tender.lots ?? []" stripe class="desktop-lots">
           <el-table-column type="expand" width="48">
             <template #default="{ row }">
               <div v-if="row.lines?.length" class="line-expand">
@@ -226,8 +233,18 @@
                 <strong>{{ lot.title }}</strong>
                 <span>{{ lot.lines?.length ? t('tenderDetail.lineCount', { count: lot.lines.length }) : t('tenderDetail.supplierQuoteCount', { count: lot.latestQuotes?.length ?? 0 }) }}</span>
               </div>
+              <div v-if="lot.lines?.length" class="mobile-review-lines">
+                <button v-for="(line, index) in lot.lines" :key="line.lineId || line.id" type="button"
+                  :aria-pressed="activeReview?.lineId === line.lineId"
+                  @click="selectReviewLine(lot, line)">
+                  <strong>#{{ index + 1 }} · {{ lineLabel(line, lot.lineColumns) }}</strong>
+                  <span v-for="col in procurementLineColumns(lot.lineColumns)" :key="col.key">{{ col.label }}: {{ line.dataJson?.[col.key] ?? '—' }}</span>
+                  <span>{{ t('tenderDetail.supplierCount', { count: line.quoteStats?.quotedSupplierCount ?? 0 }) }} · {{ formatReviewPrice(line.quoteStats?.minPrice, reviewBaseCurrency(line.latestQuotes)) }}</span>
+                </button>
+              </div>
               <el-table
                 v-if="lot.lines?.length"
+                class="desktop-review-lines"
                 :data="lot.lines"
                 border
                 size="small"
@@ -285,6 +302,14 @@
                 </button>
               </div>
 
+              <section class="mobile-detail-cards">
+                <article v-for="row in activeReview.latestQuotes ?? []" :key="row.id">
+                  <strong>#{{ row.rank }} · {{ row.supplierName }}</strong>
+                  <p>{{ formatReviewPrice(row.totalPrice, row.currency) }} · V{{ row.version }}</p>
+                  <p>{{ fmtDate(row.submittedAt) }}</p>
+                  <el-button @click="openReviewQuote(row)">{{ t('common.details') }}</el-button>
+                </article>
+              </section>
               <el-table :data="activeReview.latestQuotes ?? []" stripe class="review-quote-table">
                 <el-table-column :label="t('quote.rank')" width="80">
                   <template #default="{ row }">#{{ row.rank }}</template>
@@ -354,7 +379,22 @@
         </div>
 
         <div v-else class="supplier-review-view">
-          <el-table :data="supplierReviews" border stripe>
+          <div class="mobile-detail-cards">
+            <article v-for="supplier in supplierReviews" :key="supplier.supplierId">
+              <strong>{{ supplier.supplierName }}</strong>
+              <p>{{ supplier.supplier?.businessId }} · {{ t('tenderDetail.itemCount', { count: supplier.quoteCount }) }}</p>
+              <p>{{ t('tenderDetail.totalQuote') }}: {{ formatReviewPrice(supplier.totalAmount, supplier.currency) }}</p>
+              <details>
+                <summary>{{ t('common.details') }}</summary>
+                <div v-for="quote in supplier.quotes" :key="quote.id" class="mobile-history-row">
+                  <strong>{{ quote.lotTitle }} · {{ quote.itemLabel }}</strong>
+                  <p>{{ formatReviewPrice(quote.totalPrice, quote.currency) }} · #{{ quote.rank }} · V{{ quote.version }}</p>
+                  <el-button @click="openReviewQuote(quote)">{{ t('tenderDetail.quoteDetails') }}</el-button>
+                </div>
+              </details>
+            </article>
+          </div>
+          <el-table :data="supplierReviews" border stripe class="desktop-review-lines">
             <el-table-column type="expand" width="48">
               <template #default="{ row }">
                 <div class="supplier-lines">
@@ -509,7 +549,8 @@
 
         <section class="detail-section">
           <h3>{{ t('tenderDetail.supplierInputs') }}</h3>
-          <el-table v-if="filledQuoteItems(selectedReviewQuote).length" :data="filledQuoteItems(selectedReviewQuote)" stripe size="small">
+          <div class="mobile-detail-cards"><p v-for="item in filledQuoteItems(selectedReviewQuote)" :key="item.key">{{ item.label }}: {{ item.value }}</p></div>
+          <el-table v-if="filledQuoteItems(selectedReviewQuote).length" class="desktop-review-lines" :data="filledQuoteItems(selectedReviewQuote)" stripe size="small">
             <el-table-column prop="label" :label="t('tenderDetail.fieldName')" min-width="160" />
             <el-table-column prop="value" :label="t('tenderDetail.filledValue')" min-width="220" show-overflow-tooltip />
           </el-table>
@@ -534,7 +575,17 @@
 
         <section class="detail-section">
           <h3>{{ t('tenderDetail.quoteHistory') }}</h3>
-          <el-table v-if="selectedReviewQuote.history?.length" :data="selectedReviewQuote.history" stripe size="small">
+          <div class="mobile-detail-cards">
+            <div v-for="row in selectedReviewQuote.history || []" :key="row.id || row.version" class="mobile-history-row">
+              <strong>V{{ row.version }} · {{ formatReviewPrice(row.totalPrice, row.currency) }}</strong>
+              <p>{{ t('quote.current') }}: {{ row.isLatest ? t('common.yes') : t('common.no') }}</p>
+              <p>{{ t('quote.convertedQuote') }}: {{ formatConvertedPrice(row) }}</p>
+              <p>{{ formatExchangeRate(row) }}</p>
+              <p v-for="col in selectedReviewQuote.requiredColumns || []" :key="col.key">{{ col.label }}: {{ quoteItemValue(row, col) }}</p>
+              <p>{{ fmtDate(row.submittedAt) }}</p>
+            </div>
+          </div>
+          <el-table v-if="selectedReviewQuote.history?.length" class="desktop-review-lines" :data="selectedReviewQuote.history" stripe size="small">
             <el-table-column :label="t('quote.versionColumn')" width="80">
               <template #default="{ row }">V{{ row.version }}</template>
             </el-table-column>
@@ -580,8 +631,9 @@ import {
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowDown, Message, Refresh } from '@element-plus/icons-vue';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { filePreviewUrl, openFilePreview } from '../../composables/useFilePreview';
 import { api } from '../../composables/useApi';
 import { useAuthStore } from '../../stores/auth';
 
@@ -638,7 +690,7 @@ const preview = reactive({
   kind: 'inline' as 'inline' | 'download',
 });
 
-function fmtDate(iso: string) { return dayjs(iso).format('YYYY-MM-DD HH:mm'); }
+function fmtDate(iso: string) { return `${institutionWallTime(iso, tender.value?.timezone ?? 'UTC')?.slice(0, 16)} (${tender.value?.timezone ?? 'UTC'})`; }
 function statusTag(s: string) {
   return { draft: 'info', published: '', open: 'success', closed: 'danger', cancelled: 'danger', awarded: 'warning' }[s] ?? '';
 }
@@ -913,9 +965,9 @@ async function doExport() {
   }
 }
 
-function previewAttachment(file: any) {
+async function previewAttachment(file: any) {
   preview.title = file.name || t('tenderCreate.attachmentPreview');
-  preview.url = file.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(file.key)}`;
+  preview.url = await filePreviewUrl(file.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(file.key)}`);
   preview.kind = file.mimeType?.startsWith('image/') || file.mimeType === 'application/pdf' ? 'inline' : 'download';
   preview.visible = true;
 }
@@ -1113,6 +1165,20 @@ onActivated(load);
 </script>
 
 <style scoped>
+.mobile-detail-cards, .mobile-review-lines { display: none; }
+@media (max-width: 768px) {
+  .mobile-detail-cards summary { padding: 12px 0; cursor: pointer; }
+  .mobile-history-row { padding: 12px 0; border-bottom: 1px solid #e2e8f0; overflow-wrap: anywhere; }
+  :deep(.el-descriptions__table) { table-layout: fixed; overflow-wrap: anywhere; }
+  .mobile-review-lines { display: grid; gap: 8px; max-height: 360px; overflow: auto; }
+  .mobile-review-lines button { display: grid; gap: 5px; text-align: left; background: white; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; color: inherit; overflow-wrap: anywhere; }
+  .mobile-review-lines button[aria-pressed="true"] { border-color: #2563eb; background: #eff6ff; }
+  .desktop-review-lines { display: none; }
+  .mobile-detail-cards { display: grid; gap: 12px; }
+  .mobile-detail-cards article { padding: 14px; border: 1px solid #e2e8f0; border-radius: 10px; overflow-wrap: anywhere; }
+  .mobile-detail-cards p { color: #475569; line-height: 1.5; }
+  .desktop-lots, .review-quote-table { display: none; }
+}
 .tender-detail { display: grid; gap: 16px; }
 
 /* ── Header ── */
@@ -1334,6 +1400,12 @@ onActivated(load);
 
 @media (max-width: 768px) {
   .page-header { flex-direction: column; }
+  .export-form :deep(.el-form-item) { display: block; }
+  .export-form :deep(.el-form-item__label) { width: auto !important; display: block; text-align: left; line-height: 1.5; padding-bottom: 6px; }
+  .export-form :deep(.el-form-item__content) { margin-left: 0 !important; }
+  .export-fields { grid-template-columns: 1fr; }
+  .export-fields :deep(.el-checkbox) { min-height: 44px; height: auto; white-space: normal; }
+  .export-fields :deep(.el-checkbox__label) { white-space: normal; overflow-wrap: anywhere; }
   .info-strip { flex-direction: column; }
   .info-item { border-right: none; border-bottom: 1px solid #e5e7eb; }
   .info-item:last-child { border-bottom: none; }

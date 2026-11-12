@@ -72,7 +72,7 @@
           <p>{{ item.hallSummary || item.description || '暂无项目摘要' }}</p>
           <dl>
             <div><dt>类型</dt><dd>{{ typeLabel(item.type) }}</dd></div>
-            <div><dt>截止</dt><dd>{{ fmtDate(item.bidDeadline) }}</dd></div>
+            <div><dt>截止</dt><dd>{{ fmtDate(item.bidDeadline, item.timezone ?? 'UTC') }}</dd></div>
             <div><dt>标包</dt><dd>{{ item.lots?.length ?? 0 }} 个</dd></div>
             <div><dt>开始</dt><dd>{{ startTimeText(item) }}</dd></div>
           </dl>
@@ -92,7 +92,7 @@ import {
   computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch,
 } from 'vue';
 import { useRouter } from 'vue-router';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { api } from '../../composables/useApi';
 import { participationClass, participationLabelKey, resolveParticipationScope } from '../../utils/participation';
 
@@ -136,11 +136,11 @@ const activeFilterText = computed(() => {
   ].filter(Boolean).join(' · ');
 });
 
-function fmtDate(value?: string) {
-  return value ? dayjs(value).format('MM-DD HH:mm') : '未设置';
+function fmtDate(value?: string, zone = 'UTC') {
+  return value ? `${institutionWallTime(value, zone)?.slice(0, 16)} (${zone})` : '未设置';
 }
 function startTimeText(item: any) {
-  return item.bidStartAt ? fmtDate(item.bidStartAt) : '发布后立即';
+  return item.bidStartAt ? fmtDate(item.bidStartAt, item.timezone ?? 'UTC') : '发布后立即';
 }
 function typeLabel(type: string) {
   return { engineering: '工程招标', transport: '运力招标', routine: '常规采购' }[type] ?? type;

@@ -34,6 +34,8 @@ export interface BranchAccess {
   branchName: string;
   branchType: 'HQ' | 'BRANCH';
   currency?: string;
+  timezone?: string;
+  defaultLocale?: string;
   role?: string;
 }
 
@@ -78,6 +80,7 @@ export const useAuthStore = defineStore('auth', () => {
       return;
     }
     if (!session.accessToken || !session.user) throw new Error('invalid auth session');
+    sessionStorage.removeItem('bidflow:mobile:tabState');
     token.value = session.accessToken;
     user.value = session.user;
     scopes.value = session.scopes ?? [];
@@ -128,6 +131,14 @@ export const useAuthStore = defineStore('auth', () => {
       branches.value = res.data.data.branches ?? [];
       activeBranchId.value = res.data.data.activeBranchId ?? null;
       isHq.value = res.data.data.isHq ?? false;
+      // A newly registered supplier receives its first institution only after certification/join.
+      // Replace the pre-binding session so WebSocket and HTTP use the same explicit institution.
+      const payload = JSON.parse(atob(token.value!.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (activeBranchId.value && !payload.activeBranchId) {
+        const session = await api.post('/api/auth/branches/switch', { branchId: activeBranchId.value });
+        token.value = session.data.data.accessToken;
+        localStorage.setItem('token', session.data.data.accessToken);
+      }
     } catch {
       logout();
     }
@@ -146,6 +157,7 @@ export const useAuthStore = defineStore('auth', () => {
     activeBranchId.value = null;
     isHq.value = false;
     localStorage.removeItem('token');
+    sessionStorage.removeItem('bidflow:mobile:tabState');
     router.push(redirectOverride);
   }
 

@@ -48,6 +48,9 @@ export enum ParticipationMode {
 
 @Entity('tenders')
 export class Tender {
+  /** Snapshot of the institution timezone at creation. Editing branch settings cannot change tender time semantics. */
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  timezone?: string;
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

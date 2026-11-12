@@ -50,7 +50,7 @@
 <script setup lang="ts">
 import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import { computed, onMounted, ref } from 'vue';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../composables/useApi';
@@ -66,7 +66,7 @@ const loading = ref(false);
 const tender = ref<any>(null);
 
 function fmt(value: string) {
-  return dayjs(value).format('YYYY-MM-DD HH:mm');
+  return `${institutionWallTime(value, tender.value?.timezone ?? 'UTC')?.slice(0, 16)} (${tender.value?.timezone ?? 'UTC'})`;
 }
 
 async function load() {

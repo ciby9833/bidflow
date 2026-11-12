@@ -30,8 +30,24 @@ export class RankingSnapshot {
   @Column({ name: 'lot_id', type: 'uuid' })
   lotId: string;
 
+  // Legacy snapshots did not persist round identity; do not guess for empty history.
+  @Column({ name: 'round_no', type: 'int', nullable: true })
+  roundNo?: number;
+
   @Column({ name: 'snapshot_data', type: 'jsonb' })
   snapshotData: {
+    roundNo?: number;
+    lineId?: string;
+    lineNo?: string;
+    lineData?: Record<string, unknown>;
+    columnLabels?: Record<string, string>;
+    items?: Record<string, unknown> | Record<string, unknown>[];
+    quoteId?: string;
+    quoteNo?: string;
+    baseCurrency?: string;
+    exchangeRate?: number;
+    exchangeRateDate?: string;
+    priceInBase?: number;
     rank: number;
     supplierId: string;
     supplierName?: string;

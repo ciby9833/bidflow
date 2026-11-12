@@ -10,7 +10,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User, UserStatus } from './user.entity';
+import { User, UserStatus, UserRole, AccountType } from './user.entity';
 import { JwtPayload } from './auth.service';
 import { BranchContext, BranchContextService } from '../organization/branch-context.service';
 
@@ -55,7 +55,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // 供应商账号的机构归属来自供应商机构档案，公司用户来自 branch_members。
     const branch = await this.branchContext.resolve(user.id, payload.activeBranchId, user.supplierId);
 
-    // Phase 3 双轨：branch 仅挂载不消费，鉴权仍走 users.role，线上行为不变。
+    if (payload.activeBranchId && payload.activeBranchId !== branch.activeBranchId) {
+      throw new UnauthorizedException('error.auth.token_invalid');
+    }
+    // Never retain a global administrator role after entering a lower-privilege institution.
+    if (user.accountType === AccountType.COMPANY_USER && !branch.isHq && branch.activeRole) user.role = String(branch.activeRole) as UserRole;
     return Object.assign(user, { branch });
   }
 }

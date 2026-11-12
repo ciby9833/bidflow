@@ -4,12 +4,14 @@
  * 交互：被 quote.service.ts 和 ws.gateway.ts 调用；承载实时排名、频控与消息广播。
  * 作者：吴川
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
 @Injectable()
-export class RedisService {
+export class RedisService implements OnModuleDestroy {
+  onModuleDestroy() { this.client.disconnect(); }
+
   private readonly client: Redis;
 
   constructor(private config: ConfigService) {
@@ -99,8 +101,8 @@ export class RedisService {
   }
 
   // ── Consistency check support ────────────────────────────────────────────
-  async rebuildLotRanking(lotId: string, entries: { supplierId: string; price: number }[]) {
-    const rankKey = `lot:${lotId}:rank`;
+  async rebuildLotRanking(lotId: string, entries: { supplierId: string; price: number }[], roundNo = 1) {
+    const rankKey = `lot:${lotId}:round:${roundNo}:rank`;
     const pipeline = this.client.pipeline();
     pipeline.del(rankKey);
     for (const e of entries) {

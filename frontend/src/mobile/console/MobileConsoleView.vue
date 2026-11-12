@@ -46,8 +46,10 @@ const entries = computed(() => {
   }
 
   return [
+    auth.hasScope('tender:view') ? { titleKey: 'route.tenders', path: '/m/console/tenders', icon: DocumentChecked } : null,
     auth.hasScope('user:view') ? { titleKey: 'route.users', path: '/m/console/users', icon: UserFilled } : null,
     auth.hasScope('supplier:view') ? { titleKey: 'route.suppliers', path: '/m/console/suppliers', icon: OfficeBuilding } : null,
+    auth.hasScope('org:manage') ? { titleKey: 'route.organization', path: '/m/console/organization/branches', icon: OfficeBuilding } : null,
   ].filter(Boolean) as Array<{ titleKey: string; path: string; icon: any }>;
 });
 
@@ -99,7 +101,8 @@ onMounted(async () => {
   text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .empty {
   grid-column: 1 / -1;

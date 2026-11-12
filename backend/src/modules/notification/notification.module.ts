@@ -8,9 +8,10 @@ import { Module } from '@nestjs/common';
 import { WsGateway } from './ws.gateway';
 import { AuthModule } from '../auth/auth.module';
 import { RedisService } from '../../shared/config/redis.config';
+import { QuoteModule } from '../quote/quote.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, QuoteModule],
   providers: [WsGateway, RedisService],
   exports: [WsGateway],
 })

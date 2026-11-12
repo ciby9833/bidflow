@@ -40,11 +40,11 @@ export class DeadlineChangeService implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
 
   private async tender(em: EntityManager, id: string, branchId: string, lock = false) {
-    const [t] = await em.query(`SELECT t.*, t.xmin::text AS revision, b.settings->>'timezone' AS timezone, b.country_code
+    const [t] = await em.query(`SELECT t.*, t.xmin::text AS revision, COALESCE(t.timezone,b.settings->>'timezone') AS timezone, b.country_code
       FROM tenders t JOIN branches b ON b.id=t.branch_id
       WHERE t.id=$1 AND t.branch_id=$2 ${lock ? 'FOR UPDATE OF t' : ''}`, [id, branchId]);
     if (!t) throw new NotFoundException('error.tender.not_found');
-    t.timezone ||= ({ ID: 'Asia/Jakarta', CN: 'Asia/Shanghai', VN: 'Asia/Ho_Chi_Minh' } as any)[t.country_code] || 'UTC';
+    t.timezone ||= ({ ID: 'Asia/Jakarta', CN: 'Asia/Shanghai', VN: 'Asia/Ho_Chi_Minh', BR: 'America/Sao_Paulo' } as any)[t.country_code] || 'UTC';
     return t;
   }
 
@@ -124,8 +124,8 @@ export class DeadlineChangeService implements OnModuleInit, OnModuleDestroy {
           JSON.stringify({changeId:change.id,reason:input.reason.trim()})]);
       const recipients = await this.recipients(em, t);
       for (const r of recipients) {
-        const locale = r.country_code === 'ID' ? 'id-ID' : r.country_code === 'VN' ? 'vi-VN' : r.locale || 'en';
-        const labels = locale.startsWith('zh') ? ['报价截止时间已调整','原截止时间','新截止时间','已有报价及报价规则保持不变。'] : locale.startsWith('id') ? ['Batas waktu penawaran diperbarui','Batas waktu sebelumnya','Batas waktu baru','Penawaran dan aturan penawaran yang ada tetap berlaku.'] : locale.startsWith('vi') ? ['Thời hạn báo giá đã thay đổi','Thời hạn cũ','Thời hạn mới','Báo giá và quy tắc báo giá hiện có được giữ nguyên.'] : ['Bid deadline updated','Previous deadline','New deadline','Existing bids and bidding rules remain unchanged.'];
+        const locale = r.country_code === 'ID' ? 'id-ID' : r.country_code === 'VN' ? 'vi-VN' : r.locale || (r.country_code === 'BR' ? 'pt-BR' : 'en');
+        const labels = locale.startsWith('pt') ? ['Prazo das propostas atualizado','Prazo anterior','Novo prazo','As propostas e regras existentes permanecem inalteradas.'] : locale.startsWith('zh') ? ['报价截止时间已调整','原截止时间','新截止时间','已有报价及报价规则保持不变。'] : locale.startsWith('id') ? ['Batas waktu penawaran diperbarui','Batas waktu sebelumnya','Batas waktu baru','Penawaran dan aturan penawaran yang ada tetap berlaku.'] : locale.startsWith('vi') ? ['Thời hạn báo giá đã thay đổi','Thời hạn cũ','Thời hạn mới','Báo giá và quy tắc báo giá hiện có được giữ nguyên.'] : ['Bid deadline updated','Previous deadline','New deadline','Existing bids and bidding rules remain unchanged.'];
         const fmt = (d: string) => d ? new Date(d).toLocaleString(locale, {timeZone:t.timezone,hour12:false}) : '—';
         const subject = `${labels[0]} · ${t.tender_no}`;
         const body = `${t.title}\n${labels[1]}: ${fmt(t.bid_deadline)}\n${labels[2]}: ${fmt(input.newDeadline)} (${t.timezone})\n\n${input.announcement.trim()}\n\n${labels[3]}`;

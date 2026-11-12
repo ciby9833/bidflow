@@ -26,6 +26,7 @@ import { ExportService } from './shared/export/export.service';
 import { ExportController } from './shared/export/export.controller';
 import { UploadController } from './shared/upload/upload.controller';
 import { UploadService } from './shared/upload/upload.service';
+import { UploadAccessService } from './shared/upload/upload-access.service';
 import { AuditLog } from './shared/audit/audit-log.entity';
 import { User } from './modules/auth/user.entity';
 import { CompanyUser } from './modules/auth/company-user.entity';
@@ -87,7 +88,7 @@ import { TenderExchangeRate } from './modules/quote/tender-exchange-rate.entity'
   ],
   controllers: [ExportController, UploadController],
   providers: [
-    RedisService, AuditService, ExportService, UploadService,
+    RedisService, AuditService, ExportService, UploadService, UploadAccessService,
     provideTenantRepository(Tender),
   ],
 })

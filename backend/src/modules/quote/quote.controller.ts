@@ -38,6 +38,7 @@ export class QuoteController {
     const user = req.user as User;
     const result = await this.svc.submit(scopeOf(req), {
       lotId: body.lotId,
+      roundNo: body.roundNo,
       supplierId: user.supplierId!,
       totalPrice: body.totalPrice,
       currency: body.currency,
@@ -123,7 +124,7 @@ export class QuoteController {
   @RequireScopes('quote:submit')
   async saveLotAttachments(@Param('lotId') lotId: string, @Body() body: any, @Req() req: Request) {
     const user = req.user as User;
-    return ApiResponse.ok(await this.svc.saveLotAttachments(scopeOf(req), lotId, user.supplierId!, body.attachments ?? []));
+    return ApiResponse.ok(await this.svc.saveLotAttachments(scopeOf(req), lotId, user.supplierId!, body.attachments ?? [], user.id));
   }
 
   @Get('lots/:lotId/attachments')
@@ -153,15 +154,21 @@ export class QuoteController {
     return ApiResponse.ok({ rebuilt: count });
   }
 
+  @Get('lots/:lotId/snapshots')
+  @RequireScopes('quote:view_all')
+  async snapshots(@Param('lotId') lotId: string, @Req() req: Request) {
+    return ApiResponse.ok(await this.svc.getSnapshots(scopeOf(req), lotId));
+  }
+
   @Post('lots/:lotId/snapshot')
   @RequireScopes('eval:freeze')
   async snapshot(
     @Param('lotId') lotId: string,
-    @Body() body: { trigger: SnapshotTrigger },
+    @Body() body: { trigger: SnapshotTrigger; roundNo?: number },
     @Req() req: Request,
   ) {
     const user = req.user as User;
-    const snap = await this.svc.generateSnapshot(scopeOf(req), lotId, body.trigger, user.id);
+    const snap = await this.svc.generateSnapshot(scopeOf(req), lotId, body.trigger, user.id, body.roundNo);
     return ApiResponse.ok(snap);
   }
 }

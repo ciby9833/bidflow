@@ -99,7 +99,7 @@
       <div class="access-meta">{{ lookupResult.businessId }} · {{ lookupResult.countryCode }}</div>
       <div class="access-branches">
         <span>{{ t('supplierAccess.currentBranches') }}</span>
-        <el-tag v-for="b in lookupResult.branches" :key="b.branchId" size="small" :type="b.status === 'active' ? 'success' : 'info'">
+        <el-tag v-for="b in lookupResult.branches.filter((branch: any) => branch.status === 'active')" :key="b.branchId" size="small" type="success">
           {{ b.code }}
         </el-tag>
       </div>
@@ -198,7 +198,7 @@
 <script setup lang="ts">
 
 import {
-  computed, onBeforeUnmount, onMounted, reactive, ref, watch,
+  computed, onActivated, onDeactivated, onBeforeUnmount, onMounted, reactive, ref, watch,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
@@ -471,6 +471,8 @@ watch(
 );
 
 onMounted(load);
+onActivated(() => { if (!loading.value) void load(); });
+onDeactivated(() => { suppliers.value = []; total.value = 0; lookupResult.value = null; });
 onBeforeUnmount(() => {
   if (searchTimer) window.clearTimeout(searchTimer);
 });

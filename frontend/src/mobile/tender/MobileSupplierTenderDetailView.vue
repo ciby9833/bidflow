@@ -84,7 +84,8 @@ import TenderDeadlineChanges from '../../components/TenderDeadlineChanges.vue';
 import { reactive, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
+import { filePreviewUrl, openFilePreview } from '../../composables/useFilePreview';
 import { api } from '../../composables/useApi';
 
 const route = useRoute();
@@ -94,7 +95,7 @@ const loading = ref(false);
 const tender = ref<any>(null);
 const expandedLines = reactive<Record<string, boolean>>({});
 
-function fmt(value: string) { return dayjs(value).format('YYYY-MM-DD HH:mm'); }
+function fmt(value: string) { return `${institutionWallTime(value, tender.value?.timezone ?? 'UTC')?.slice(0, 16)} (${tender.value?.timezone ?? 'UTC'})`; }
 function typeLabel(type: string) { return type ? t(`tender.${type}`) : ''; }
 function statusLabel(status: string) {
   return status ? t(`tender.status.${status}`) : '';
@@ -122,9 +123,9 @@ function secondaryLineFields(line: any, lot: any) {
 function toggleLine(lineId: string) {
   expandedLines[lineId] = !expandedLines[lineId];
 }
-function openFile(file: any) {
+async function openFile(file: any) {
   const url = file.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(file.key)}`;
-  window.open(url, '_blank');
+  await openFilePreview(url);
 }
 function formatSize(size?: number) {
   if (!size) return '';

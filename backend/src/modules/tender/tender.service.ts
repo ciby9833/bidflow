@@ -1,3 +1,4 @@
+import { validateAttachmentReferences } from '../../shared/upload/attachment-reference';
 /**
  * 文件：backend/src/modules/tender/tender.service.ts
  * 功能：负责招标、标包、邀请及模板能力，承接招标全生命周期的业务规则。
@@ -31,6 +32,7 @@ import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entit
 import { User, UserRole } from '../auth/user.entity';
 import { SupplierAccount } from '../auth/supplier-account.entity';
 import { Supplier, SupplierReviewStatus, SupplierStatus } from '../supplier/supplier.entity';
+import { SupplierBranchProfile, SupplierBranchProfileStatus } from '../supplier/supplier-branch-profile.entity';
 import { Branch } from '../organization/branch.entity';
 import { MailService } from '../../shared/mail/mail.service';
 import { buildTenderInvitationEmail } from '../../shared/mail/templates/tender-invitation.template';
@@ -53,10 +55,10 @@ const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
     uiSchema: {
       order: ['total_price', 'currency', 'project_duration_days', 'warranty_months'],
       fields: {
-        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga', 'vi-VN': 'Tổng giá trị báo giá' } },
-        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang', 'vi-VN': 'Loại tiền tệ' } },
-        project_duration_days: { type: 'number', label: { 'zh-CN': '工期（天）', en: 'Duration (days)', 'id-ID': 'Durasi (hari)', 'vi-VN': 'Thời gian thực hiện (ngày)' } },
-        warranty_months: { type: 'number', label: { 'zh-CN': '质保期（月）', en: 'Warranty (months)', 'id-ID': 'Garansi (bulan)', 'vi-VN': 'Thời hạn bảo hành (tháng)' } },
+        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga', 'vi-VN': 'Tổng giá trị báo giá', 'pt-BR': 'Preço total' } },
+        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang', 'vi-VN': 'Loại tiền tệ', 'pt-BR': 'Moeda' } },
+        project_duration_days: { type: 'number', label: { 'zh-CN': '工期（天）', en: 'Duration (days)', 'id-ID': 'Durasi (hari)', 'vi-VN': 'Thời gian thực hiện (ngày)', 'pt-BR': 'Duração (dias)' } },
+        warranty_months: { type: 'number', label: { 'zh-CN': '质保期（月）', en: 'Warranty (months)', 'id-ID': 'Garansi (bulan)', 'vi-VN': 'Thời hạn bảo hành (tháng)', 'pt-BR': 'Garantia (meses)' } },
       },
     },
   },
@@ -68,11 +70,11 @@ const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
     uiSchema: {
       order: ['total_price', 'currency', 'unit_price', 'unit', 'capacity_tons'],
       fields: {
-        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga', 'vi-VN': 'Tổng giá trị báo giá' } },
-        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang', 'vi-VN': 'Loại tiền tệ' } },
-        unit_price: { type: 'currency', label: { 'zh-CN': '单价', en: 'Unit Price', 'id-ID': 'Harga Satuan', 'vi-VN': 'Đơn giá' } },
-        unit: { type: 'select', options: ['ton-km', 'trip', 'day'], label: { 'zh-CN': '计价单位', en: 'Unit', 'id-ID': 'Satuan', 'vi-VN': 'Đơn vị tính giá' } },
-        capacity_tons: { type: 'number', label: { 'zh-CN': '运载吨位', en: 'Capacity (tons)', 'id-ID': 'Kapasitas (ton)', 'vi-VN': 'Tải trọng (tấn)' } },
+        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga', 'vi-VN': 'Tổng giá trị báo giá', 'pt-BR': 'Preço total' } },
+        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang', 'vi-VN': 'Loại tiền tệ', 'pt-BR': 'Moeda' } },
+        unit_price: { type: 'currency', label: { 'zh-CN': '单价', en: 'Unit Price', 'id-ID': 'Harga Satuan', 'vi-VN': 'Đơn giá', 'pt-BR': 'Preço unitário' } },
+        unit: { type: 'select', options: ['ton-km', 'trip', 'day'], label: { 'zh-CN': '计价单位', en: 'Unit', 'id-ID': 'Satuan', 'vi-VN': 'Đơn vị tính giá', 'pt-BR': 'Unidade' } },
+        capacity_tons: { type: 'number', label: { 'zh-CN': '运载吨位', en: 'Capacity (tons)', 'id-ID': 'Kapasitas (ton)', 'vi-VN': 'Tải trọng (tấn)', 'pt-BR': 'Capacidade (toneladas)' } },
       },
     },
   },
@@ -84,15 +86,15 @@ const TEMPLATES: Record<TenderType, { specJson: object; uiSchema: object }> = {
     uiSchema: {
       order: ['total_price', 'currency', 'delivery_days', 'payment_terms'],
       fields: {
-        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga', 'vi-VN': 'Tổng giá trị báo giá' } },
-        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang', 'vi-VN': 'Loại tiền tệ' } },
-        delivery_days: { type: 'number', label: { 'zh-CN': '交货天数', en: 'Delivery Days', 'id-ID': 'Hari Pengiriman', 'vi-VN': 'Thời gian giao hàng (ngày)' } },
-        payment_terms: { type: 'text', label: { 'zh-CN': '付款条款', en: 'Payment Terms', 'id-ID': 'Syarat Pembayaran', 'vi-VN': 'Điều khoản thanh toán' } },
+        total_price: { type: 'currency', label: { 'zh-CN': '报价总价', en: 'Total Price', 'id-ID': 'Total Harga', 'vi-VN': 'Tổng giá trị báo giá', 'pt-BR': 'Preço total' } },
+        currency: { type: 'currency_select', label: { 'zh-CN': '币种', en: 'Currency', 'id-ID': 'Mata Uang', 'vi-VN': 'Loại tiền tệ', 'pt-BR': 'Moeda' } },
+        delivery_days: { type: 'number', label: { 'zh-CN': '交货天数', en: 'Delivery Days', 'id-ID': 'Hari Pengiriman', 'vi-VN': 'Thời gian giao hàng (ngày)', 'pt-BR': 'Prazo de entrega (dias)' } },
+        payment_terms: { type: 'text', label: { 'zh-CN': '付款条款', en: 'Payment Terms', 'id-ID': 'Syarat Pembayaran', 'vi-VN': 'Điều khoản thanh toán', 'pt-BR': 'Condições de pagamento' } },
       },
     },
   },
 };
-const DEFAULT_TENDER_CURRENCY = 'IDR';
+import { marketSettings, currencyCode } from '../../shared/config/market-policy';
 const NOTIFICATION_RESEND_LOCK_TTL_SECONDS = 300;
 const TENDER_WITHDRAW_LOCK_TTL_SECONDS = 120;
 type TenderAttachmentInput = {
@@ -204,7 +206,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
 
   private async defaultCurrencyForBranch(branchId: string) {
     const branch = await this.branchRepo.findOne({ where: { id: branchId } });
-    return String(branch?.settings?.currency || DEFAULT_TENDER_CURRENCY).trim().toUpperCase();
+    return marketSettings(branch?.countryCode ?? '', branch?.settings).currency || 'IDR';
   }
 
   onModuleInit() {
@@ -271,10 +273,13 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     attachments?: TenderAttachmentInput[];
     lots?: TenderLotInput[];
   } & ParticipationInput, ctx: AuditContext) {
+    validateAttachmentReferences(data.attachments ?? [], [], ctx.userId, 'tender-attachments');
     this.validateTenderSchedule(data.bidStartAt, data.bidDeadline);
     // 写入机构在事务外先行解析：总部或无归属用户会在此直接失败，避免开了事务再回滚。
     const branchId = requireWritableBranch(scope);
     const defaultCurrency = await this.defaultCurrencyForBranch(branchId);
+    const branchConfig = await this.branchRepo.findOneOrFail({ where: { id: branchId } });
+    const tenderTimezone = marketSettings(branchConfig.countryCode!, branchConfig.settings).timezone || 'UTC';
     return this.ds.transaction(async (em) => {
       const nextSeq = await this.computeNextTenderSeq(em, branchId);
       const tenderNo = nextTenderNo(nextSeq);
@@ -285,7 +290,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         tenderNo,
         title: data.title,
         type: data.type,
-        baseCurrency: data.baseCurrency ?? defaultCurrency,
+        baseCurrency: currencyCode(data.baseCurrency ?? defaultCurrency),
+        timezone: tenderTimezone,
         rankingMode: (data.rankingMode as any) ?? 'leading_flag',
         bidStartAt: data.bidStartAt ? new Date(data.bidStartAt) : undefined,
         bidDeadline: data.bidDeadline ? new Date(data.bidDeadline) : undefined,
@@ -324,7 +330,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
           specJson: lots[i].specJson ?? template.specJson,
           uiSchema: lots[i].uiSchema ?? template.uiSchema,
           budgetAmount: lots[i].budgetAmount,
-          budgetCurrency: lots[i].budgetCurrency ?? data.baseCurrency ?? defaultCurrency,
+          budgetCurrency: currencyCode(lots[i].budgetCurrency ?? data.baseCurrency ?? defaultCurrency),
           sortOrder: i,
           schemaVersion: 1,
         });
@@ -597,6 +603,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
             tenderNo: tender.tenderNo,
             tenderTitle: tender.title,
             bidDeadline: tender.bidDeadline,
+            timezone: tender.timezone ?? 'UTC',
             portalUrl,
           })
           : buildTenderInvitationEmail({
@@ -606,6 +613,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
             tenderNo: tender.tenderNo,
             tenderTitle: tender.title,
             bidDeadline: tender.bidDeadline,
+            timezone: tender.timezone ?? 'UTC',
             portalUrl,
           });
         await this.mail.send(message);
@@ -640,7 +648,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     return suppliers.map((supplier) => supplier.id);
   }
 
-  private resolveSupplierMailLocale(userLocale?: string, supplier?: Supplier): 'zh-CN' | 'en' | 'id-ID' | 'vi-VN' {
+  private resolveSupplierMailLocale(userLocale?: string, supplier?: Supplier): 'zh-CN' | 'en' | 'id-ID' | 'vi-VN' | 'pt-BR' {
     const countryCode = supplier?.countryCode?.trim().toUpperCase();
     const normalized = String(userLocale || '').replace('_', '-').toLowerCase();
 
@@ -648,6 +656,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     if (countryCode === 'ID' && (!normalized || normalized === 'zh-cn' || normalized === 'zh')) return 'id-ID';
     if (countryCode === 'VN' && (!normalized || normalized === 'zh-cn' || normalized === 'zh')) return 'vi-VN';
     if (countryCode === 'CN' && (!normalized || normalized === 'zh-cn' || normalized === 'zh')) return 'zh-CN';
+    if (normalized === 'pt' || normalized.startsWith('pt-')) return 'pt-BR';
+    if (countryCode === 'BR' && !normalized) return 'pt-BR';
     if (normalized === 'id' || normalized.startsWith('id-')) return 'id-ID';
     if (normalized === 'vi' || normalized.startsWith('vi-')) return 'vi-VN';
     if (normalized === 'zh' || normalized.startsWith('zh-')) return 'zh-CN';
@@ -763,6 +773,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   } & ParticipationInput, ctx: AuditContext) {
     const branchId = requireWritableBranch(scope);
     const before = await this.findById(scope, id);
+    validateAttachmentReferences(data.attachments ?? [], before.attachments ?? [], ctx.userId, 'tender-attachments');
     if (before.status !== TenderStatus.DRAFT) throw new BadRequestException('error.tender.only_draft_can_edit');
     this.validateTenderSchedule(
       data.bidStartAt === undefined ? before.bidStartAt?.toISOString() : data.bidStartAt ?? undefined,
@@ -776,7 +787,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       await em.update(Tender, id, {
         title: data.title ?? before.title,
         type: data.type ?? before.type,
-        baseCurrency: data.baseCurrency ?? defaultCurrency,
+        baseCurrency: currencyCode(data.baseCurrency ?? defaultCurrency),
         rankingMode: (data.rankingMode as any) ?? before.rankingMode,
         bidStartAt: data.bidStartAt ? new Date(data.bidStartAt) : data.bidStartAt === null ? undefined : before.bidStartAt,
         bidDeadline: data.bidDeadline ? new Date(data.bidDeadline) : data.bidDeadline === null ? undefined : before.bidDeadline,
@@ -996,7 +1007,8 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
 
     const qb = this.supplierRepo.createQueryBuilder('s')
       .where('s.status = :status', { status: SupplierStatus.ACTIVE })
-      .andWhere('s.review_status = :reviewStatus', { reviewStatus: SupplierReviewStatus.APPROVED });
+      .andWhere('s.review_status = :reviewStatus', { reviewStatus: SupplierReviewStatus.APPROVED })
+      .andWhere("EXISTS (SELECT 1 FROM supplier_branch_profiles p WHERE p.supplier_id = s.id AND p.branch_id = :branchId AND p.status = 'active')", { branchId: tender.branchId });
     if (search?.trim()) {
       qb.andWhere('(s.legal_name ILIKE :q OR s.short_name ILIKE :q OR s.business_id ILIKE :q OR s.contact_name ILIKE :q)', { q: `%${search.trim()}%` });
     }
@@ -1034,9 +1046,11 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
     })).sort((a, b) => this.compareSupplierOption(a, b, sort));
     const total = enrichedItems.length;
     const items = enrichedItems.slice((safePage - 1) * safeLimit, safePage * safeLimit);
-    const selectedSuppliers = selectedIds.size
-      ? await this.supplierRepo.find({ where: { id: In(Array.from(selectedIds)) }, order: { legalName: 'ASC' } })
-      : [];
+    const activeProfiles = selectedIds.size ? await this.ds.getRepository(SupplierBranchProfile).find({
+      where: { branchId: tender.branchId, supplierId: In(Array.from(selectedIds)), status: SupplierBranchProfileStatus.ACTIVE },
+    }) : [];
+    const selectedSuppliers = activeProfiles.length
+      ? await this.supplierRepo.find({ where: { id: In(activeProfiles.map(p => p.supplierId)) }, order: { legalName: 'ASC' } }) : [];
     return {
       items,
       total,
@@ -1092,6 +1106,10 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
       },
     });
     if (suppliers.length !== uniqueSupplierIds.length) throw new BadRequestException('error.tender.invalid_participants');
+    const profiles = await em.find(SupplierBranchProfile, {
+      where: { branchId, supplierId: In(uniqueSupplierIds), status: SupplierBranchProfileStatus.ACTIVE },
+    });
+    if (profiles.length !== uniqueSupplierIds.length) throw new BadRequestException('error.tender.invalid_participants');
     await em.save(suppliers.map((supplier) => em.create(Invitation, {
         branchId,
       tenderId,
@@ -1110,7 +1128,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   private async getQuotedSupplierIds(tenderId: string, roundNo: number) {
     const [lineQuotes, lotQuotes] = await Promise.all([
       this.lineQuoteRepo.find({ where: { tenderId, roundNo, isValid: true }, select: ['supplierId'] }),
-      this.quoteRepo.find({ where: { tenderId, isValid: true }, select: ['supplierId'] }),
+      this.quoteRepo.find({ where: { tenderId, roundNo, isValid: true }, select: ['supplierId'] }),
     ]);
     return Array.from(new Set([...lineQuotes, ...lotQuotes].map((quote) => quote.supplierId).filter(Boolean)));
   }
@@ -1123,7 +1141,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
   private async getQuotedSupplierStats(tenderId: string, roundNo: number) {
     const [lineQuotes, lotQuotes] = await Promise.all([
       this.lineQuoteRepo.find({ where: { tenderId, roundNo, isValid: true }, select: ['supplierId', 'totalPrice', 'submittedAt'] }),
-      this.quoteRepo.find({ where: { tenderId, isValid: true }, select: ['supplierId', 'totalPrice', 'submittedAt'] }),
+      this.quoteRepo.find({ where: { tenderId, roundNo, isValid: true }, select: ['supplierId', 'totalPrice', 'submittedAt'] }),
     ]);
     const stats = new Map<string, { quoteCount: number; minTotalPrice: number | null; lastSubmittedAt: Date | null }>();
     for (const quote of [...lineQuotes, ...lotQuotes]) {
@@ -1203,7 +1221,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
 
     const lotHistoryMap = new Map<string, Quote[]>();
     for (const quote of lotQuotes) {
-      const key = `${quote.lotId}:${quote.supplierId}`;
+      const key = `${quote.roundNo}:${quote.lotId}:${quote.supplierId}`;
       lotHistoryMap.set(key, [...(lotHistoryMap.get(key) ?? []), quote]);
     }
 
@@ -1216,9 +1234,9 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
 
     const buildLotsForRound = (targetRound: number) => lots.map((lot) => {
         const lines = [...linesForLotRound(lot.id, targetRound)].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-        const latestLotQuotes = this.latestBySupplier(lotQuotes.filter((quote) => quote.lotId === lot.id))
+        const latestLotQuotes = this.latestBySupplier(lotQuotes.filter((quote) => quote.lotId === lot.id && quote.roundNo === targetRound))
           .sort((a, b) => quoteRankPrice(a) - quoteRankPrice(b))
-          .map((quote, index) => this.enrichQuote(quote, supplierMap, index + 1, lotHistoryMap.get(`${quote.lotId}:${quote.supplierId}`) ?? []));
+          .map((quote, index) => this.enrichQuote(quote, supplierMap, index + 1, lotHistoryMap.get(`${targetRound}:${quote.lotId}:${quote.supplierId}`) ?? []));
 
         return {
           lotId: lot.id,
@@ -1377,7 +1395,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
         existing.unit = input.unit as any;
         existing.pricingMode = input.pricingMode ?? existing.pricingMode ?? 'total_price';
         existing.budgetAmount = input.budgetAmount as any;
-        existing.budgetCurrency = input.budgetCurrency ?? opts.baseCurrency;
+        existing.budgetCurrency = currencyCode(input.budgetCurrency ?? opts.baseCurrency);
         existing.sortOrder = i;
         lot = await em.save(existing);
       } else {
@@ -1393,7 +1411,7 @@ export class TenderService implements OnModuleInit, OnModuleDestroy {
           specJson: input.specJson ?? opts.template.specJson,
           uiSchema: input.uiSchema ?? opts.template.uiSchema,
           budgetAmount: input.budgetAmount,
-          budgetCurrency: input.budgetCurrency ?? opts.baseCurrency,
+          budgetCurrency: currencyCode(input.budgetCurrency ?? opts.baseCurrency),
           sortOrder: i,
           schemaVersion: 1,
         }));

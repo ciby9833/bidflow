@@ -35,6 +35,7 @@
         </el-form-item>
         <el-form-item :label="t('supplierProfile.taxOrCreditCode')">
           <el-input v-model.trim="form.taxId" size="large" />
+              <small v-if="form.countryCode === 'BR'">{{ t('market.cnpjHint') }}</small>
         </el-form-item>
       </section>
       <button class="primary-action" type="button" @click="goStepTwo">{{ t('tenderCreate.next') }}</button>
@@ -67,6 +68,7 @@ import { useRouter } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
 import { buildSupplierDocuments as buildRequiredDocs } from '../../composables/supplierDocuments';
 import SupplierCountrySelect from '../../components/SupplierCountrySelect.vue';
+import { filePreviewUrl, openFilePreview } from '../../composables/useFilePreview';
 import { api } from '../../composables/useApi';
 import { preselectBranch } from '../../composables/useBranchPreselect';
 import { useAuthStore } from '../../stores/auth';
@@ -81,16 +83,12 @@ const submitting = ref(false);
 const registrableBranches = ref<{ id: string; code: string; name: string }[]>([]);
 const needsBranchChoice = computed(() => !auth.user?.supplierId);
 
-/**
- * 供应商侧展示国家而非机构名。
- * "Indonesia Branch" 是采购方的内部组织称谓，对供应商没有意义 ——
- * 他关心的是"我要向哪个国家注册"。国别代码用 Intl 转成本地化的国家名。
- */
+/** 同一国家可能有多个机构，必须同时展示机构名称与代码。 */
 function countryLabel(b: { name: string; code: string; countryCode?: string }) {
   if (!b.countryCode) return b.name;
   try {
     const dn = new Intl.DisplayNames([locale.value], { type: 'region' });
-    return dn.of(b.countryCode) ?? b.name;
+    return `${dn.of(b.countryCode) ?? b.countryCode} · ${b.name} (${b.code})`;
   } catch {
     return b.name;
   }
@@ -171,9 +169,9 @@ async function uploadFile(index: number, event: Event) {
   }
 }
 
-function previewDoc(item: any) {
+async function previewDoc(item: any) {
   const url = item.objectKey ? `/api/uploads/preview/${encodeURIComponent(item.objectKey)}` : item.fileUrl;
-  if (url) window.open(url, '_blank');
+  if (url) await openFilePreview(url);
 }
 
 function clearDocFile(index: number) {

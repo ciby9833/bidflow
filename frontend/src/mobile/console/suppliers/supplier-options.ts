@@ -4,25 +4,17 @@
  * 交互：被 MobileSupplierListView/MobileSupplierDetailView 复用，保持状态展示一致。
  * 作者：吴川
  */
+import { i18n } from '../../../i18n';
 export function supplierInitial(row: any) {
   return String(row.legalName || row.shortName || row.businessId || '?').slice(0, 1).toUpperCase();
 }
 
 export function statusText(status?: string) {
-  return {
-    active: '启用',
-    suspended: '冻结',
-  }[status || 'active'] ?? status ?? '—';
+  return i18n.global.t(`supplier.status.${status || 'active'}`);
 }
 
 export function reviewText(status?: string) {
-  return {
-    not_submitted: '未提交',
-    pending_review: '待审核',
-    supplement_required: '补件中',
-    approved: '已通过',
-    rejected: '已驳回',
-  }[status || 'not_submitted'] ?? status ?? '—';
+  return i18n.global.t(`supplierReview.${status || 'not_submitted'}`);
 }
 
 export function statusTone(status?: string) {

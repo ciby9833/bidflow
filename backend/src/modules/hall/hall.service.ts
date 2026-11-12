@@ -23,13 +23,18 @@ export class HallService {
     };
   }
 
-  async listPublicTenders(page = 1, limit = 20, viewerBranchId?: string, branchCode?: string) {
+  async listPublicTenders(page = 1, limit = 20, viewerBranchId?: string, branchCode?: string, search?: string) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     await this.refreshLifecycleStatuses();
     const qb = this.publicTenderBaseQuery(viewerBranchId, branchCode)
       .leftJoinAndSelect('t.lots', 'lots')
       .skip((page - 1) * limit)
       .take(limit)
       .orderBy('t.createdAt', 'DESC');
+    if (search?.trim()) {
+      qb.andWhere('(t.title ILIKE :search OR t.tenderNo ILIKE :search)', { search: `%${search.trim()}%` });
+    }
     const [items, total] = await qb.getManyAndCount();
 
     // 附带机构信息：多机构大厅里必须让访客看出这条标属于哪个国家，
@@ -51,34 +56,34 @@ export class HallService {
     };
   }
 
-  async getPortalSummary() {
+  async getPortalSummary(viewerBranchId?: string) {
     await this.refreshLifecycleStatuses();
     const now = new Date();
     const closingBefore = new Date(now.getTime() + 72 * 60 * 60 * 1000);
     const publicStatuses = this.publicStatuses();
 
-    const publicTenderCount = await this.publicTenderBaseQuery()
+    const publicTenderCount = await this.publicTenderBaseQuery(viewerBranchId)
       .getCount();
 
-    const lotCountRow = await this.publicTenderBaseQuery()
+    const lotCountRow = await this.publicTenderBaseQuery(viewerBranchId)
       .leftJoin('t.lots', 'lots')
       .select('COUNT(lots.id)', 'count')
       .getRawOne<{ count: string }>();
 
-    const publicQuoteOpenCount = await this.publicTenderBaseQuery()
+    const publicQuoteOpenCount = await this.publicTenderBaseQuery(viewerBranchId)
       .andWhere('t.status = :status', { status: TenderStatus.OPEN })
       .andWhere('t.participationMode = :participationMode', { participationMode: ParticipationMode.ALL })
       .andWhere('(t.bidDeadline IS NULL OR t.bidDeadline > :now)', { now })
       .getCount();
 
-    const closingSoonCount = await this.publicTenderBaseQuery()
+    const closingSoonCount = await this.publicTenderBaseQuery(viewerBranchId)
       .andWhere('t.status IN (:...activeStatuses)', { activeStatuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN] })
       .andWhere('t.bidDeadline IS NOT NULL')
       .andWhere('t.bidDeadline > :now', { now })
       .andWhere('t.bidDeadline <= :closingBefore', { closingBefore })
       .getCount();
 
-    const nextDeadlineRow = await this.publicTenderBaseQuery()
+    const nextDeadlineRow = await this.publicTenderBaseQuery(viewerBranchId)
       .andWhere('t.status IN (:...activeStatuses)', { activeStatuses: [TenderStatus.PUBLISHED, TenderStatus.OPEN] })
       .andWhere('t.bidDeadline IS NOT NULL')
       .andWhere('t.bidDeadline > :now', { now })

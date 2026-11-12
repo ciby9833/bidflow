@@ -30,8 +30,8 @@ export class HallController {
   }
 
   @Get('portal-summary')
-  async portalSummary() {
-    return ApiResponse.ok(await this.svc.getPortalSummary());
+  async portalSummary(@Req() req: Request) {
+    return ApiResponse.ok(await this.svc.getPortalSummary(viewerBranch(req)));
   }
 
   /** 供应商注册可选的机构列表（公开） */
@@ -47,12 +47,13 @@ export class HallController {
   }
 
   @Get('tenders')
-  async list(@Query() q: { page?: string; limit?: string; branch?: string }, @Req() req: Request) {
+  async list(@Query() q: { page?: string; limit?: string; branch?: string; search?: string }, @Req() req: Request) {
     const result = await this.svc.listPublicTenders(
       q.page ? parseInt(q.page, 10) : 1,
       q.limit ? parseInt(q.limit, 10) : 20,
       viewerBranch(req),
       q.branch,
+      q.search,
     );
     return ApiResponse.ok(result.items, { total: result.total, page: result.page, limit: result.limit });
   }

@@ -1,3 +1,4 @@
+import { validateAttachmentReferences } from '../../shared/upload/attachment-reference';
 /**
  * 文件：backend/src/modules/supplier/supplier.service.ts
  * 功能：处理供应商创建、查询、更新、挂起恢复与指纹碰撞检查。
@@ -646,7 +647,7 @@ export class SupplierService {
     type ImportError = { row: number; value: string; reason: string };
     const errors: ImportError[] = [];
     const seenEmails = new Set<string>();
-    const VALID_LOCALES = new Set(['zh-CN', 'en', 'id-ID', 'vi-VN']);
+    const VALID_LOCALES = new Set(['zh-CN', 'en', 'id-ID', 'vi-VN', 'pt-BR']);
     const MAX_EMAIL_LENGTH = 100;
     const MAX_DISPLAY_NAME_LENGTH = 100;
     const MAX_PHONE_LENGTH = 30;
@@ -1401,6 +1402,7 @@ export class SupplierService {
 
       // Older clients may only send their local country's template. Preserve omitted document types.
       const previousDocuments = await em.find(SupplierDocument, { where: { supplierId } });
+      validateAttachmentReferences(documents, previousDocuments, ctx.userId, 'supplier-documents');
       const submittedTypes = new Set(documents.map(d => d.docType));
       documents.push(...previousDocuments.filter(d => !submittedTypes.has(d.docType)));
       await em.delete(SupplierDocument, { supplierId });
@@ -1475,6 +1477,7 @@ export class SupplierService {
   ) {
     const supplierId = await this.findSupplierIdForAccount(authUserId);
     if (supplierId) return this.submitProfile(scope, supplierId, payload, ctx);
+    validateAttachmentReferences(payload.documents ?? [], [], authUserId, 'supplier-documents');
 
     if (!payload.legalName || !payload.shortName || !payload.contactName || !payload.contactPhone) {
       throw new BadRequestException('error.supplier.company_required');

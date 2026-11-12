@@ -117,8 +117,9 @@ import {
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { Refresh } from '@element-plus/icons-vue';
+import { filePreviewUrl, openFilePreview } from '../../composables/useFilePreview';
 import { api } from '../../composables/useApi';
 
 const route = useRoute();
@@ -133,7 +134,7 @@ const preview = reactive({
   kind: 'inline' as 'inline' | 'download',
 });
 
-function fmt(iso: string) { return dayjs(iso).format('YYYY-MM-DD HH:mm'); }
+function fmt(iso: string) { return `${institutionWallTime(iso, tender.value?.timezone ?? 'UTC')?.slice(0, 16)} (${tender.value?.timezone ?? 'UTC'})`; }
 function typeLabel(type: string) { return type ? t(`tender.${type}`) : ''; }
 function statusLabel(status: string) {
   return status ? t(`tender.status.${status}`) : '';
@@ -152,9 +153,9 @@ async function load() {
   }
 }
 
-function previewAttachment(file: any) {
+async function previewAttachment(file: any) {
   preview.title = file.name || t('tenderCreate.attachmentPreview');
-  preview.url = file.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(file.key)}`;
+  preview.url = await filePreviewUrl(file.fileUrl ?? `/api/uploads/preview/${encodeURIComponent(file.key)}`);
   preview.kind = file.mimeType?.startsWith('image/') || file.mimeType === 'application/pdf' ? 'inline' : 'download';
   preview.visible = true;
 }

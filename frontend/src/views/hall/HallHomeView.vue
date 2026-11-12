@@ -104,12 +104,12 @@
         </el-table-column>
         <el-table-column :label="t('hall.start_time')" width="180">
           <template #default="{ row }">
-            {{ row.bidStartAt ? fmt(row.bidStartAt) : t('hall.start_after_publish') }}
+            {{ row.bidStartAt ? fmt(row.bidStartAt, row.timezone ?? 'UTC') : t('hall.start_after_publish') }}
           </template>
         </el-table-column>
         <el-table-column :label="t('hall.deadline')" width="180">
           <template #default="{ row }">
-            {{ row.bidDeadline ? fmt(row.bidDeadline) : t('hall.long_term_valid') }}
+            {{ row.bidDeadline ? fmt(row.bidDeadline, row.timezone ?? 'UTC') : t('hall.long_term_valid') }}
           </template>
         </el-table-column>
         <el-table-column :label="t('common.actions')" width="100" align="right">
@@ -133,7 +133,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import dayjs from 'dayjs';
+import { institutionWallTime } from '../../shared/institution-time';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import {
@@ -192,8 +192,8 @@ const summaryCards = computed(() => [
   },
 ]);
 
-function fmt(value: string) {
-  return dayjs(value).format('YYYY-MM-DD HH:mm');
+function fmt(value: string, zone = 'UTC') {
+  return `${institutionWallTime(value, zone)?.slice(0, 16)} (${zone})`;
 }
 
 function statusTag(s: string) {

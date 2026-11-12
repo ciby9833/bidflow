@@ -49,7 +49,9 @@
       "self_registration_branch_ambiguous": "Multiple country branches exist; cannot determine the branch for self-registered suppliers. Configure a branch entry point for the public portal first.",
       "registration_branch_required": "Please select the country branch to register with",
       "lookup_key_required": "Enter a business ID or tax ID",
-      "invalid_country": "Select a valid company registration country / region code"
+      "invalid_country": "Select a valid company registration country / region code",
+      "invalid_cnpj": "Enter a valid Brazilian CNPJ (numeric or alphanumeric).",
+      "cnpj_exists": "This CNPJ already belongs to a supplier. Ask an administrator to grant institution access instead of creating a duplicate."
     },
     "tender": {
       "deadline_state": "This tender cannot be extended or reopened in its current state.",
@@ -83,6 +85,12 @@
       "not_found": "Line/item not found."
     },
     "quote": {
+      "frozen_round": "This round is frozen. Start a new round to accept more quotes.",
+      "close_before_freeze": "Close bidding before freezing this round.",
+      "no_quotes_to_freeze": "No quotes to freeze.",
+      "round_changed": "The round changed. Refresh and review the current round.",
+      "invalid_freeze_trigger": "Unsupported snapshot trigger.",
+      "invalid_round": "Invalid quote round.",
       "tender_not_open": "The tender is not open for bidding.",
       "deadline_passed": "Bid deadline has passed.",
       "cooldown_active": "Cooldown active. Please try again later.",
@@ -93,14 +101,16 @@
       "currency_history_inconsistent": "Historical quotes in this round use multiple currencies. Contact an administrator.",
       "version_conflict": "Quote version conflict. Please refresh and retry.",
       "concurrent_submit": "Duplicate submission.",
-      "required_field_missing": "Required field is missing."
+      "required_field_missing": "Required field is missing.",
+      "invalid_amount": "Enter a positive amount with at most 4 decimals, not exceeding 100000000000."
     },
     "upload": {
       "file_required": "Please choose a file to upload.",
       "file_type_not_allowed": "File type not allowed.",
       "file_too_large": "File exceeds size limit.",
       "file_not_found": "File not found.",
-      "file_too_many": "Too many attachments (max 5)."
+      "file_too_many": "Too many attachments (max 5).",
+      "invalid_reference": "Invalid attachment reference."
     },
     "export": {
       "full_requires_manager": "Only purchase managers can perform a full export."
@@ -121,7 +131,8 @@
       "no_active_branch": "No active branch",
       "hq_membership_requires_admin": "Headquarters membership must be granted from the organization console",
       "not_accessible": "You do not have access to this branch",
-      "target_required": "Please select a target branch"
+      "target_required": "Please select a target branch",
+      "invalid_settings": "Invalid institution currency, timezone or language."
     }
   },
   "quote": {

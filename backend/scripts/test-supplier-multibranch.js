@@ -15,7 +15,7 @@ const { branchScopeFor, emptyBranchScope } = require('../dist/shared/tenant/bran
 const scope = branchScopeFor('vn-branch');
 const ctx = { userId: 'user', userRole: 'super_admin', ipAddress: '127.0.0.1' };
 const company = { legalName: 'Example', shortName: 'Ex', contactName: 'Contact', contactPhone: '123' };
-const document = { docType: 'company_registration', docLabel: 'Registration', fileUrl: '/proof' };
+const document = { docType: 'company_registration', docLabel: 'Registration', fileUrl: '/api/uploads/preview/supplier-documents%2Fuser%2Fproof.pdf' };
 
 function fixture({ failAttach = false, inactive = false } = {}) {
   const state = { saved: [], queries: [], committed: 0, rolledBack: 0, oldDocs: [] };

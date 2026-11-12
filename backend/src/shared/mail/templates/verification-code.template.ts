@@ -12,6 +12,7 @@ const LOGO_CID = 'bidflow-jnt-logo';
 
 export interface VerificationCodeEmailInput {
   to: string;
+  locale?: string;
   code: string;
   expiresInMinutes: number;
   productName?: string;
@@ -19,6 +20,12 @@ export interface VerificationCodeEmailInput {
 
 export function buildVerificationCodeEmail(input: VerificationCodeEmailInput): SendMailInput {
   const productName = input.productName ?? 'BidFlow';
+  if (input.locale?.toLowerCase().startsWith('pt')) {
+    const subject = `${input.code} é seu código de verificação ${productName}`;
+    const text = `${subject}.\n\nEste código só pode ser usado uma vez e expira em ${input.expiresInMinutes} minutos.\n\nSe você não solicitou este código, ignore esta mensagem.`;
+    const escape = (v: string) => v.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+    return { to: input.to, subject, text, html: `<html lang="pt-BR"><body><p>${escape(text).replace(/\n/g, '<br>')}</p></body></html>` };
+  }
   const logoPath = resolve(process.cwd(), 'src/public/jnt-Logo.png');
   const subject = `${input.code} is your ${productName} verification code`;
 

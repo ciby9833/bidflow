@@ -1,4 +1,5 @@
 {
+  "evaluationFreeze": {"title":"Evaluasi dibekukan","confirm":"Bekukan peringkat semua rute putaran {round}? Tutup penawaran terlebih dahulu. Hasil tersimpan tidak dapat ditimpa.","closeFirst":"Tutup penawaran sebelum membekukan putaran ini.","done":"Putaran {round} dibekukan","history":"Hasil beku"},
   "app": {
     "title": "BidFlow Sistem Pengadaan"
   },
@@ -16,7 +17,8 @@
     "zh": "Mandarin",
     "en": "Inggris",
     "id": "Indonesia",
-    "vi": "Vietnam"
+    "vi": "Vietnam",
+    "pt": "Portugis (Brasil)"
   },
   "common": {
     "add": "Tambah",
@@ -66,7 +68,8 @@
     "remove": "Hapus",
     "confirmDelete": "Hapus",
     "saved": "Tersimpan",
-    "search": "Cari"
+    "search": "Cari",
+    "region": "Wilayah"
   },
   "bulkImport": {
     "downloadTemplate": "Unduh Templat",
@@ -85,7 +88,8 @@
     "idr": "IDR Rupiah Indonesia",
     "vnd": "VND Dong Vietnam",
     "usd": "USD Dolar AS",
-    "cny": "CNY Yuan China"
+    "cny": "CNY Yuan China",
+    "brl": "BRL Real Brasil"
   },
   "mobile": {
     "mainNav": "Navigasi utama mobile"
@@ -369,7 +373,8 @@
       "suspend": "Pemasok Dibekukan",
       "resume": "Pemasok Diaktifkan"
     },
-    "countryUpdated": "Negara diperbarui"
+    "countryUpdated": "Negara diperbarui",
+    "previewFailed": "Lampiran tidak dapat dibuka. File mungkin telah dihapus atau izin akses berubah."
   },
   "supplierMembers": {
     "title": "Akun Anggota",
@@ -862,7 +867,9 @@
     "supplier": {
       "certification_required": "Sertifikasi pemasok belum disetujui, sehingga tender undangan dan penawaran belum tersedia",
       "documents_required": "Silakan isi setidaknya satu keterangan sertifikasi atau tautan lampiran",
-      "invalid_country": "Pilih kode negara / wilayah pendaftaran perusahaan yang valid"
+      "invalid_country": "Pilih kode negara / wilayah pendaftaran perusahaan yang valid",
+      "invalid_cnpj": "Masukkan CNPJ Brasil yang valid (angka atau alfanumerik).",
+      "cnpj_exists": "CNPJ ini sudah terdaftar. Berikan akses institusi kepada pemasok yang ada."
     },
     "quote": {
       "cooldown_active": "Cooldown aktif",
@@ -872,7 +879,8 @@
       "tender_not_open": "Tender belum terbuka",
       "concurrent_submit": "Pengiriman bersamaan terdeteksi",
       "currency_locked": "Mata uang penawaran telah dikunci untuk putaran ini. Gunakan mata uang pada penawaran pertama.",
-      "currency_history_inconsistent": "Riwayat penawaran pada putaran ini memakai beberapa mata uang. Hubungi administrator."
+      "currency_history_inconsistent": "Riwayat penawaran pada putaran ini memakai beberapa mata uang. Hubungi administrator.",
+      "invalid_amount": "Masukkan nilai positif dengan maksimal 4 desimal, tidak melebihi 100000000000."
     }
   },
   "branch": {
@@ -955,5 +963,23 @@
     "revoke": "Cabut akses institusi ini",
     "revokeConfirm": "Cabut akses hanya ke institusi saat ini? Perusahaan dan akses institusi lainnya tetap ada. Akun terkait harus masuk kembali.",
     "revoked": "Akses institusi ini dicabut"
+  },
+  "market": {
+    "invalidTime": "Waktu institusi tidak valid atau ambigu. Pilih waktu lain.",
+    "cnpjHint": "Masukkan CNPJ Brasil yang valid (angka atau alfanumerik)."
+  },
+  "companyQuoteReview": {
+    "rebuild": "Hitung ulang peringkat",
+    "freeze": "Bekukan peringkat",
+    "quoteCount": "Jumlah penawaran",
+    "lines": "Rute / item",
+    "lineRanking": "Peringkat rute saat ini",
+    "ranking": "Peringkat penawaran",
+    "supplier": "Pemasok",
+    "noAttachments": "Tidak ada lampiran",
+    "rebuilt": "Peringkat dihitung ulang",
+    "frozen": "Rekaman peringkat dibuat",
+    "yes": "Ya",
+    "no": "Tidak"
   }
 }

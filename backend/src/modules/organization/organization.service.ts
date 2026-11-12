@@ -22,6 +22,8 @@ import { AccountType, User } from '../auth/user.entity';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
 
+import { marketSettings } from '../../shared/config/market-policy';
+
 export interface CreateBranchInput {
   code: string;
   name: string;
@@ -71,11 +73,7 @@ export class OrganizationService {
       // 接口只能创建国家机构：全系统仅一个总部，由迁移建立且不可增删
       type: BranchType.BRANCH,
       countryCode,
-      settings: {
-        ...(input.settings ?? {}),
-        ...(!input.settings?.currency && countryCode === 'ID' ? { currency: 'IDR' } : {}),
-        ...(!input.settings?.currency && countryCode === 'VN' ? { currency: 'VND' } : {}),
-      },
+      settings: marketSettings(countryCode, input.settings),
       status: BranchStatus.ACTIVE,
     });
     const saved = await this.branchRepo.save(branch);
@@ -105,7 +103,7 @@ export class OrganizationService {
     await this.ds.transaction(async (em) => {
       await em.update(Branch, id, {
         ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
-        ...(patch.settings !== undefined ? { settings: patch.settings } : {}),
+        ...(patch.settings !== undefined ? { settings: branch.type === BranchType.BRANCH ? marketSettings(branch.countryCode!, patch.settings) : patch.settings } : {}),
         ...(patch.status !== undefined ? { status: patch.status } : {}),
       });
 

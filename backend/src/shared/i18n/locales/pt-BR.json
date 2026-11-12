@@ -1,0 +1,307 @@
+{
+  "error": {
+    "auth": {
+      "unauthenticated": "Entre na sua conta para continuar.",
+      "forbidden": "Permissão negada.",
+      "invalid_credentials": "E-mail ou senha inválidos.",
+      "suspended": "Conta suspensa.",
+      "otp_not_requested": "Solicite um código de verificação primeiro.",
+      "otp_expired": "O código de verificação expirou.",
+      "otp_invalid": "Código de verificação incorreto.",
+      "token_invalid": "Sessão expirada. Entre novamente.",
+      "email_exists": "E-mail já cadastrado.",
+      "email_code_too_frequent": "Aguarde antes de solicitar outro código.",
+      "email_code_too_many_attempts": "Muitas tentativas incorretas. Solicite outro código.",
+      "google_not_configured": "O acesso pelo Google não está configurado.",
+      "google_email_unverified": "E-mail do Google não verificado.",
+      "branch_selection_required": "Selecione uma unidade para continuar"
+    },
+    "company_user": {
+      "not_found": "Funcionário não encontrado.",
+      "employee_id_exists": "Matrícula já cadastrada.",
+      "role_invalid": "Perfil inválido."
+    },
+    "supplier": {
+      "not_found": "Fornecedor não encontrado.",
+      "certification_required": "A certificação do fornecedor não foi aprovada.",
+      "business_id_conflict": "Código de fornecedor já utilizado.",
+      "company_already_bound": "Já existe um vínculo com a empresa.",
+      "company_required": "Preencha os dados obrigatórios da empresa.",
+      "documents_required": "Envie os documentos de certificação necessários.",
+      "invitation_required": "É necessário um convite válido.",
+      "invitation_not_found": "Convite não encontrado.",
+      "invitation_invalid": "Convite inválido.",
+      "invitation_expired": "Convite expirado.",
+      "invitation_not_pending": "O convite não está pendente.",
+      "member_manage_forbidden": "Somente administradores do fornecedor podem gerenciar membros.",
+      "member_not_found": "Membro não encontrado.",
+      "member_role_invalid": "Perfil de membro inválido.",
+      "member_status_invalid": "Status de membro inválido.",
+      "member_last_active": "Não é possível suspender o último membro ativo.",
+      "member_primary_cannot_suspend": "Transfira a conta principal antes de suspendê-la.",
+      "member_primary_required": "É necessária uma conta principal.",
+      "member_password_weak": "A senha deve ter pelo menos 6 caracteres.",
+      "only_active_can_suspend": "Somente fornecedores ativos podem ser suspensos.",
+      "only_suspended_can_resume": "Somente fornecedores suspensos podem ser reativados.",
+      "only_pending_review_can_approve": "Somente cadastros pendentes podem ser aprovados.",
+      "only_pending_review_can_reject": "Somente cadastros pendentes podem ser rejeitados.",
+      "only_pending_or_approved_can_request_supplement": "Só é possível solicitar complementação de cadastros pendentes ou aprovados.",
+      "self_registration_branch_ambiguous": "Há várias unidades. Selecione a unidade de cadastro.",
+      "registration_branch_required": "Selecione a unidade de cadastro",
+      "lookup_key_required": "Informe o código do fornecedor ou a identificação fiscal",
+      "invalid_country": "Selecione um país ou região de registro válido",
+      "invalid_cnpj": "Informe um CNPJ válido, numérico ou alfanumérico.",
+      "cnpj_exists": "Este CNPJ já pertence a um fornecedor. Conceda acesso à instituição em vez de criar um cadastro duplicado."
+    },
+    "tender": {
+      "deadline_state": "O status atual não permite prorrogar ou reabrir esta concorrência.",
+      "deadline_conflict": "A concorrência ou a rodada foi alterada. Atualize e tente novamente.",
+      "deadline_extension_only": "O novo prazo deve ser posterior ao momento atual, ao prazo anterior e ao início.",
+      "deadline_input": "Informe prazo, motivo e comunicado válidos.",
+      "not_found": "Concorrência não encontrada.",
+      "invalid_status_transition": "Operação não permitida no status atual.",
+      "notification_resend_in_progress": "O reenvio das notificações já está em andamento.",
+      "withdraw_in_progress": "O recolhimento da concorrência já está em andamento.",
+      "deadline_passed": "O prazo para propostas terminou.",
+      "only_draft_can_edit": "Somente rascunhos podem ser editados.",
+      "cannot_invite": "Não é possível convidar fornecedores no status atual.",
+      "participant_required": "Selecione pelo menos um fornecedor participante.",
+      "invalid_participants": "Os participantes devem estar ativos e aprovados.",
+      "not_invited": "O fornecedor não foi convidado para esta rodada.",
+      "deadline_must_be_future": "O prazo deve estar no futuro.",
+      "start_must_before_deadline": "O início deve ser anterior ao prazo final.",
+      "invalid_bid_start_at": "Data de início inválida.",
+      "invalid_bid_deadline": "Prazo de proposta inválido.",
+      "import_file_required": "Selecione um arquivo para importar.",
+      "import_empty_workbook": "A planilha está vazia.",
+      "import_requires_header_and_rows": "A planilha deve conter cabeçalho e pelo menos uma linha.",
+      "import_missing_header": "A planilha não contém um cabeçalho válido.",
+      "hall_branches_required": "Selecione as unidades que podem visualizar a concorrência"
+    },
+    "lot": {
+      "not_found": "Lote não encontrado."
+    },
+    "line": {
+      "not_found": "Item não encontrado."
+    },
+    "quote": {
+      "frozen_round": "Esta rodada está congelada. Inicie outra rodada para receber novas propostas.",
+      "close_before_freeze": "Encerre as propostas antes de congelar esta rodada.",
+      "no_quotes_to_freeze": "Nenhuma proposta para congelar.",
+      "round_changed": "A rodada mudou. Atualize e confira a rodada atual.",
+      "invalid_freeze_trigger": "Tipo de snapshot não permitido.",
+      "invalid_round": "Rodada inválida.",
+      "tender_not_open": "A concorrência não está aberta para propostas.",
+      "deadline_passed": "O prazo para propostas terminou.",
+      "cooldown_active": "Aguarde o intervalo entre propostas.",
+      "rebid_limit_reached": "Limite de revisões atingido.",
+      "min_decrement_fail": "A redução mínima não foi atendida.",
+      "exchange_rate_unavailable": "Câmbio indisponível. Tente novamente mais tarde.",
+      "currency_locked": "A moeda está fixada nesta rodada. Use a moeda da primeira proposta.",
+      "currency_history_inconsistent": "As propostas históricas usam moedas diferentes. Contate o administrador.",
+      "version_conflict": "A proposta foi alterada. Atualize e tente novamente.",
+      "concurrent_submit": "Envio duplicado.",
+      "required_field_missing": "Preencha o campo obrigatório.",
+      "currency_required": "Selecione uma moeda aceita.",
+      "invalid_amount": "Informe um valor positivo com até 4 casas decimais, no máximo 100000000000."
+    },
+    "upload": {
+      "file_required": "Selecione um arquivo.",
+      "file_type_not_allowed": "Tipo de arquivo não permitido.",
+      "file_too_large": "O arquivo excede o limite de tamanho.",
+      "file_not_found": "Arquivo não encontrado ou acesso não permitido.",
+      "file_too_many": "São permitidos no máximo 5 anexos.",
+      "invalid_reference": "Referência de anexo inválida ou não autorizada."
+    },
+    "export": {
+      "full_requires_manager": "Somente gerentes de compras podem exportar dados completos."
+    },
+    "branch": {
+      "write_not_allowed": "Selecione uma unidade operacional para criar dados de negócio.",
+      "not_found": "Unidade não encontrada ou inativa",
+      "code_required": "Informe o código da unidade",
+      "code_exists": "Código da unidade já existente",
+      "hq_only": "Ação restrita à matriz",
+      "hq_cannot_be_disabled": "A matriz não pode ser desativada",
+      "member_exists": "O usuário já pertence à unidade",
+      "member_not_found": "Membro não encontrado",
+      "last_hq_admin": "Não é possível remover o último administrador da matriz",
+      "hq_role_outside_hq": "Perfis da matriz só podem ser atribuídos na matriz",
+      "branch_role_in_hq": "Membros da matriz devem usar um perfil da matriz",
+      "supplier_cannot_be_member": "Contas de fornecedores não podem ser membros de unidades",
+      "no_active_branch": "Nenhuma unidade ativa",
+      "hq_membership_requires_admin": "O acesso à matriz deve ser concedido na gestão organizacional",
+      "not_accessible": "Você não tem acesso a esta unidade",
+      "target_required": "Selecione a unidade de destino",
+      "invalid_settings": "Moeda, fuso horário ou idioma da instituição inválidos."
+    }
+  },
+  "quote": {
+    "ability": {
+      "tenderNotOpen": "Esta concorrência não está aberta para propostas.",
+      "rebidLimitReached": "O limite de revisões foi atingido.",
+      "cooldownActive": "Aguarde {seconds} segundos antes de revisar a proposta."
+    }
+  },
+  "export": {
+    "sheet": {
+      "byItem": "Análise por item",
+      "bySupplier": "Análise por fornecedor",
+      "lotData": "Dados dos lotes",
+      "summary": "Resumo",
+      "lotQuotes": "Propostas-{lotNo}"
+    },
+    "field": {
+      "roundNo": "Rodada",
+      "lotNo": "Nº do lote",
+      "lotTitle": "Nome do lote",
+      "lotDescription": "Descrição do lote",
+      "rowNo": "Linha",
+      "quantity": "Quantidade",
+      "unit": "Unidade",
+      "budgetAmount": "Orçamento",
+      "currency": "Moeda",
+      "baseCurrency": "Moeda-base",
+      "priceInBase": "Valor convertido",
+      "exchangeRate": "Taxa de câmbio",
+      "exchangeRateDate": "Data do câmbio",
+      "itemLabel": "Item",
+      "rank": "Posição",
+      "quoteNo": "Nº da proposta",
+      "supplierBusinessId": "Código do fornecedor",
+      "supplierName": "Fornecedor",
+      "supplierContact": "Contato",
+      "supplierPhone": "Telefone",
+      "supplierEmail": "E-mail",
+      "totalPrice": "Valor",
+      "version": "Versão",
+      "submittedAt": "Enviado em",
+      "remark": "Observação",
+      "submitIp": "IP",
+      "key": "Campo",
+      "value": "Valor"
+    },
+    "summary": {
+      "tenderNo": "Nº da concorrência",
+      "tenderTitle": "Nome da concorrência",
+      "exportMode": "Modo",
+      "exportView": "Visualização",
+      "exportRound": "Rodada",
+      "exportedAt": "Exportado em",
+      "operator": "Operador",
+      "modeFull": "Completo",
+      "modeMasked": "Anonimizado",
+      "viewItem": "Por item",
+      "viewSupplier": "Por fornecedor",
+      "allRounds": "Todas"
+    },
+    "hint": {
+      "noLineQuotes": "Nenhuma proposta por item.",
+      "noLotData": "Nenhum dado de lote."
+    },
+    "anonymousSupplier": "Fornecedor {seq}",
+    "lotIntegralQuote": "Proposta integral do lote"
+  },
+  "supplierAccountImport": {
+    "sheet": "Importação de contas",
+    "headers": {
+      "businessId": "Código do fornecedor (obrigatório)",
+      "email": "E-mail de acesso (obrigatório)",
+      "password": "Senha inicial (mínimo 6 caracteres)",
+      "displayName": "Nome de exibição",
+      "phone": "Telefone",
+      "locale": "Idioma (pt-BR / zh-CN / en / id-ID / vi-VN)"
+    },
+    "example": {
+      "businessId": "S-BR-00001",
+      "email": "exemplo@example.com",
+      "password": "Welcome@2026",
+      "displayName": "Exemplo",
+      "phone": "+5511999999999",
+      "locale": "pt-BR"
+    },
+    "reason": {
+      "missingBusinessId": "Código do fornecedor ausente",
+      "missingEmail": "E-mail ausente",
+      "invalidEmail": "Formato de e-mail inválido",
+      "missingPassword": "Senha inicial ausente",
+      "weakPassword": "Senha muito curta (mínimo 6 caracteres)",
+      "emailTooLong": "O e-mail deve ter no máximo 100 caracteres",
+      "displayNameTooLong": "O nome deve ter no máximo 100 caracteres",
+      "phoneTooLong": "O telefone deve ter no máximo 30 caracteres",
+      "duplicateInFile": "E-mail duplicado na planilha",
+      "emailExists": "E-mail já cadastrado",
+      "supplierNotFound": "Fornecedor não encontrado nesta unidade",
+      "supplierNotEligible": "O fornecedor não está ativo"
+    }
+  },
+  "supplierCreateImport": {
+    "sheet": "Cadastro de fornecedores",
+    "headers": {
+      "legalName": "Razão social (obrigatória)",
+      "shortName": "Nome fantasia",
+      "contactName": "Pessoa de contato",
+      "contactPhone": "Telefone",
+      "contactEmail": "E-mail de contato",
+      "taxId": "Identificação fiscal / CNPJ",
+      "countryCode": "País (padrão: unidade de destino)"
+    },
+    "example": {
+      "legalName": "Fornecedor Exemplo Ltda.",
+      "shortName": "Exemplo",
+      "contactName": "Contato",
+      "contactPhone": "+5511999999999",
+      "contactEmail": "contato@example.com",
+      "taxId": "12ABC34501DE35",
+      "countryCode": "BR"
+    },
+    "reason": {
+      "missingName": "Razão social ausente",
+      "duplicateInFile": "Registro duplicado na planilha",
+      "alreadyExists": "Já existe um fornecedor com este nome",
+      "invalidEmail": "Formato de e-mail inválido"
+    }
+  },
+  "supplierImport": {
+    "sheet": "Importação de fornecedores",
+    "headerBusinessId": "Código do fornecedor",
+    "headerName": "Nome do fornecedor (referência opcional)",
+    "exampleId": "S-BR-00001",
+    "exampleName": "Fornecedor Exemplo",
+    "reason": {
+      "notFound": "Código do fornecedor não encontrado",
+      "notEligible": "O fornecedor não está aprovado ou está suspenso",
+      "duplicate": "Registro duplicado na planilha"
+    }
+  },
+  "supplierExport": {
+    "sheet": "Fornecedores",
+    "title": "Lista de fornecedores",
+    "exportedAt": "Exportado em",
+    "total": "Registros",
+    "field": {
+      "businessId": "Código do fornecedor",
+      "legalName": "Razão social",
+      "shortName": "Nome fantasia",
+      "status": "Status",
+      "reviewStatus": "Status de análise",
+      "country": "País",
+      "contactEmail": "E-mail",
+      "contactPhone": "Telefone",
+      "contactName": "Pessoa de contato"
+    },
+    "status": {
+      "pending": "Pendente",
+      "active": "Ativo",
+      "suspended": "Suspenso",
+      "blacklisted": "Bloqueado"
+    },
+    "reviewStatus": {
+      "not_submitted": "Não enviado",
+      "pending_review": "Em análise",
+      "supplement_required": "Complementação necessária",
+      "approved": "Aprovado",
+      "rejected": "Rejeitado"
+    }
+  }
+}

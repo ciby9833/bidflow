@@ -39,3 +39,9 @@ pnpm-debug.log*
 # Local tool config
 .claude/
 .codex/
+
+# Browser test artifacts (reproducible locally)
+/frontend/test-results/
+/frontend/playwright-report/
+
+/frontend/uat-results/

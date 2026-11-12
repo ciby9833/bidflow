@@ -1,3 +1,4 @@
+import { QueryFailedError } from 'typeorm';
 /**
  * 文件：backend/src/shared/i18n/i18n.exception.filter.ts
  * 功能：全局异常过滤器，把 service 层抛出的 message_key（如 'error.tender.not_found'）翻译成当前 locale 的 message，并按 ApiResponse 结构返回。
@@ -24,16 +25,26 @@ export class I18nExceptionFilter implements ExceptionFilter {
     let code = 'INTERNAL';
     let detail: Record<string, unknown> | undefined;
 
-    if (exception instanceof HttpException) {
+    if (exception instanceof QueryFailedError && exception.driverError?.code === '23505' && exception.driverError?.constraint === 'uq_supplier_br_cnpj') {
+      status = HttpStatus.CONFLICT;
+      messageKey = 'error.supplier.cnpj_exists';
+      code = 'CNPJ_EXISTS';
+    } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const body = exception.getResponse();
+      if (typeof body === 'object') {
+        const structured = body as { message_key?: string; code?: string; detail?: Record<string, unknown> };
+        if (structured.message_key) messageKey = structured.message_key;
+        if (structured.code) code = structured.code;
+        detail = structured.detail;
+      }
       const raw = typeof body === 'string'
         ? body
         : (body as { message?: string | string[] }).message;
       const text = Array.isArray(raw) ? raw[0] : raw;
       if (text && /^error\./.test(text)) messageKey = text;
       else if (text) { messageKey = text; }
-      code = exception.constructor.name.replace(/Exception$/, '').toUpperCase();
+      if (code === 'INTERNAL') code = exception.constructor.name.replace(/Exception$/, '').toUpperCase();
     } else if (exception instanceof Error) {
       this.logger.error(exception.message, exception.stack);
     }

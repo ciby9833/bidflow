@@ -49,7 +49,9 @@
       "self_registration_branch_ambiguous": "Terdapat beberapa cabang negara; cabang untuk pemasok yang mendaftar sendiri tidak dapat ditentukan. Konfigurasikan titik masuk cabang untuk portal publik terlebih dahulu.",
       "registration_branch_required": "Silakan pilih cabang negara untuk mendaftar",
       "lookup_key_required": "Masukkan ID bisnis atau NPWP",
-      "invalid_country": "Pilih kode negara / wilayah pendaftaran perusahaan yang valid"
+      "invalid_country": "Pilih kode negara / wilayah pendaftaran perusahaan yang valid",
+      "invalid_cnpj": "Masukkan CNPJ Brasil yang valid (angka atau alfanumerik).",
+      "cnpj_exists": "CNPJ ini sudah terdaftar. Berikan akses institusi kepada pemasok yang ada."
     },
     "tender": {
       "deadline_state": "Status tender tidak mengizinkan perpanjangan atau pembukaan kembali.",
@@ -83,6 +85,12 @@
       "not_found": "Baris/item tidak ditemukan."
     },
     "quote": {
+      "frozen_round": "Putaran ini dibekukan. Mulai putaran baru untuk menerima penawaran.",
+      "close_before_freeze": "Tutup penawaran sebelum membekukan putaran ini.",
+      "no_quotes_to_freeze": "Tidak ada penawaran untuk dibekukan.",
+      "round_changed": "Putaran berubah. Muat ulang dan periksa putaran saat ini.",
+      "invalid_freeze_trigger": "Jenis snapshot tidak didukung.",
+      "invalid_round": "Putaran tidak valid.",
       "tender_not_open": "Tender tidak dibuka untuk penawaran.",
       "deadline_passed": "Tenggat penawaran telah lewat.",
       "cooldown_active": "Sedang masa cooldown. Coba lagi nanti.",
@@ -93,14 +101,16 @@
       "currency_history_inconsistent": "Riwayat penawaran pada putaran ini memakai beberapa mata uang. Hubungi administrator.",
       "version_conflict": "Konflik versi penawaran. Silakan segarkan halaman.",
       "concurrent_submit": "Pengiriman duplikat.",
-      "required_field_missing": "Kolom wajib belum diisi."
+      "required_field_missing": "Kolom wajib belum diisi.",
+      "invalid_amount": "Masukkan nilai positif dengan maksimal 4 desimal, tidak melebihi 100000000000."
     },
     "upload": {
       "file_required": "Silakan pilih berkas yang akan diunggah.",
       "file_type_not_allowed": "Tipe berkas tidak diizinkan.",
       "file_too_large": "Ukuran berkas melebihi batas.",
       "file_not_found": "Berkas tidak ditemukan.",
-      "file_too_many": "Lampiran terlalu banyak (maks 5)."
+      "file_too_many": "Lampiran terlalu banyak (maks 5).",
+      "invalid_reference": "Referensi lampiran tidak valid."
     },
     "export": {
       "full_requires_manager": "Hanya manajer pengadaan yang dapat melakukan ekspor lengkap."
@@ -121,7 +131,8 @@
       "no_active_branch": "Tidak ada cabang aktif",
       "hq_membership_requires_admin": "Keanggotaan kantor pusat harus diberikan dari konsol organisasi",
       "not_accessible": "Anda tidak memiliki akses ke cabang ini",
-      "target_required": "Silakan pilih cabang tujuan"
+      "target_required": "Silakan pilih cabang tujuan",
+      "invalid_settings": "Mata uang, zona waktu, atau bahasa institusi tidak valid."
     }
   },
   "quote": {
