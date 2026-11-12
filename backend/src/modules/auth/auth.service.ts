@@ -25,7 +25,7 @@ import { Branch, BranchStatus, BranchType } from '../organization/branch.entity'
 import {
   BranchMember, BranchMemberRole, BranchMemberStatus,
 } from '../organization/branch-member.entity';
-import { BranchContextService } from '../organization/branch-context.service';
+import { BranchContext, BranchContextService } from '../organization/branch-context.service';
 import { BranchScope } from '../../shared/tenant/branch-scope';
 import { AuditService, AuditContext } from '../../shared/audit/audit.service';
 import { AuditAction, AuditEntityType } from '../../shared/audit/audit-log.entity';
@@ -229,231 +229,175 @@ export class AuthService {
     return this.userRepo.save(user);
   }
 
-  /**
-   * 列出公司内部账号。
-   *
-   * 必须按机构过滤：账号本身虽是全局的，但「谁在这个机构工作」属于该机构的组织信息，
-   * 印尼的管理员不应看到越南的员工名单。
-   * 通过 branch_members 内联实现 —— 与供应商一样，隔离依据是成员关系而非用户表上的列。
-   */
-  async listCompanyUsers(scope: BranchScope) {
-    if (!scope.readable.length) return [];
-
-    const rows = await this.userRepo
-      .createQueryBuilder('u')
-      .innerJoin(BranchMember, 'm', 'm.auth_user_id = u.id AND m.status = :active', { active: BranchMemberStatus.ACTIVE })
-      .where('u.account_type = :type', { type: AccountType.COMPANY_USER })
-      .andWhere('m.branch_id IN (:...scope)', { scope: [...scope.readable] })
-      .select('u.id', 'id')
-      .distinct(true)
-      .getRawMany<{ id: string }>();
-
-    const users = rows.length
-      ? await this.userRepo.find({ where: { id: In(rows.map((r) => r.id)) }, order: { createdAt: 'DESC' } })
-      : [];
-    const profiles = await this.companyUserRepo.find();
-    const profileMap = new Map(profiles.map((profile) => [profile.authUserId, profile]));
-
-    // 附带机构信息：总部可跨机构查看，必须让它看出每个账号属于哪个机构
-    const memberRows = users.length
-      ? await this.userRepo.manager.query(
-        // 限定在当前作用域内：同一人可能同时是总部与某国机构成员，
-        // 若不限定，印尼的列表会把他显示成"越南"，与查看者的视角不符。
-        `SELECT m.auth_user_id AS "userId", b.code, b.name, m.role
-         FROM branch_members m JOIN branches b ON b.id = m.branch_id
-         WHERE m.auth_user_id = ANY($1::uuid[]) AND m.status = 'active'
-           AND m.branch_id = ANY($2::uuid[])`,
-        [users.map((u) => u.id), [...scope.readable]],
-      )
-      : [];
-    const branchMap = new Map<string, { code: string; name: string; role: string }>(
-      memberRows.map((r: any) => [r.userId, { code: r.code, name: r.name, role: r.role }]),
-    );
-
-    return users.map((user) => {
-      const profile = profileMap.get(user.id);
-      return {
-        id: user.id,
-        email: user.email,
-        loginName: user.loginName,
-        displayName: user.displayName,
-        role: user.role,
-        status: user.status,
-        accountType: user.accountType,
-        registerSource: user.registerSource,
-        employeeId: profile?.employeeId ?? user.employeeId,
-        fullName: profile?.fullName ?? user.displayName,
-        companyName: profile?.companyName,
-        companyUserId: profile?.id,
-        branch: branchMap.get(user.id) ?? null,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      };
+  /** Employee administration has its own HQ scope, including headquarters itself. */
+  async companyUserBranches(context: BranchContext) {
+    return this.ds.getRepository(Branch).find({
+      where: { status: BranchStatus.ACTIVE, ...(context.isHq ? {} : { id: In(context.scope.readable as string[]) }) },
+      order: { code: 'ASC' },
     });
   }
 
-  /**
-   * 创建公司内部账号。
-   *
-   * branchId 必填：公司用户的数据可见范围完全由机构成员关系决定，
-   * 不分配机构的账号登录后看不到任何数据（fail-closed），属于创建即失效的坏账号。
-   * 因此机构归属与账号在同一事务内建立，不允许出现"先建人、以后再分配"的中间态。
-   */
+  private employeeBranch(context: BranchContext, requested?: string) {
+    if (context.isHq) {
+      if (!requested) throw new BadRequestException('error.branch.target_required');
+      return requested;
+    }
+    const own = context.scope.writable;
+    if (!own || (requested && requested !== own)) throw new ForbiddenException('error.branch.not_accessible');
+    return own;
+  }
+
+  private assertEmployeeRole(context: BranchContext, role: BranchMemberRole, currentRole?: BranchMemberRole) {
+    if (context.isHq || context.activeRole === BranchMemberRole.SUPER_ADMIN) return;
+    const allowed = [BranchMemberRole.PURCHASE_MANAGER, BranchMemberRole.PURCHASE_STAFF, BranchMemberRole.EVALUATOR];
+    if (context.activeRole !== BranchMemberRole.PURCHASE_MANAGER || !allowed.includes(role)
+      || (currentRole && !allowed.includes(currentRole))) throw new ForbiddenException('error.auth.forbidden');
+  }
+
+  private assertEmployeeBranchRole(branch: Branch, role: BranchMemberRole) {
+    if (!Object.values(BranchMemberRole).includes(role)) throw new BadRequestException('error.company_user.role_invalid');
+    if ((branch.type === BranchType.HQ) !== (role === BranchMemberRole.HQ_ADMIN)) {
+      throw new BadRequestException(branch.type === BranchType.HQ ? 'error.branch.branch_role_in_hq' : 'error.branch.hq_role_outside_hq');
+    }
+  }
+
+  async listCompanyUsers(context: BranchContext) {
+    const branches = await this.companyUserBranches(context);
+    if (!branches.length) return [];
+    // One row per membership: a person may have different roles/statuses in different institutions.
+    const members = await this.ds.getRepository(BranchMember).find({ where: { branchId: In(branches.map(b => b.id)) } });
+    if (!members.length) return [];
+    const ids = [...new Set(members.map(m => m.authUserId))];
+    const users = await this.userRepo.find({ where: { id: In(ids), accountType: AccountType.COMPANY_USER } });
+    const profiles = await this.companyUserRepo.find({ where: { authUserId: In(ids) } });
+    const counts = await this.ds.getRepository(BranchMember).createQueryBuilder('m')
+      .select('m.auth_user_id', 'id').addSelect('COUNT(*)::int', 'count')
+      .where('m.auth_user_id IN (:...ids)', { ids }).groupBy('m.auth_user_id').getRawMany();
+    const userMap = new Map(users.map(u => [u.id, u]));
+    const profileMap = new Map(profiles.map(p => [p.authUserId, p]));
+    const branchMap = new Map(branches.map(b => [b.id, b]));
+    const countMap = new Map(counts.map(c => [c.id, Number(c.count)]));
+    return members.filter(m => userMap.has(m.authUserId)).map(m => {
+      const user = userMap.get(m.authUserId)!;
+      const profile = profileMap.get(user.id);
+      const branch = branchMap.get(m.branchId)!;
+      let editable = true;
+      try { this.assertEmployeeRole(context, m.role, m.role); } catch { editable = false; }
+      return {
+        id: user.id, membershipId: m.id, email: user.email, loginName: user.loginName,
+        displayName: user.displayName, role: m.role,
+        status: user.status === UserStatus.ACTIVE && m.status === BranchMemberStatus.ACTIVE ? 'active' : 'suspended',
+        accountStatus: user.status, accountType: user.accountType, registerSource: user.registerSource,
+        employeeId: profile?.employeeId ?? user.employeeId, fullName: profile?.fullName ?? user.displayName,
+        companyName: profile?.companyName, companyUserId: profile?.id,
+        branch: { id: branch.id, code: branch.code, name: branch.name, type: branch.type, role: m.role },
+        editable, profileEditable: context.isHq || countMap.get(user.id) === 1,
+        createdAt: user.createdAt, updatedAt: user.updatedAt,
+      };
+    }).sort((a,b) => b.createdAt.getTime() - a.createdAt.getTime() || a.branch.code.localeCompare(b.branch.code));
+  }
+
   async createCompanyUser(data: {
-    email: string;
-    password: string;
-    role: UserRole;
-    fullName: string;
-    branchId: string;
-    employeeId?: string;
-    companyName?: string;
-  }, ctx: AuditContext) {
-    if (data.role === UserRole.SUPPLIER) {
-      throw new BadRequestException('error.company_user.role_invalid');
+    email: string; password: string; role: BranchMemberRole; fullName: string;
+    branchId?: string; employeeId?: string; companyName?: string;
+  }, ctx: AuditContext, context: BranchContext) {
+    const branchId = this.employeeBranch(context, data.branchId);
+    this.assertEmployeeRole(context, data.role);
+    const email = this.normalizeEmail(data.email);
+    if (await this.userRepo.findOne({ where: [{ email }, { loginName: email }] })) {
+      throw new BadRequestException('error.auth.email_exists');
     }
-    const existing = await this.userRepo.findOne({
-      where: [
-        { email: data.email },
-        { loginName: data.email },
-      ],
-    });
-    if (existing) throw new BadRequestException('error.auth.email_exists');
-
-    if (data.employeeId) {
-      const employeeExists = await this.companyUserRepo.findOne({ where: { employeeId: data.employeeId } });
-      if (employeeExists) throw new BadRequestException('error.company_user.employee_id_exists');
+    if (data.employeeId && await this.companyUserRepo.findOne({ where: { employeeId: data.employeeId } })) {
+      throw new BadRequestException('error.company_user.employee_id_exists');
     }
-
     const passwordHash = await argon2.hash(data.password);
-    const result = await this.ds.transaction(async (em) => {
-      const user = em.create(User, {
-        email: data.email,
-        loginName: data.email,
-        passwordHash,
-        accountType: AccountType.COMPANY_USER,
-        registerSource: RegisterSource.INTERNAL_CREATED,
-        tokenVersion: 0,
-        role: data.role,
-        displayName: data.fullName,
-        employeeId: data.employeeId,
-        status: UserStatus.ACTIVE,
-      });
-      const savedUser = await em.save(user);
-      const companyUser = em.create(CompanyUser, {
-        authUserId: savedUser.id,
-        companyName: data.companyName,
-        fullName: data.fullName,
-        employeeId: data.employeeId,
-        status: 'active',
-        createdBy: ctx.userId,
-      });
-      const savedCompanyUser = await em.save(companyUser);
-
-      // 机构归属与账号同事务建立；机构不存在或已停用时整体回滚，不留下无归属账号
-      const branch = await em.findOne(Branch, {
-        where: { id: data.branchId, status: BranchStatus.ACTIVE },
-      });
+    const result = await this.ds.transaction(async em => {
+      const branch = await em.findOne(Branch, { where: { id: branchId, status: BranchStatus.ACTIVE }, lock: { mode: 'pessimistic_write' } });
       if (!branch) throw new BadRequestException('error.branch.not_found');
-
-      // 角色必须与机构类型匹配：总部只能持总部角色，国家机构不得使用总部角色。
-      // 与 organization.service.ts 的 assertRoleFitsBranch 同一约束，此处是建号入口的把关。
-      const isHqBranch = branch.type === BranchType.HQ;
-      const role = isHqBranch ? BranchMemberRole.HQ_ADMIN : (data.role as unknown as BranchMemberRole);
-      await em.save(em.create(BranchMember, {
-        branchId: branch.id,
-        authUserId: savedUser.id,
-        role,
-        status: BranchMemberStatus.ACTIVE,
-        createdBy: ctx.userId,
+      this.assertEmployeeBranchRole(branch, data.role);
+      const user = await em.save(em.create(User, {
+        email, loginName: email, passwordHash, accountType: AccountType.COMPANY_USER,
+        registerSource: RegisterSource.INTERNAL_CREATED, tokenVersion: 0,
+        // Legacy column is not an authorization source. HQ permissions require actual HQ membership.
+        role: data.role === BranchMemberRole.HQ_ADMIN ? UserRole.PURCHASE_STAFF : data.role as unknown as UserRole,
+        displayName: data.fullName, employeeId: data.employeeId, status: UserStatus.ACTIVE,
       }));
-
-      return { user: savedUser, companyUser: savedCompanyUser, branch };
+      await em.save(em.create(CompanyUser, {
+        authUserId: user.id, companyName: data.companyName, fullName: data.fullName,
+        employeeId: data.employeeId, status: 'active', createdBy: ctx.userId,
+      }));
+      const membership = await em.save(em.create(BranchMember, {
+        branchId, authUserId: user.id, role: data.role, status: BranchMemberStatus.ACTIVE, createdBy: ctx.userId,
+      }));
+      return { id: user.id, email, role: membership.role, status: user.status, branchId };
     });
-
-    await this.audit.log(
-      ctx,
-      AuditEntityType.USER,
-      result.user.id,
-      AuditAction.USER_CREATE,
-      undefined,
-      {
-        email: result.user.email,
-        role: result.user.role,
-        employeeId: result.companyUser.employeeId,
-      },
-    );
-
-    return {
-      id: result.user.id,
-      email: result.user.email,
-      displayName: result.user.displayName,
-      role: result.user.role,
-      status: result.user.status,
-      employeeId: result.companyUser.employeeId,
-      fullName: result.companyUser.fullName,
-      companyName: result.companyUser.companyName,
-    };
+    await this.audit.log(ctx, AuditEntityType.USER, result.id, AuditAction.USER_CREATE, undefined, {
+      email, role: data.role, branchId,
+    });
+    return result;
   }
 
   async updateCompanyUser(id: string, data: {
-    role?: UserRole;
-    status?: UserStatus;
-    fullName?: string;
-    employeeId?: string;
-    companyName?: string;
-  }, ctx: AuditContext) {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user || user.accountType !== AccountType.COMPANY_USER) {
-      throw new BadRequestException('error.company_user.not_found');
-    }
-    if (data.role === UserRole.SUPPLIER) {
-      throw new BadRequestException('error.company_user.role_invalid');
-    }
-    const profile = await this.companyUserRepo.findOne({ where: { authUserId: id } });
-    const beforeState = {
-      role: user.role,
-      status: user.status,
-      displayName: user.displayName,
-      employeeId: profile?.employeeId ?? user.employeeId,
-      fullName: profile?.fullName,
-      companyName: profile?.companyName,
-    };
-
-    if (data.employeeId) {
-      const employeeExists = await this.companyUserRepo.findOne({ where: { employeeId: data.employeeId } });
-      if (employeeExists && employeeExists.authUserId !== id) {
-        throw new BadRequestException('error.company_user.employee_id_exists');
+    branchId?: string; role?: BranchMemberRole; status?: UserStatus;
+    fullName?: string; employeeId?: string; companyName?: string;
+  }, ctx: AuditContext, context: BranchContext) {
+    const branchId = this.employeeBranch(context, data.branchId);
+    const before = await this.ds.transaction(async em => {
+      // Serialize membership changes within an institution, including last-admin checks.
+      const branch = await em.findOne(Branch, { where: { id: branchId, status: BranchStatus.ACTIVE }, lock: { mode: 'pessimistic_write' } });
+      if (!branch) throw new BadRequestException('error.branch.not_found');
+      const user = await em.findOne(User, { where: { id, accountType: AccountType.COMPANY_USER }, lock: { mode: 'pessimistic_write' } });
+      const member = await em.findOne(BranchMember, { where: { authUserId: id, branchId } });
+      if (!user || !member) throw new ForbiddenException('error.branch.not_accessible');
+      const role = data.role ?? member.role;
+      this.assertEmployeeRole(context, role, member.role);
+      this.assertEmployeeBranchRole(branch, role);
+      const status = data.status === undefined ? member.status
+        : data.status === UserStatus.ACTIVE ? BranchMemberStatus.ACTIVE : BranchMemberStatus.INACTIVE;
+      if (member.status === BranchMemberStatus.ACTIVE
+        && [BranchMemberRole.HQ_ADMIN, BranchMemberRole.SUPER_ADMIN].includes(member.role)
+        && (role !== member.role || status !== BranchMemberStatus.ACTIVE)) {
+        const remaining = await em.getRepository(BranchMember).createQueryBuilder('m')
+          .innerJoin(User, 'u', 'u.id=m.auth_user_id AND u.status=:activeUser', { activeUser: UserStatus.ACTIVE })
+          .where('m.branch_id=:branchId AND m.role=:role AND m.status=:status AND m.id<>:id',
+            { branchId, role: member.role, status: BranchMemberStatus.ACTIVE, id: member.id }).getCount();
+        if (!remaining) throw new BadRequestException(branch.type === BranchType.HQ ? 'error.branch.last_hq_admin' : 'error.branch.last_branch_admin');
       }
-    }
-
-    await this.ds.transaction(async (em) => {
-      const userPatch: Partial<User> = {};
-      if (data.role) userPatch.role = data.role;
-      if (data.status) {
-        userPatch.status = data.status;
-        userPatch.tokenVersion = user.tokenVersion + 1;
+      const profile = await em.findOne(CompanyUser, { where: { authUserId: id } });
+      const profileChanged = (data.fullName !== undefined && data.fullName !== (profile?.fullName ?? user.displayName))
+        || (data.employeeId !== undefined && data.employeeId !== (profile?.employeeId ?? user.employeeId ?? ''))
+        || (data.companyName !== undefined && data.companyName !== (profile?.companyName ?? ''));
+      if (profileChanged && !context.isHq && await em.count(BranchMember, { where: { authUserId: id } }) > 1) {
+        throw new ForbiddenException('error.company_user.shared_profile');
       }
-      if (data.fullName) userPatch.displayName = data.fullName;
+      if (data.employeeId) {
+        const existing = await em.findOne(CompanyUser, { where: { employeeId: data.employeeId } });
+        if (existing && existing.authUserId !== id) throw new BadRequestException('error.company_user.employee_id_exists');
+      }
+      // Legacy employee management suspended the global account. Only HQ may restore it.
+      // Preserve every other institution's effective suspension when enabling the chosen membership.
+      const restoreAccount = data.status === UserStatus.ACTIVE && user.status === UserStatus.SUSPENDED;
+      if (restoreAccount && !context.isHq) throw new ForbiddenException('error.company_user.account_suspended');
+      if (restoreAccount) {
+        await em.update(BranchMember, { authUserId: id }, { status: BranchMemberStatus.INACTIVE });
+      }
+      const permissionChanged = restoreAccount || member.role !== role || member.status !== status;
+      await em.update(BranchMember, member.id, { role, status });
+      const userPatch: any = {};
+      if (restoreAccount) userPatch.status = UserStatus.ACTIVE;
+      if (data.fullName !== undefined) userPatch.displayName = data.fullName;
       if (data.employeeId !== undefined) userPatch.employeeId = data.employeeId;
+      if (permissionChanged) userPatch.tokenVersion = () => 'token_version + 1';
       if (Object.keys(userPatch).length) await em.update(User, id, userPatch);
-
       const profilePatch: Partial<CompanyUser> = {};
-      if (data.fullName) profilePatch.fullName = data.fullName;
+      if (restoreAccount) profilePatch.status = 'active';
+      if (data.fullName !== undefined) profilePatch.fullName = data.fullName;
       if (data.employeeId !== undefined) profilePatch.employeeId = data.employeeId;
       if (data.companyName !== undefined) profilePatch.companyName = data.companyName;
-      if (data.status) profilePatch.status = data.status;
-      if (Object.keys(profilePatch).length) await em.update(CompanyUser, { authUserId: id }, profilePatch);
+      if (profile && Object.keys(profilePatch).length) await em.update(CompanyUser, profile.id, profilePatch);
+      return { role: member.role, status: member.status, branchId };
     });
-
-    await this.audit.log(
-      ctx,
-      AuditEntityType.USER,
-      id,
-      AuditAction.USER_UPDATE,
-      beforeState,
-      data as Record<string, unknown>,
-    );
-
+    await this.audit.log(ctx, AuditEntityType.USER, id, AuditAction.USER_UPDATE, before, { ...data, branchId });
     return { updated: true };
   }
 
@@ -736,20 +680,24 @@ export class AuthService {
       ? available
       : await this.branchContext.resolve(user.id, entry.branchId, profile.user.supplierId);
 
+    if (user.accountType === AccountType.COMPANY_USER && !branch.activeBranchId) {
+      throw new ForbiddenException('error.branch.not_accessible');
+    }
+
     // 记住本次入口，下次登录直接进入
     if (branch.activeBranchId && branch.activeBranchId !== user.lastBranchId) {
       await this.userRepo.update(user.id, { lastBranchId: branch.activeBranchId });
     }
 
     profile.scopes = scopesForAccount({ ...user, branch });
-    if (user.accountType === AccountType.COMPANY_USER && !branch.isHq && branch.activeRole) profile.user.role = String(branch.activeRole) as UserRole;
+    if (user.accountType === AccountType.COMPANY_USER && branch.activeRole) profile.user.role = String(branch.activeRole) as UserRole;
     const payload: JwtPayload = {
       sub: user.id,
       accountType: user.accountType,
       principalId: profile.principalId,
       scope: profile.scopes,
       tokenVersion: user.tokenVersion,
-      role: user.role,
+      role: profile.user.role,
       email: user.email,
       supplierId: profile.user.supplierId,
       activeBranchId: branch.activeBranchId,

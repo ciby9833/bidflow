@@ -205,7 +205,7 @@ const roleOptions = computed(() => (currentBranch.value?.type === 'HQ'
 /** 已在本机构的用户不再出现在候选中，避免提交后才报"已是成员" */
 const assignableUsers = computed(() => {
   const existing = new Set(members.value.map((m) => m.userId));
-  return allUsers.value.filter((u) => !existing.has(u.id));
+  return [...new Map(allUsers.value.map(u => [u.id, u])).values()].filter((u) => !existing.has(u.id));
 });
 
 async function load() {

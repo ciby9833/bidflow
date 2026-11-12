@@ -7,9 +7,12 @@
 <template>
   <main class="user-form" v-loading="loading">
     <section class="group">
+      <el-form v-if="!isEdit"><TargetBranchSelect v-model="form.branchId" include-headquarters @branch-change="selectedBranchType = $event?.type || ''" /></el-form>
+      <label v-else><span>{{ t('org.targetBranch') }}</span><strong>{{ editingUser?.branch.name }}</strong></label>
+      <p v-if="editingUser && !editingUser.profileEditable">{{ t('userList.sharedProfile') }}</p>
       <label>
         <span>姓名</span>
-        <input v-model.trim="form.fullName" placeholder="请输入姓名" />
+        <input v-model.trim="form.fullName" :disabled="!!editingUser && !editingUser.profileEditable" placeholder="请输入姓名" />
       </label>
       <label>
         <span>账号邮箱</span>
@@ -21,11 +24,11 @@
       </label>
       <label>
         <span>员工ID</span>
-        <input v-model.trim="form.employeeId" placeholder="可选" />
+        <input v-model.trim="form.employeeId" :disabled="!!editingUser && !editingUser.profileEditable" placeholder="可选" />
       </label>
       <label>
         <span>公司名称</span>
-        <input v-model.trim="form.companyName" placeholder="可选" />
+        <input v-model.trim="form.companyName" :disabled="!!editingUser && !editingUser.profileEditable" placeholder="可选" />
       </label>
       <button class="select-row" type="button" @click="openPicker('role')">
         <span>角色</span>
@@ -58,27 +61,41 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { api } from '../../../composables/useApi';
 import {
-  roleOptions, roleText, statusOptions, statusText,
+  roleOptions as branchRoles, roleText, statusOptions, statusText,
 } from './user-options';
 
+import { useAuthStore } from '../../../stores/auth';
+import { useI18n } from 'vue-i18n';
+import TargetBranchSelect from '../../../components/TargetBranchSelect.vue';
+const auth = useAuthStore();
+const { t } = useI18n();
+const editingUser = ref<any>(null);
+const selectedBranchType = ref('');
+const roleOptions = computed(() => (editingUser.value?.branch.type || selectedBranchType.value) === 'HQ'
+  ? [{ label: t('org.role_hq_admin'), value: 'hq_admin' }]
+  : branchRoles.filter(r => auth.isHq || auth.activeBranch?.role === 'super_admin' || r.value !== 'super_admin'));
 const route = useRoute();
+const userId = String(route.params.id || '');
+const branchId = String(route.query.branchId || '');
+const editing = route.path.endsWith('/edit');
 const router = useRouter();
 const loading = ref(false);
 const saving = ref(false);
 const pickerType = ref<'role' | 'status' | ''>('');
-const isEdit = computed(() => route.path.endsWith('/edit'));
+const isEdit = computed(() => editing);
 const pickerOpen = computed(() => Boolean(pickerType.value));
-const pickerOptions = computed(() => (pickerType.value === 'status' ? statusOptions : roleOptions));
+const pickerOptions = computed(() => (pickerType.value === 'status' ? statusOptions : roleOptions.value));
 const pickerValue = computed(() => (pickerType.value === 'status' ? form.status : form.role));
 const roleLabel = computed(() => roleText(form.role));
 const statusLabel = computed(() => statusText(form.status));
 
 const form = reactive({
+  branchId: '',
   email: '',
   password: '',
   role: 'purchase_staff',
@@ -107,8 +124,10 @@ async function load() {
   loading.value = true;
   try {
     const users = (await api.get('/api/company-users')).data.data ?? [];
-    const user = users.find((item: any) => item.id === route.params.id);
-    if (!user) return;
+    const user = users.find((item: any) => item.id === userId && (!branchId || item.branch.id === branchId));
+    if (!user || !user.editable || !auth.hasScope('user:edit')) { router.replace('/m/console/users'); return; }
+    editingUser.value = user;
+    form.branchId = user.branch.id;
     form.email = user.email;
     form.role = user.role;
     form.fullName = user.fullName || user.displayName || '';
@@ -125,31 +144,37 @@ async function save() {
     ElMessage.error('请填写必填项');
     return;
   }
+  if (!isEdit.value && auth.isHq && !form.branchId) { ElMessage.error(t('org.selectTargetBranch')); return; }
   saving.value = true;
   try {
     const payload = {
-      fullName: form.fullName,
-      employeeId: form.employeeId || undefined,
-      companyName: form.companyName || undefined,
+      branchId: form.branchId || undefined,
+      fullName: editingUser.value && !editingUser.value.profileEditable ? undefined : form.fullName,
+      employeeId: editingUser.value && !editingUser.value.profileEditable ? undefined : form.employeeId || undefined,
+      companyName: editingUser.value && !editingUser.value.profileEditable ? undefined : form.companyName || undefined,
       role: form.role,
       status: form.status,
     };
     if (isEdit.value) {
-      await api.patch(`/api/company-users/${route.params.id}`, payload);
-      router.replace(`/m/console/users/${route.params.id}`);
+      await api.patch(`/api/company-users/${userId}`, payload);
+      if (userId === auth.user?.id) await auth.loadMe();
+      if (auth.isLoggedIn) router.replace({ path: `/m/console/users/${userId}`, query: { branchId: form.branchId } });
     } else {
       const res = await api.post('/api/company-users', {
         ...payload,
         email: form.email,
         password: form.password,
       });
-      router.replace(`/m/console/users/${res.data.data.id}`);
+      router.replace({ path: `/m/console/users/${res.data.data.id}`, query: { branchId: res.data.data.branchId } });
     }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.error?.message || t('org.update_failed'));
   } finally {
     saving.value = false;
   }
 }
 
+watch(roleOptions, options => { if (!options.some(r => r.value === form.role)) form.role = options[0]?.value || ''; });
 onMounted(load);
 </script>
 

@@ -19,7 +19,9 @@
     "company_user": {
       "not_found": "Employee not found.",
       "employee_id_exists": "Employee ID already exists.",
-      "role_invalid": "Role is invalid."
+      "role_invalid": "Role is invalid.",
+      "shared_profile": "Shared employee details must be updated by headquarters",
+      "account_suspended": "This account is globally suspended"
     },
     "supplier": {
       "not_found": "Supplier not found.",
@@ -132,7 +134,8 @@
       "hq_membership_requires_admin": "Headquarters membership must be granted from the organization console",
       "not_accessible": "You do not have access to this branch",
       "target_required": "Please select a target branch",
-      "invalid_settings": "Invalid institution currency, timezone or language."
+      "invalid_settings": "Invalid institution currency, timezone or language.",
+      "last_branch_admin": "Cannot disable or demote the last branch administrator"
     }
   },
   "quote": {

@@ -25,6 +25,7 @@
       <el-table-column prop="employeeId" :label="t('userList.employeeId')" width="140">
         <template #default="{ row }">{{ row.employeeId || '—' }}</template>
       </el-table-column>
+      <el-table-column v-if="auth.isHq" :label="t('org.targetBranch')" min-width="180"><template #default="{ row }">{{ row.branch.name }}</template></el-table-column>
       <el-table-column prop="role" :label="t('userList.role')" width="170">
         <template #default="{ row }">{{ roleText(row.role) }}</template>
       </el-table-column>
@@ -38,7 +39,7 @@
       </el-table-column>
       <el-table-column v-if="auth.hasScope('user:edit')" :label="t('common.actions')" width="120" align="right">
         <template #default="{ row }">
-          <el-button size="small" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
+          <el-button v-if="row.editable" size="small" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -46,10 +47,10 @@
     <section class="mobile-cards" v-loading="loading">
       <button
         v-for="row in users"
-        :key="row.id"
+        :key="row.membershipId"
         class="mobile-card"
         type="button"
-        @click="auth.hasScope('user:edit') && openEdit(row)"
+        @click="auth.hasScope('user:edit') && row.editable && openEdit(row)"
       >
         <div class="card-main">
           <span class="avatar">{{ avatarText(row) }}</span>
@@ -59,7 +60,7 @@
           </div>
         </div>
         <div class="card-meta">
-          <span>{{ roleText(row.role) }}</span>
+          <span v-if="auth.isHq">{{ row.branch.name }}</span><span>{{ roleText(row.role) }}</span>
           <span>{{ row.employeeId || t('userList.employeeIdUnset') }}</span>
           <span class="chip" :class="row.status === 'active' ? 'ok' : 'warn'">{{ statusText(row.status) }}</span>
         </div>
@@ -69,9 +70,11 @@
 
     <el-dialog v-model="dialogVisible" :title="editingUser ? t('route.userEdit') : t('route.userCreate')" width="520px" class="adaptive-dialog">
       <el-form label-width="96px">
-        <TargetBranchSelect v-if="!editingUser" v-model="form.branchId" />
+        <TargetBranchSelect v-if="!editingUser" v-model="form.branchId" include-headquarters @branch-change="selectedBranchType = $event?.type || ''" />
+        <el-form-item v-else :label="t('org.targetBranch')">{{ editingUser.branch.name }}</el-form-item>
+        <p v-if="editingUser && !editingUser.profileEditable">{{ t('userList.sharedProfile') }}</p>
         <el-form-item :label="t('userList.name')" required>
-          <el-input v-model="form.fullName" :placeholder="t('userList.namePlaceholder')" />
+          <el-input v-model="form.fullName" :disabled="!!editingUser && !editingUser.profileEditable" :placeholder="t('userList.namePlaceholder')" />
         </el-form-item>
         <el-form-item :label="t('userList.accountEmail')" required>
           <el-input v-model="form.email" :disabled="!!editingUser" placeholder="name@company.com" />
@@ -80,10 +83,10 @@
           <el-input v-model="form.password" type="password" show-password :placeholder="t('userList.passwordPlaceholder')" />
         </el-form-item>
         <el-form-item :label="t('userList.employeeId')">
-          <el-input v-model="form.employeeId" :placeholder="t('userList.employeeIdPlaceholder')" />
+          <el-input v-model="form.employeeId" :disabled="!!editingUser && !editingUser.profileEditable" :placeholder="t('userList.employeeIdPlaceholder')" />
         </el-form-item>
         <el-form-item :label="t('userList.companyName')">
-          <el-input v-model="form.companyName" :placeholder="t('common.optional')" />
+          <el-input v-model="form.companyName" :disabled="!!editingUser && !editingUser.profileEditable" :placeholder="t('common.optional')" />
         </el-form-item>
         <el-form-item :label="t('userList.role')" required>
           <el-select v-model="form.role" class="field">
@@ -106,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onActivated, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import dayjs from 'dayjs';
 import { ElMessage } from 'element-plus';
@@ -122,12 +125,14 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const editingUser = ref<any | null>(null);
 
-const roleOptions = computed(() => [
-  { label: t('userRole.super_admin'), value: 'super_admin' },
-  { label: t('userRole.purchase_manager'), value: 'purchase_manager' },
-  { label: t('userRole.purchase_staff'), value: 'purchase_staff' },
-  { label: t('userRole.evaluator'), value: 'evaluator' },
-]);
+const selectedBranchType = ref('');
+const roleOptions = computed(() => {
+  const type = editingUser.value?.branch.type || selectedBranchType.value;
+  const roles = type === 'HQ' ? ['hq_admin'] : (auth.isHq || auth.activeBranch?.role === 'super_admin'
+    ? ['super_admin', 'purchase_manager', 'purchase_staff', 'evaluator']
+    : ['purchase_manager', 'purchase_staff', 'evaluator']);
+  return roles.map(value => ({ value, label: value === 'hq_admin' ? t('org.role_hq_admin') : t(`userRole.${value}`) }));
+});
 
 const form = reactive({
   branchId: '',
@@ -141,7 +146,7 @@ const form = reactive({
 });
 
 function roleText(role: string) {
-  return roleOptions.value.find((item) => item.value === role)?.label ?? role;
+  return role === 'hq_admin' ? t('org.role_hq_admin') : t(`userRole.${role}`);
 }
 
 function statusText(status: string) {
@@ -158,6 +163,7 @@ function fmt(value: string) {
 
 function resetForm() {
   form.branchId = '';
+  selectedBranchType.value = '';
   form.email = '';
   form.password = '';
   form.role = 'purchase_staff';
@@ -175,6 +181,7 @@ function openCreate() {
 
 function openEdit(row: any) {
   editingUser.value = row;
+  form.branchId = row.branch.id;
   form.email = row.email;
   form.password = '';
   form.role = row.role;
@@ -194,13 +201,22 @@ async function load() {
   }
 }
 
+watch(roleOptions, options => {
+  if (!options.some(o => o.value === form.role)) form.role = options[0]?.value || '';
+});
+
 async function save() {
+  if (!form.fullName.trim() || !form.email.trim() || (!editingUser.value && (form.password.length < 6 || (auth.isHq && !form.branchId)))) {
+    ElMessage.error(t('org.required_fields'));
+    return;
+  }
   saving.value = true;
   try {
     const payload = {
-      fullName: form.fullName,
-      employeeId: form.employeeId || undefined,
-      companyName: form.companyName || undefined,
+      branchId: form.branchId || undefined,
+      fullName: editingUser.value && !editingUser.value.profileEditable ? undefined : form.fullName,
+      employeeId: editingUser.value && !editingUser.value.profileEditable ? undefined : form.employeeId || undefined,
+      companyName: editingUser.value && !editingUser.value.profileEditable ? undefined : form.companyName || undefined,
       role: form.role,
       status: form.status,
     };
@@ -216,13 +232,16 @@ async function save() {
       ElMessage.success(t('userList.created'));
     }
     dialogVisible.value = false;
-    await load();
+    if (editingUser.value?.id === auth.user?.id) await auth.loadMe();
+    if (auth.isLoggedIn) await load();
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.error?.message || t('org.update_failed'));
   } finally {
     saving.value = false;
   }
 }
 
-onMounted(load);
+onActivated(load);
 </script>
 
 <style scoped>

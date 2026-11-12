@@ -7,12 +7,12 @@
 <template>
   <main class="user-list" v-loading="loading">
     <section class="group">
-      <button v-for="row in users" :key="row.id" class="user-row" type="button" @click="router.push(`/m/console/users/${row.id}`)">
+      <button v-for="row in users" :key="row.membershipId" class="user-row" type="button" @click="router.push({ path: `/m/console/users/${row.id}`, query: { branchId: row.branch.id } })">
         <span class="avatar">{{ avatarText(row) }}</span>
         <span class="content">
           <strong>{{ row.fullName || row.displayName }}</strong>
           <small>{{ row.email }}</small>
-          <em>{{ roleText(row.role) }} · {{ row.employeeId || '未设置员工ID' }}</em>
+          <em>{{ row.branch.name }} · {{ roleText(row.role) }} · {{ row.employeeId || '未设置员工ID' }}</em>
         </span>
         <span class="status" :class="row.status === 'active' ? 'ok' : 'warn'">{{ statusText(row.status) }}</span>
       </button>

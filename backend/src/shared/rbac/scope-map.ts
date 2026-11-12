@@ -18,7 +18,7 @@ export const HQ_SCOPES = [
   'tender:view', 'supplier:view', 'quote:view_all', // 汇总查看
   'export:masked',
   // Delegated supplier administration still requires an explicit, validated target institution.
-  'supplier:create', 'supplier:edit', 'user:view',
+  'supplier:create', 'supplier:edit', 'user:view', 'user:create', 'user:edit',
 ];
 
 export const SCOPE_MAP: Record<UserRole, string[]> = {
@@ -27,7 +27,7 @@ export const SCOPE_MAP: Record<UserRole, string[]> = {
     'tender:view', 'tender:create', 'tender:edit', 'tender:publish', 'tender:close', 'tender:deadline_adjust',
     'supplier:view', 'supplier:create', 'supplier:edit',
     'quote:view_all', 'export:full', 'export:masked',
-    'admin:unlock', 'eval:freeze', 'user:view',
+    'admin:unlock', 'eval:freeze', 'user:view', 'user:create', 'user:edit',
   ],
   purchase_staff: [
     'tender:view', 'tender:create', 'tender:edit', 'supplier:view', 'supplier:create',

@@ -19,7 +19,9 @@
     "company_user": {
       "not_found": "Không tìm thấy nhân viên.",
       "employee_id_exists": "ID nhân viên đã tồn tại.",
-      "role_invalid": "Vai trò không hợp lệ."
+      "role_invalid": "Vai trò không hợp lệ.",
+      "shared_profile": "Thông tin nhân viên dùng chung phải do trụ sở cập nhật",
+      "account_suspended": "Tài khoản này bị vô hiệu hóa toàn hệ thống"
     },
     "supplier": {
       "not_found": "Không tìm thấy nhà cung cấp.",
@@ -132,7 +134,8 @@
       "hq_membership_requires_admin": "Thành viên trụ sở chính phải được cấp từ bảng điều khiển của tổ chức",
       "not_accessible": "Bạn không có quyền truy cập vào chi nhánh này",
       "target_required": "Vui lòng chọn chi nhánh mục tiêu",
-      "invalid_settings": "Tiền tệ, múi giờ hoặc ngôn ngữ của đơn vị không hợp lệ."
+      "invalid_settings": "Tiền tệ, múi giờ hoặc ngôn ngữ của đơn vị không hợp lệ.",
+      "last_branch_admin": "Không thể vô hiệu hóa hoặc hạ quyền quản trị viên cuối cùng"
     }
   },
   "quote": {

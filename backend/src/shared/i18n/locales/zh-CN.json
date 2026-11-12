@@ -24,7 +24,9 @@
     "company_user": {
       "not_found": "员工不存在",
       "employee_id_exists": "员工编号已存在",
-      "role_invalid": "角色无效"
+      "role_invalid": "角色无效",
+      "shared_profile": "跨机构共享员工资料须由总部修改",
+      "account_suspended": "此账号已被全局停用"
     },
     "supplier": {
       "not_found": "供应商不存在",
@@ -137,7 +139,8 @@
       "hq_membership_requires_admin": "总部成员资格需由总部管理后台分配",
       "not_accessible": "无权访问该机构",
       "target_required": "请选择目标机构",
-      "invalid_settings": "机构币种、时区或语言配置无效。"
+      "invalid_settings": "机构币种、时区或语言配置无效。",
+      "last_branch_admin": "不能停用或降级最后一位机构管理员"
     }
   },
   "quote": {

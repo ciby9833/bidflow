@@ -1,5 +1,11 @@
 {
-  "evaluationFreeze": {"title":"Avaliação congelada","confirm":"Congelar todas as classificações da rodada {round}? Encerre as propostas primeiro. O resultado salvo não poderá ser substituído.","closeFirst":"Encerre as propostas antes de congelar esta rodada.","done":"Rodada {round} congelada","history":"Resultados congelados"},
+  "evaluationFreeze": {
+    "title": "Avaliação congelada",
+    "confirm": "Congelar todas as classificações da rodada {round}? Encerre as propostas primeiro. O resultado salvo não poderá ser substituído.",
+    "closeFirst": "Encerre as propostas antes de congelar esta rodada.",
+    "done": "Rodada {round} congelada",
+    "history": "Resultados congelados"
+  },
   "app": {
     "title": "Sistema de compras BidFlow"
   },
@@ -321,7 +327,8 @@
     "super_admin": "Superadministrador",
     "purchase_manager": "Gerente de compras",
     "purchase_staff": "Analista de compras",
-    "evaluator": "Avaliador"
+    "evaluator": "Avaliador",
+    "hq_admin": "Administrador da matriz"
   },
   "mobileConsole": {
     "noFeatures": "Nenhuma funcionalidade disponível"
@@ -769,7 +776,8 @@
     "enabled": "Ativo",
     "disabled": "Inativo",
     "updated": "Usuário atualizado",
-    "created": "Usuário criado"
+    "created": "Usuário criado",
+    "sharedProfile": "Dados compartilhados são mantidos pela matriz. Cargo e status valem apenas nesta filial."
   },
   "quote": {
     "submit": "Enviar proposta",

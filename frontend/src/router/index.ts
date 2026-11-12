@@ -198,7 +198,8 @@ router.beforeEach(async (to) => {
 
   if (to.meta.public) return true;
   if (!auth.isLoggedIn) return loginPath;
-  if (!auth.user) await auth.loadMe();
+  await auth.loadMe();
+  if (!auth.isLoggedIn || !auth.user) return loginPath;
 
   if (!auth.user?.supplierId && to.path === '/m/tenders') return '/m/console/tenders';
   if (!auth.user?.supplierId && /^\/m\/tenders\/[^/]+$/.test(to.path) && !to.path.endsWith('/search')) return to.path.replace('/m/tenders/', '/m/console/tenders/');
@@ -215,6 +216,8 @@ router.beforeEach(async (to) => {
     : companyPath === '/suppliers/new' ? 'supplier:create'
     : companyPath.startsWith('/suppliers/') && companyPath.endsWith('/edit') ? 'supplier:edit'
     : companyPath === '/suppliers' || companyPath.startsWith('/suppliers/') ? 'supplier:view'
+    : companyPath === '/users/new' ? 'user:create'
+    : /^\/users\/[^/]+\/edit$/.test(companyPath) ? 'user:edit'
     : companyPath === '/users' || companyPath.startsWith('/users/') ? 'user:view'
     : companyPath.startsWith('/organization/') ? 'org:manage' : '';
   if (requiredScope && !auth.hasScope(requiredScope)) return hallPath;

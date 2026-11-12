@@ -63,6 +63,27 @@ export const useAuthStore = defineStore('auth', () => {
     return scopes.value.includes('*') || scopes.value.includes(scope);
   }
 
+  // Other browser tabs must not keep the previous account/institution's cached pages.
+  window.addEventListener('storage', event => {
+    if (event.key !== 'token' || event.newValue === token.value) return;
+    sessionStorage.removeItem('bidflow:mobile:tabState');
+    window.location.replace(event.newValue
+      ? (window.location.pathname.startsWith('/m/') ? '/m/hall' : '/hall')
+      : '/login');
+  });
+
+  function clearSession() {
+    token.value = null;
+    user.value = null;
+    scopes.value = [];
+    branches.value = [];
+    activeBranchId.value = null;
+    isHq.value = false;
+    pendingSelection.value = null;
+    localStorage.removeItem('token');
+    sessionStorage.removeItem('bidflow:mobile:tabState');
+  }
+
   function applyAuthSession(session: {
     accessToken?: string;
     user?: AuthUser;
@@ -75,11 +96,13 @@ export const useAuthStore = defineStore('auth', () => {
   }, redirectOverride?: string) {
     // Google sign-in and password login must both handle the restricted selection response.
     if (session.requiresBranchSelection && session.selectionToken) {
+      clearSession();
       pendingSelection.value = { selectionToken: session.selectionToken, branches: session.branches ?? [] };
       router.replace('/select-branch');
       return;
     }
     if (!session.accessToken || !session.user) throw new Error('invalid auth session');
+    pendingSelection.value = null;
     sessionStorage.removeItem('bidflow:mobile:tabState');
     token.value = session.accessToken;
     user.value = session.user;
@@ -96,6 +119,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     // 多机构且无可用的上次选择：后端不发放正式令牌，先去选机构
     if (res.data.data?.requiresBranchSelection) {
+      clearSession();
       pendingSelection.value = {
         selectionToken: res.data.data.selectionToken,
         branches: res.data.data.branches ?? [],
@@ -117,14 +141,18 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function loadCapabilities() {
+    const requestedToken = token.value;
     const res = await api.get('/api/auth/me/capabilities');
+    if (token.value !== requestedToken) return;
     scopes.value = res.data.data.scopes;
   }
 
   async function loadMe() {
-    if (!token.value) return;
+    const requestedToken = token.value;
+    if (!requestedToken) return;
     try {
       const res = await api.get('/api/auth/me');
+      if (token.value !== requestedToken) return;
       user.value = res.data.data.user;
       scopes.value = res.data.data.capabilities;
       // 刷新页面后据此恢复切换器状态
@@ -136,29 +164,26 @@ export const useAuthStore = defineStore('auth', () => {
       const payload = JSON.parse(atob(token.value!.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
       if (activeBranchId.value && !payload.activeBranchId) {
         const session = await api.post('/api/auth/branches/switch', { branchId: activeBranchId.value });
+        if (token.value !== requestedToken) return;
         token.value = session.data.data.accessToken;
         localStorage.setItem('token', session.data.data.accessToken);
       }
-    } catch {
-      logout();
+    } catch (error: any) {
+      if (token.value === requestedToken && [401, 403].includes(error.response?.status)) {
+        clearSession();
+        router.replace('/login');
+      }
     }
   }
 
   async function logout(redirectOverride = '/login') {
-    try {
-      if (token.value) await api.post('/api/auth/logout');
-    } catch {
-      // ignore logout network errors and clear client state anyway
-    }
-    token.value = null;
-    user.value = null;
-    scopes.value = [];
-    branches.value = [];
-    activeBranchId.value = null;
-    isHq.value = false;
-    localStorage.removeItem('token');
-    sessionStorage.removeItem('bidflow:mobile:tabState');
-    router.push(redirectOverride);
+    const previousToken = token.value;
+    const request = previousToken ? api.post('/api/auth/logout', undefined, {
+      headers: { Authorization: `Bearer ${previousToken}` },
+    }).catch(() => undefined) : Promise.resolve();
+    clearSession();
+    await router.replace(redirectOverride);
+    await request;
   }
 
   /**
@@ -167,12 +192,18 @@ export const useAuthStore = defineStore('auth', () => {
    * 切换后整页重载，避免各页面残留上一机构的数据。
    */
   async function switchBranch(branchId: string) {
+    const requestedToken = token.value;
     const res = await api.post('/api/auth/branches/switch', { branchId });
+    if (token.value !== requestedToken) return;
     const d = res.data.data;
     token.value = d.accessToken;
     localStorage.setItem('token', d.accessToken);
+    user.value = d.user;
+    scopes.value = d.scopes ?? [];
+    pendingSelection.value = null;
     branches.value = d.branches ?? [];
     activeBranchId.value = d.activeBranchId ?? null;
+    isHq.value = activeBranch.value?.branchType === 'HQ';
     // Detail URLs and mobile back stacks belong to the previous institution.
     sessionStorage.removeItem('bidflow:mobile:tabState');
     window.location.replace(window.location.pathname.startsWith('/m/') ? '/m/hall' : '/hall');
@@ -186,6 +217,7 @@ export const useAuthStore = defineStore('auth', () => {
       selectionToken: pending.selectionToken,
       branchId,
     });
+    if (pendingSelection.value !== pending) return;
     const d = res.data.data;
     pendingSelection.value = null;
     applyAuthSession({

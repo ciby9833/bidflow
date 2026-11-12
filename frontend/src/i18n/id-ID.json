@@ -1,5 +1,11 @@
 {
-  "evaluationFreeze": {"title":"Evaluasi dibekukan","confirm":"Bekukan peringkat semua rute putaran {round}? Tutup penawaran terlebih dahulu. Hasil tersimpan tidak dapat ditimpa.","closeFirst":"Tutup penawaran sebelum membekukan putaran ini.","done":"Putaran {round} dibekukan","history":"Hasil beku"},
+  "evaluationFreeze": {
+    "title": "Evaluasi dibekukan",
+    "confirm": "Bekukan peringkat semua rute putaran {round}? Tutup penawaran terlebih dahulu. Hasil tersimpan tidak dapat ditimpa.",
+    "closeFirst": "Tutup penawaran sebelum membekukan putaran ini.",
+    "done": "Putaran {round} dibekukan",
+    "history": "Hasil beku"
+  },
   "app": {
     "title": "BidFlow Sistem Pengadaan"
   },
@@ -661,7 +667,8 @@
     "super_admin": "Super Admin",
     "purchase_manager": "Manajer Pengadaan",
     "purchase_staff": "Staf Pengadaan",
-    "evaluator": "Evaluator"
+    "evaluator": "Evaluator",
+    "hq_admin": "Administrator pusat"
   },
   "userList": {
     "description": "Akun internal perusahaan dibuat secara internal. Akun pemasok tetap melalui registrasi eksternal dan sertifikasi pemasok.",
@@ -679,7 +686,8 @@
     "enabled": "Aktif",
     "disabled": "Nonaktif",
     "updated": "Pengguna diperbarui",
-    "created": "Pengguna dibuat"
+    "created": "Pengguna dibuat",
+    "sharedProfile": "Data akun bersama dikelola kantor pusat. Peran dan status hanya berlaku di cabang ini."
   },
   "quote": {
     "submit": "Kirim Penawaran",

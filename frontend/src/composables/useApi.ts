@@ -15,7 +15,7 @@ export const api = axios.create({
 // Inject JWT + 当前 locale on every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`;
   // 把 vue-i18n 当前 locale 通过 X-Locale 发给后端，后端用于翻译错误消息、Excel 表头等。
   config.headers['X-Locale'] = i18n.global.locale.value;
   return config;
@@ -27,8 +27,11 @@ api.interceptors.response.use(
   (err) => {
     const url = err.config?.url ?? '';
     const isPublicAuthRequest = url.startsWith('/api/auth/login') || url.startsWith('/api/auth/supplier-register');
-    if (err.response?.status === 401 && !isPublicAuthRequest) {
+    const currentToken = localStorage.getItem('token');
+    const sentToken = err.config?.headers?.Authorization;
+    if (err.response?.status === 401 && !isPublicAuthRequest && currentToken && sentToken === `Bearer ${currentToken}`) {
       localStorage.removeItem('token');
+      sessionStorage.removeItem('bidflow:mobile:tabState');
       window.location.href = '/login';
     }
     return Promise.reject(err);

@@ -59,7 +59,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('error.auth.token_invalid');
     }
     // Never retain a global administrator role after entering a lower-privilege institution.
-    if (user.accountType === AccountType.COMPANY_USER && !branch.isHq && branch.activeRole) user.role = String(branch.activeRole) as UserRole;
+    if (user.accountType === AccountType.COMPANY_USER && branch.activeRole) user.role = String(branch.activeRole) as UserRole;
     return Object.assign(user, { branch });
   }
 }

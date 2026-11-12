@@ -14,6 +14,7 @@
     </section>
 
     <section v-if="user" class="group">
+      <div class="row"><span>机构</span><strong>{{ user.branch.name }}</strong></div>
       <div class="row"><span>角色</span><strong>{{ roleText(user.role) }}</strong></div>
       <div class="row"><span>员工ID</span><strong>{{ user.employeeId || '未设置' }}</strong></div>
       <div class="row"><span>公司名称</span><strong>{{ user.companyName || '未设置' }}</strong></div>
@@ -28,7 +29,10 @@ import { useRoute } from 'vue-router';
 import { api } from '../../../composables/useApi';
 import { avatarText, roleText, statusText } from './user-options';
 
+const emit = defineEmits<{ 'employee-editable': [boolean] }>();
 const route = useRoute();
+const userId = String(route.params.id);
+const branchId = String(route.query.branchId || '');
 const loading = ref(false);
 const user = ref<any>(null);
 
@@ -36,7 +40,8 @@ async function load() {
   loading.value = true;
   try {
     const users = (await api.get('/api/company-users')).data.data ?? [];
-    user.value = users.find((item: any) => item.id === route.params.id);
+    user.value = users.find((item: any) => item.id === userId && (!branchId || item.branch.id === branchId));
+    emit('employee-editable', Boolean(user.value?.editable));
   } finally {
     loading.value = false;
   }

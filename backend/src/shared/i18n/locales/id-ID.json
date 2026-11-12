@@ -19,7 +19,9 @@
     "company_user": {
       "not_found": "Karyawan tidak ditemukan.",
       "employee_id_exists": "ID karyawan sudah ada.",
-      "role_invalid": "Peran tidak valid."
+      "role_invalid": "Peran tidak valid.",
+      "shared_profile": "Data karyawan bersama harus diubah kantor pusat",
+      "account_suspended": "Akun ini dinonaktifkan secara global"
     },
     "supplier": {
       "not_found": "Pemasok tidak ditemukan.",
@@ -132,7 +134,8 @@
       "hq_membership_requires_admin": "Keanggotaan kantor pusat harus diberikan dari konsol organisasi",
       "not_accessible": "Anda tidak memiliki akses ke cabang ini",
       "target_required": "Silakan pilih cabang tujuan",
-      "invalid_settings": "Mata uang, zona waktu, atau bahasa institusi tidak valid."
+      "invalid_settings": "Mata uang, zona waktu, atau bahasa institusi tidak valid.",
+      "last_branch_admin": "Administrator cabang terakhir tidak dapat dinonaktifkan atau diturunkan"
     }
   },
   "quote": {

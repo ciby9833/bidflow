@@ -1,5 +1,11 @@
 {
-  "evaluationFreeze": {"title":"Kết quả đánh giá đã chốt","confirm":"Chốt xếp hạng tất cả tuyến của vòng {round}? Hãy đóng báo giá trước. Kết quả đã lưu không thể ghi đè.","closeFirst":"Đóng báo giá trước khi chốt vòng này.","done":"Đã chốt vòng {round}","history":"Kết quả đã chốt"},
+  "evaluationFreeze": {
+    "title": "Kết quả đánh giá đã chốt",
+    "confirm": "Chốt xếp hạng tất cả tuyến của vòng {round}? Hãy đóng báo giá trước. Kết quả đã lưu không thể ghi đè.",
+    "closeFirst": "Đóng báo giá trước khi chốt vòng này.",
+    "done": "Đã chốt vòng {round}",
+    "history": "Kết quả đã chốt"
+  },
   "app": {
     "title": "Hệ thống mua sắm BidFlow"
   },
@@ -661,7 +667,8 @@
     "super_admin": "Quản trị viên cấp cao",
     "purchase_manager": "Giám đốc mua sắm",
     "purchase_staff": "Nhân viên mua sắm",
-    "evaluator": "Người đánh giá"
+    "evaluator": "Người đánh giá",
+    "hq_admin": "Quản trị viên trụ sở"
   },
   "userList": {
     "description": "Tài khoản nội bộ của công ty được tạo trong nội bộ. Tài khoản nhà cung cấp vẫn sử dụng đăng ký bên ngoài và chứng nhận nhà cung cấp.",
@@ -679,7 +686,8 @@
     "enabled": "Đã bật",
     "disabled": "Đã tắt",
     "updated": "Đã cập nhật người dùng",
-    "created": "Người dùng đã tạo"
+    "created": "Người dùng đã tạo",
+    "sharedProfile": "Thông tin dùng chung do trụ sở quản lý. Vai trò và trạng thái chỉ áp dụng tại chi nhánh này."
   },
   "quote": {
     "submit": "Gửi báo giá",

@@ -195,7 +195,9 @@ test('frontend auth: Google selection response does not save an undefined access
   const exports = {};
   vm.runInNewContext(output, {
     exports,
-    localStorage: { getItem: () => null, setItem: (...args) => writes.push(args) },
+    localStorage: { getItem: () => null, setItem: (...args) => writes.push(args), removeItem: () => {} },
+    sessionStorage: { removeItem: () => {} },
+    window: { addEventListener: () => {} },
     require: id => {
       if (id === 'vue') return { ref: value => ({ value }), computed: fn => ({ get value() { return fn(); } }) };
       if (id === 'pinia') return { defineStore: (_id, setup) => setup };

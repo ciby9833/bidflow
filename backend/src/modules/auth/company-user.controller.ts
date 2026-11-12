@@ -5,23 +5,22 @@
  * 作者：吴川
  */
 import {
-  Body, Controller, ForbiddenException, Get, Param, Patch, Post, Req, UseGuards,
+  Body, Controller, Get, Param, Patch, Post, Req, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import {
-  IsEmail, IsEnum, IsOptional, IsString, Length, MinLength,
+  IsEmail, IsEnum, IsOptional, IsString, IsUUID, Length, MinLength,
 } from 'class-validator';
 import { Request } from 'express';
 import { AuthenticatedUser } from './jwt.strategy';
-import {
-  BranchScope, emptyBranchScope, resolveAdminWriteBranch,
-} from '../../shared/tenant/branch-scope';
+import { BranchMemberRole } from '../organization/branch-member.entity';
 import { AuthService } from './auth.service';
 import { User, UserRole, UserStatus } from './user.entity';
 import { ApiResponse } from '../../shared/dto/response.dto';
 import { RbacGuard, RequireScopes } from '../../shared/rbac/rbac.guard';
 
 const COMPANY_ROLES = [
+  BranchMemberRole.HQ_ADMIN,
   UserRole.SUPER_ADMIN,
   UserRole.PURCHASE_MANAGER,
   UserRole.PURCHASE_STAFF,
@@ -37,18 +36,18 @@ class CreateCompanyUserDto {
   password: string;
 
   @IsEnum(COMPANY_ROLES)
-  role: Exclude<UserRole, UserRole.SUPPLIER>;
+  role: BranchMemberRole;
 
   @IsString()
   @Length(1, 100)
   fullName: string;
 
   /**
-   * 目标机构。仅总部需要传：总部不拥有数据空间，必须指明为哪个国家机构建号。
-   * 机构用户传入无效 —— 服务端强制归属其所在机构。
+   * 目标机构。总部必须明确选择总部自身或国家机构。
+   * 机构用户可省略；传入其他机构将被拒绝。
    */
   @IsOptional()
-  @IsString()
+  @IsUUID()
   branchId?: string;
 
   @IsOptional()
@@ -62,8 +61,12 @@ class CreateCompanyUserDto {
 
 class UpdateCompanyUserDto {
   @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
   @IsEnum(COMPANY_ROLES)
-  role?: Exclude<UserRole, UserRole.SUPPLIER>;
+  role?: BranchMemberRole;
 
   @IsOptional()
   @IsEnum([UserStatus.ACTIVE, UserStatus.SUSPENDED])
@@ -83,9 +86,8 @@ class UpdateCompanyUserDto {
   companyName?: string;
 }
 
-/** 取当前请求的机构作用域。由 jwt.strategy.ts 校验成员资格后挂载，不接受客户端指定。 */
-function scopeOf(req: Request): BranchScope {
-  return (req.user as AuthenticatedUser).branch?.scope ?? emptyBranchScope();
+function contextOf(req: Request) {
+  return (req.user as AuthenticatedUser).branch;
 }
 
 function auditCtx(req: Request) {
@@ -106,27 +108,24 @@ export class CompanyUserController {
   @Get()
   @RequireScopes('user:view')
   async list(@Req() req: Request) {
-    return ApiResponse.ok(await this.svc.listCompanyUsers(scopeOf(req)));
+    return ApiResponse.ok(await this.svc.listCompanyUsers(contextOf(req)));
   }
 
   @Post()
   @RequireScopes('user:create')
   async create(@Body() dto: CreateCompanyUserDto, @Req() req: Request) {
-    // 机构用户：强制归属自己所在机构，忽略请求里的 branchId ——
-    //   否则印尼的管理员可以凭一个 branchId 往越南机构里塞人。
-    // 总部：不拥有自己的数据空间，必须显式指明要为哪个国家机构建号。
-    const branch = (req.user as AuthenticatedUser).branch;
-    const branchId = resolveAdminWriteBranch(
-      branch?.scope ?? emptyBranchScope(),
-      branch?.isHq ?? false,
-      dto.branchId,
-    );
-    return ApiResponse.ok(await this.svc.createCompanyUser({ ...dto, branchId }, auditCtx(req)));
+    return ApiResponse.ok(await this.svc.createCompanyUser(dto, auditCtx(req), contextOf(req)));
+  }
+
+  @Get('branches')
+  @RequireScopes('user:create')
+  async branches(@Req() req: Request) {
+    return ApiResponse.ok(await this.svc.companyUserBranches(contextOf(req)));
   }
 
   @Patch(':id')
   @RequireScopes('user:edit')
   async update(@Param('id') id: string, @Body() dto: UpdateCompanyUserDto, @Req() req: Request) {
-    return ApiResponse.ok(await this.svc.updateCompanyUser(id, dto, auditCtx(req)));
+    return ApiResponse.ok(await this.svc.updateCompanyUser(id, dto, auditCtx(req), contextOf(req)));
   }
 }

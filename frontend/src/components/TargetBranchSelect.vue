@@ -33,18 +33,18 @@ import { api } from '../composables/useApi';
 import { useAuthStore } from '../stores/auth';
 import { preselectBranch } from '../composables/useBranchPreselect';
 
-const props = defineProps<{ modelValue?: string }>();
-const emit = defineEmits<{ 'update:modelValue': [string] }>();
+const props = defineProps<{ modelValue?: string; includeHeadquarters?: boolean }>();
+const emit = defineEmits<{ 'update:modelValue': [string]; 'branch-change': [{ id: string; type?: string } | undefined] }>();
 
 const { t } = useI18n();
 const auth = useAuthStore();
-const branches = ref<{ id: string; code: string; name: string; countryCode?: string; timezone?: string }[]>([]);
+const branches = ref<{ id: string; code: string; name: string; countryCode?: string; timezone?: string; type?: string }[]>([]);
 
 onMounted(async () => {
   // 机构用户不需要候选列表，省一次请求
   if (!auth.isHq) return;
   try {
-    branches.value = (await api.get('/api/hall/registrable-branches')).data.data;
+    branches.value = (await api.get(props.includeHeadquarters ? '/api/company-users/branches' : '/api/hall/registrable-branches')).data.data;
   } catch {
     // 拉取失败不阻塞表单；提交时后端会校验目标机构
   }
@@ -67,6 +67,7 @@ watch(
   },
   { immediate: true },
 );
+watch([() => props.modelValue, branches], ([id, list]) => emit('branch-change', list.find(b => b.id === id)), { immediate: true });
 </script>
 
 <style scoped>

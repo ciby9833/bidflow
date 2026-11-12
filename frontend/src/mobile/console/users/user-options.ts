@@ -17,6 +17,7 @@ export const statusOptions = [
 ];
 
 export function roleText(role: string) {
+  if (role === 'hq_admin') return '总部管理员';
   return roleOptions.find((item) => item.value === role)?.label ?? role;
 }
 

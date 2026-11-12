@@ -26,6 +26,9 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, Plus } from '@element-plus/icons-vue';
 import { consumeMobileTabBackPath } from '../mobileTabState';
 
+import { useAuthStore } from '../../stores/auth';
+const props = defineProps<{ employeeEditable?: boolean }>();
+const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
@@ -41,7 +44,7 @@ function goBack() {
 }
 
 const rightAction = computed(() => {
-  if (route.path === '/m/console/users') {
+  if (route.path === '/m/console/users' && auth.hasScope('user:create')) {
     return {
       label: t('common.add'),
       icon: 'plus',
@@ -55,11 +58,11 @@ const rightAction = computed(() => {
       run: () => router.push(route.path.replace('/review', '/edit')),
     };
   }
-  if (/^\/m\/console\/users\/[^/]+$/.test(route.path)) {
+  if (/^\/m\/console\/users\/[^/]+$/.test(route.path) && route.params.id && props.employeeEditable && auth.hasScope('user:edit')) {
     return {
       label: t('common.edit'),
       icon: 'text',
-      run: () => router.push(`${route.path}/edit`),
+      run: () => router.push({ path: `${route.path}/edit`, query: route.query }),
     };
   }
   return null;

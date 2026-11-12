@@ -8,11 +8,11 @@
   <div class="mobile-shell">
     <template v-if="showChrome">
       <div>
-        <MobileNavBar />
+        <MobileNavBar :employee-editable="employeeEditable" />
         <div v-if="auth.isLoggedIn && auth.canSwitchBranch" class="mobile-branch"><BranchSwitcher /></div>
       </div>
       <main ref="contentRef" class="mobile-content">
-        <router-view :key="`${route.fullPath}:${refreshKey}`" />
+        <router-view :key="`${route.fullPath}:${refreshKey}`" @employee-editable="employeeEditable = $event" />
       </main>
       <MobileTabBar />
     </template>
@@ -35,9 +35,11 @@ const route = useRoute();
 const auth = useAuthStore();
 const showChrome = computed(() => !route.meta.hideMobileChrome);
 const refreshKey = ref(0);
+const employeeEditable = ref(false);
 const contentRef = ref<HTMLElement | null>(null);
 
 function refreshCurrentTab() {
+  employeeEditable.value = false;
   refreshKey.value += 1;
   requestAnimationFrame(() => {
     contentRef.value?.scrollTo({ top: 0, behavior: 'auto' });
@@ -51,6 +53,7 @@ onMounted(() => {
 watch(
   () => route.fullPath,
   () => {
+    employeeEditable.value = false;
     if (showChrome.value) rememberMobileTabPath(route.path, route.fullPath);
   },
   { immediate: true },

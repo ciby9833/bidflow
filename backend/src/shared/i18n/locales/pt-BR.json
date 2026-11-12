@@ -19,7 +19,9 @@
     "company_user": {
       "not_found": "Funcionário não encontrado.",
       "employee_id_exists": "Matrícula já cadastrada.",
-      "role_invalid": "Perfil inválido."
+      "role_invalid": "Perfil inválido.",
+      "shared_profile": "Dados compartilhados devem ser alterados pela matriz",
+      "account_suspended": "Esta conta está suspensa globalmente"
     },
     "supplier": {
       "not_found": "Fornecedor não encontrado.",
@@ -133,7 +135,8 @@
       "hq_membership_requires_admin": "O acesso à matriz deve ser concedido na gestão organizacional",
       "not_accessible": "Você não tem acesso a esta unidade",
       "target_required": "Selecione a unidade de destino",
-      "invalid_settings": "Moeda, fuso horário ou idioma da instituição inválidos."
+      "invalid_settings": "Moeda, fuso horário ou idioma da instituição inválidos.",
+      "last_branch_admin": "Não é possível desativar ou rebaixar o último administrador da filial"
     }
   },
   "quote": {

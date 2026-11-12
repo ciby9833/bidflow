@@ -1,5 +1,11 @@
 {
-  "evaluationFreeze": {"title":"Frozen evaluation","confirm":"Freeze all line rankings for round {round}? Close bidding first. The saved result cannot be overwritten.","closeFirst":"Close bidding before freezing this round.","done":"Round {round} frozen","history":"Frozen results"},
+  "evaluationFreeze": {
+    "title": "Frozen evaluation",
+    "confirm": "Freeze all line rankings for round {round}? Close bidding first. The saved result cannot be overwritten.",
+    "closeFirst": "Close bidding before freezing this round.",
+    "done": "Round {round} frozen",
+    "history": "Frozen results"
+  },
   "app": {
     "title": "BidFlow Procurement System"
   },
@@ -661,7 +667,8 @@
     "super_admin": "Super Admin",
     "purchase_manager": "Procurement Manager",
     "purchase_staff": "Procurement Staff",
-    "evaluator": "Evaluator"
+    "evaluator": "Evaluator",
+    "hq_admin": "HQ administrator"
   },
   "userList": {
     "description": "Internal company accounts are created internally. Supplier accounts still use external registration and supplier certification.",
@@ -679,7 +686,8 @@
     "enabled": "Enabled",
     "disabled": "Disabled",
     "updated": "User updated",
-    "created": "User created"
+    "created": "User created",
+    "sharedProfile": "Shared account details are maintained by headquarters. Role and status apply to this branch only."
   },
   "quote": {
     "submit": "Submit Quote",

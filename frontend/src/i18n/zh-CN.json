@@ -1,5 +1,11 @@
 {
-  "evaluationFreeze": {"title":"评标冻结结果","confirm":"确认冻结第 {round} 轮所有线路的排名？须先结束报价，保存后不可覆盖。","closeFirst":"请先结束本轮报价，再冻结评标结果。","done":"第 {round} 轮已冻结","history":"历史冻结结果"},
+  "evaluationFreeze": {
+    "title": "评标冻结结果",
+    "confirm": "确认冻结第 {round} 轮所有线路的排名？须先结束报价，保存后不可覆盖。",
+    "closeFirst": "请先结束本轮报价，再冻结评标结果。",
+    "done": "第 {round} 轮已冻结",
+    "history": "历史冻结结果"
+  },
   "app": {
     "title": "BidFlow 采购招标系统"
   },
@@ -661,7 +667,8 @@
     "super_admin": "超级管理员",
     "purchase_manager": "采购经理",
     "purchase_staff": "采购专员",
-    "evaluator": "评审员"
+    "evaluator": "评审员",
+    "hq_admin": "总部管理员"
   },
   "userList": {
     "description": "公司内部账号由内部创建；供应商账号仍走外部注册与供应商认证流程。",
@@ -679,7 +686,8 @@
     "enabled": "启用",
     "disabled": "停用",
     "updated": "用户已更新",
-    "created": "用户已创建"
+    "created": "用户已创建",
+    "sharedProfile": "共享账号资料由总部维护，角色和状态仅作用于当前机构。"
   },
   "quote": {
     "submit": "提交报价",
